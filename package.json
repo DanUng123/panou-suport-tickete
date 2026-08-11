@@ -1,0 +1,13 @@
+{
+  "name": "panou-suport-tichete",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Aplicație de tickete și suport clienți pentru agenți — Node.js nativ (fără dependențe npm), SQLite persistent.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}
