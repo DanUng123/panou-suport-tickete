@@ -1,0 +1,152 @@
+{
+  "agents": [
+    {
+      "id": "AGT_ana",
+      "name": "Ana Pop",
+      "email": "ana.pop@firma.ro",
+      "password": "parola123",
+      "role": "agent"
+    },
+    {
+      "id": "AGT_mihai",
+      "name": "Mihai Ionescu",
+      "email": "mihai.ionescu@firma.ro",
+      "password": "parola123",
+      "role": "agent"
+    },
+    {
+      "id": "AGT_elena",
+      "name": "Elena Radu",
+      "email": "elena.radu@firma.ro",
+      "password": "parola123",
+      "role": "manager"
+    }
+  ],
+  "categories": [
+    "Facturare",
+    "Probleme tehnice",
+    "Cont & Acces",
+    "Livrare",
+    "Solicitare funcționalitate",
+    "Altele"
+  ],
+  "tickets": [
+    {
+      "id": "TCK_demo001",
+      "subject": "Nu pot accesa contul după resetarea parolei",
+      "description": "Clientul a resetat parola dar primește eroare 'credențiale invalide' la autentificare.",
+      "requesterName": "Vlad Marinescu",
+      "requesterEmail": "vlad.marinescu@exemplu.ro",
+      "category": "Cont & Acces",
+      "priority": "high",
+      "status": "in_progress",
+      "assignedTo": "AGT_ana",
+      "createdAt": "2026-08-07T08:12:00.000Z",
+      "updatedAt": "2026-08-08T10:00:00.000Z",
+      "resolvedAt": null,
+      "comments": [
+        {
+          "id": "CMT_1",
+          "authorId": "AGT_ana",
+          "authorName": "Ana Pop",
+          "body": "Am verificat, contul pare blocat după 3 încercări eșuate. Trimit link de deblocare.",
+          "internal": false,
+          "createdAt": "2026-08-08T10:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "TCK_demo002",
+      "subject": "Factura din iulie are suma greșită",
+      "description": "Clientul spune că a fost taxat dublu pentru abonamentul lunar.",
+      "requesterName": "Corina Stan",
+      "requesterEmail": "corina.stan@exemplu.ro",
+      "category": "Facturare",
+      "priority": "urgent",
+      "status": "open",
+      "assignedTo": null,
+      "createdAt": "2026-08-08T14:30:00.000Z",
+      "updatedAt": "2026-08-08T14:30:00.000Z",
+      "resolvedAt": null,
+      "comments": []
+    },
+    {
+      "id": "TCK_demo003",
+      "subject": "Solicitare: export date în format CSV",
+      "description": "Clientul dorește posibilitatea de a exporta istoricul comenzilor în CSV.",
+      "requesterName": "Radu Tomescu",
+      "requesterEmail": "radu.tomescu@exemplu.ro",
+      "category": "Solicitare funcționalitate",
+      "priority": "low",
+      "status": "waiting",
+      "assignedTo": "AGT_mihai",
+      "createdAt": "2026-08-05T09:00:00.000Z",
+      "updatedAt": "2026-08-06T11:20:00.000Z",
+      "resolvedAt": null,
+      "comments": [
+        {
+          "id": "CMT_2",
+          "authorId": "AGT_mihai",
+          "authorName": "Mihai Ionescu",
+          "body": "Am transmis cererea către echipa de produs. Aștept răspuns.",
+          "internal": true,
+          "createdAt": "2026-08-06T11:20:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "TCK_demo004",
+      "subject": "Colet livrat la adresă greșită",
+      "description": "Coletul a fost livrat la vecinul de la etajul 2 în loc de client.",
+      "requesterName": "Diana Barbu",
+      "requesterEmail": "diana.barbu@exemplu.ro",
+      "category": "Livrare",
+      "priority": "medium",
+      "status": "resolved",
+      "assignedTo": "AGT_ana",
+      "createdAt": "2026-08-03T16:45:00.000Z",
+      "updatedAt": "2026-08-04T09:10:00.000Z",
+      "resolvedAt": "2026-08-04T09:10:00.000Z",
+      "comments": [
+        {
+          "id": "CMT_3",
+          "authorId": "AGT_ana",
+          "authorName": "Ana Pop",
+          "body": "Am contactat curierul, coletul a fost recuperat și redirecționat corect.",
+          "internal": false,
+          "createdAt": "2026-08-04T09:10:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "TCK_demo005",
+      "subject": "Aplicația se blochează la încărcarea imaginilor",
+      "description": "La încărcarea unei poze de profil peste 5MB, aplicația mobilă se închide.",
+      "requesterName": "Andrei Coman",
+      "requesterEmail": "andrei.coman@exemplu.ro",
+      "category": "Probleme tehnice",
+      "priority": "high",
+      "status": "open",
+      "assignedTo": null,
+      "createdAt": "2026-08-09T07:20:00.000Z",
+      "updatedAt": "2026-08-09T07:20:00.000Z",
+      "resolvedAt": null,
+      "comments": []
+    },
+    {
+      "id": "TCK_demo006",
+      "subject": "Cerere anulare abonament",
+      "description": "Clientul dorește anularea abonamentului anual, motivul: nu mai utilizează serviciul.",
+      "requesterName": "Ioana Georgescu",
+      "requesterEmail": "ioana.georgescu@exemplu.ro",
+      "category": "Facturare",
+      "priority": "medium",
+      "status": "closed",
+      "assignedTo": "AGT_mihai",
+      "createdAt": "2026-08-01T12:00:00.000Z",
+      "updatedAt": "2026-08-02T08:00:00.000Z",
+      "resolvedAt": "2026-08-02T08:00:00.000Z",
+      "comments": []
+    }
+  ]
+}
