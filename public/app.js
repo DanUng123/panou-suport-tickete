@@ -153,7 +153,11 @@ async function logout() {
 
 function renderShell(activeRoute, contentNode) {
   app.innerHTML = '';
-  const shell = el(`
+
+  // Construim sidebar si zona principala ca doua elemente separate (nu un
+  // singur bloc cu doi radacini surori) -- el() intoarce doar primul element
+  // dintr-un template HTML, deci doua radacini surori ar pierde-o pe a doua.
+  const sidebar = el(`
     <div class="sidebar" id="sidebar">
       <div class="brand">
         <div class="mark">S</div>
@@ -174,20 +178,21 @@ function renderShell(activeRoute, contentNode) {
         <button class="logout-btn" title="Deconectare" id="logoutBtn">⏻</button>
       </div>
     </div>
-    <div class="main" id="main"></div>
   `);
-  app.appendChild(shell);
+  const main = el(`<div class="main" id="main"></div>`);
 
-  shell.querySelectorAll('.nav-item').forEach((item) => {
+  app.appendChild(sidebar);
+  app.appendChild(main);
+
+  sidebar.querySelectorAll('.nav-item').forEach((item) => {
     const route = item.dataset.route;
     if (route === activeRoute || (activeRoute.startsWith('#/tickets/') && route === '#/tickets')) {
       item.classList.add('active');
     }
     item.addEventListener('click', () => navigate(route));
   });
-  shell.querySelector('#logoutBtn').addEventListener('click', logout);
+  sidebar.querySelector('#logoutBtn').addEventListener('click', logout);
 
-  const main = shell.querySelector('#main');
   main.appendChild(contentNode);
   return main;
 }

@@ -84,12 +84,24 @@ function serveStatic(req, res, pathname) {
     return res.end('Interzis');
   }
 
+  // o cerere are extensie de fisier (ex: .css, .js) daca ultimul segment al
+  // caii contine un punct -- doar rutele FARA extensie (ex: /tickets/abc,
+  // generate de rutarea pe hash a front-end-ului) primesc fallback la
+  // index.html. Un asset lipsa (css/js gresit) trebuie sa dea 404 real,
+  // nu sa fie mascat cu un raspuns 200 continand HTML.
+  const lastSegment = pathname.split('/').pop() || '';
+  const looksLikeAsset = lastSegment.includes('.');
+
   fs.readFile(filePath, (err, data) => {
     if (err) {
+      if (looksLikeAsset) {
+        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        return res.end(`Fișier negăsit: ${pathname}`);
+      }
       // fallback la index.html pentru rutare pe front-end (SPA)
       fs.readFile(path.join(PUBLIC_DIR, 'index.html'), (err2, indexData) => {
         if (err2) {
-          res.writeHead(404);
+          res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
           return res.end('Not found');
         }
         res.writeHead(200, { 'Content-Type': MIME['.html'] });
