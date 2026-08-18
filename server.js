@@ -13,13 +13,14 @@ const db = require('./lib/db');
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
-// ---------- sesiuni simple in memorie (token -> agentId) ----------
-// Notă: pentru producție reală, folosiți sesiuni persistente / JWT / SSO.
+// ---------- sesiuni simple in memorie (token -> {agentId, expiresAt}) ----------
+// Notă: pentru producție la scară mare, folosiți sesiuni persistente / JWT / SSO.
 const sessions = new Map();
+const SESSION_TTL_MS = 12 * 60 * 60 * 1000; // 12 ore
 
 function createSession(agentId) {
   const token = crypto.randomBytes(24).toString('hex');
-  sessions.set(token, agentId);
+  sessions.set(token, { agentId, expiresAt: Date.now() + SESSION_TTL_MS });
   return token;
 }
 
@@ -28,9 +29,48 @@ function getAgentFromRequest(req) {
   const match = cookie.match(/(?:^|;\s*)session=([^;]+)/);
   if (!match) return null;
   const token = match[1];
-  const agentId = sessions.get(token);
-  if (!agentId) return null;
-  return db.findAgentById(agentId);
+  const entry = sessions.get(token);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    sessions.delete(token);
+    return null;
+  }
+  return db.findAgentById(entry.agentId);
+}
+
+// ---------- protectie brute-force la login ----------
+// Blocheaza temporar un cont dupa prea multe incercari esuate consecutive.
+// Reset simplu, in memorie -- suficient pentru o echipa mica; la scara mare,
+// s-ar muta intr-un store persistent (Redis) partajat intre instante.
+const loginAttempts = new Map(); // agentId -> { count, lockedUntil }
+const MAX_ATTEMPTS = 5;
+const LOCKOUT_MS = 5 * 60 * 1000; // 5 minute
+
+function checkLockout(agentId) {
+  const entry = loginAttempts.get(agentId);
+  if (!entry) return { locked: false };
+  if (entry.lockedUntil && Date.now() < entry.lockedUntil) {
+    const minutesLeft = Math.ceil((entry.lockedUntil - Date.now()) / 60000);
+    return { locked: true, minutesLeft };
+  }
+  if (entry.lockedUntil && Date.now() >= entry.lockedUntil) {
+    loginAttempts.delete(agentId); // lockout expirat, resetam
+  }
+  return { locked: false };
+}
+
+function registerFailedAttempt(agentId) {
+  const entry = loginAttempts.get(agentId) || { count: 0, lockedUntil: null };
+  entry.count += 1;
+  if (entry.count >= MAX_ATTEMPTS) {
+    entry.lockedUntil = Date.now() + LOCKOUT_MS;
+    entry.count = 0;
+  }
+  loginAttempts.set(agentId, entry);
+}
+
+function clearFailedAttempts(agentId) {
+  loginAttempts.delete(agentId);
 }
 
 // ---------- utilitare HTTP ----------
@@ -126,8 +166,19 @@ async function handleApi(req, res, pathname, query) {
 
     if (pathname === '/api/login' && req.method === 'POST') {
       const body = await readBody(req);
+      if (!body.agentId) return sendJSON(res, 400, { error: 'Agent lipsă' });
+
+      const lockout = checkLockout(body.agentId);
+      if (lockout.locked) {
+        return sendJSON(res, 429, { error: `Prea multe încercări eșuate. Încearcă din nou peste ${lockout.minutesLeft} minut(e).` });
+      }
+
       const agent = db.verifyAgent(body.agentId, body.password);
-      if (!agent) return sendJSON(res, 401, { error: 'Credențiale invalide' });
+      if (!agent) {
+        registerFailedAttempt(body.agentId);
+        return sendJSON(res, 401, { error: 'Credențiale invalide' });
+      }
+      clearFailedAttempts(body.agentId);
       const token = createSession(agent.id);
       res.setHeader('Set-Cookie', `session=${token}; HttpOnly; Path=/; SameSite=Lax`);
       return sendJSON(res, 200, agent);
@@ -143,17 +194,75 @@ async function handleApi(req, res, pathname, query) {
 
     if (pathname === '/api/session' && req.method === 'GET') {
       const agent = getAgentFromRequest(req);
-      if (!agent) return sendJSON(res, 401, { error: 'Neautentificat' });
-      const { password, ...safe } = agent;
-      return sendJSON(res, 200, safe);
+      if (!agent || !agent.active) return sendJSON(res, 401, { error: 'Neautentificat' });
+      const { passwordHash, password, ...safe } = agent;
+      return sendJSON(res, 200, { ...safe, active: !!safe.active });
     }
 
     // toate rutele de mai jos necesită autentificare
     const currentAgent = getAgentFromRequest(req);
-    if (!currentAgent) return sendJSON(res, 401, { error: 'Neautentificat' });
+    if (!currentAgent || !currentAgent.active) return sendJSON(res, 401, { error: 'Neautentificat' });
+
+    const requireManager = () => currentAgent.role === 'manager';
 
     if (pathname === '/api/categories' && req.method === 'GET') {
       return sendJSON(res, 200, db.listCategories());
+    }
+
+    if (pathname === '/api/categories' && req.method === 'POST') {
+      if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot gestiona categoriile' });
+      const body = await readBody(req);
+      try {
+        return sendJSON(res, 201, db.addCategory(body.name));
+      } catch (e) {
+        return sendJSON(res, 400, { error: e.message });
+      }
+    }
+
+    const categoryMatch = pathname.match(/^\/api\/categories\/([^/]+)$/);
+    if (categoryMatch && req.method === 'DELETE') {
+      if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot gestiona categoriile' });
+      return sendJSON(res, 200, db.removeCategory(decodeURIComponent(categoryMatch[1])));
+    }
+
+    // ---- administrare agenti (doar manageri) ----
+
+    if (pathname === '/api/admin/agents' && req.method === 'GET') {
+      if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot accesa administrarea' });
+      return sendJSON(res, 200, db.listAgents({ includeInactive: true }));
+    }
+
+    if (pathname === '/api/admin/agents' && req.method === 'POST') {
+      if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot accesa administrarea' });
+      const body = await readBody(req);
+      if (!body.name || !body.email || !body.password || !body.role) {
+        return sendJSON(res, 400, { error: 'Câmpuri obligatorii lipsă (nume, email, parolă, rol)' });
+      }
+      if (body.password.length < 6) {
+        return sendJSON(res, 400, { error: 'Parola trebuie să aibă minimum 6 caractere' });
+      }
+      try {
+        const agent = db.createAgent(body);
+        return sendJSON(res, 201, agent);
+      } catch (e) {
+        return sendJSON(res, 400, { error: e.message });
+      }
+    }
+
+    const adminAgentMatch = pathname.match(/^\/api\/admin\/agents\/([^/]+)$/);
+    if (adminAgentMatch && req.method === 'PATCH') {
+      if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot accesa administrarea' });
+      const body = await readBody(req);
+      if (body.password && body.password.length < 6) {
+        return sendJSON(res, 400, { error: 'Parola trebuie să aibă minimum 6 caractere' });
+      }
+      try {
+        const agent = db.updateAgent(adminAgentMatch[1], body);
+        if (!agent) return sendJSON(res, 404, { error: 'Agent negăsit' });
+        return sendJSON(res, 200, agent);
+      } catch (e) {
+        return sendJSON(res, 400, { error: e.message });
+      }
     }
 
     if (pathname === '/api/stats' && req.method === 'GET') {
@@ -191,7 +300,7 @@ async function handleApi(req, res, pathname, query) {
     if (ticketMatch && req.method === 'PATCH') {
       const body = await readBody(req);
       try {
-        const ticket = db.updateTicket(ticketMatch[1], body);
+        const ticket = db.updateTicket(ticketMatch[1], body, currentAgent);
         if (!ticket) return sendJSON(res, 404, { error: 'Tichet negăsit' });
         return sendJSON(res, 200, ticket);
       } catch (e) {

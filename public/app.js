@@ -167,6 +167,7 @@ function renderShell(activeRoute, contentNode) {
         <div class="nav-item" data-route="#/dashboard"><span class="dot"></span>Dashboard</div>
         <div class="nav-item" data-route="#/tickets"><span class="dot"></span>Tichete</div>
         <div class="nav-item nav-new" data-route="#/new"><span class="dot"></span>+ Tichet nou</div>
+        ${currentAgent.role === 'manager' ? '<div class="nav-item" data-route="#/admin"><span class="dot"></span>Administrare</div>' : ''}
       </nav>
       <div class="sidebar-spacer"></div>
       <div class="agent-card">
@@ -411,7 +412,46 @@ async function renderTicketDetail(ticketId) {
   }
 
   function paint() {
-    const comments = ticket.comments.map((c) => `
+    const FIELD_LABELS_RO = {
+      status: 'statusul', priority: 'prioritatea', category: 'categoria', assignedTo: 'agentul asignat',
+    };
+    const STATUS_LABELS_MAP = STATUS_LABELS;
+
+    function describeHistoryEntry(h) {
+      const label = FIELD_LABELS_RO[h.field] || h.field;
+      let oldDisplay = h.oldValue;
+      let newDisplay = h.newValue;
+      if (h.field === 'status') {
+        oldDisplay = h.oldValue ? STATUS_LABELS_MAP[h.oldValue] : '—';
+        newDisplay = h.newValue ? STATUS_LABELS_MAP[h.newValue] : '—';
+      } else if (h.field === 'priority') {
+        oldDisplay = h.oldValue ? PRIORITY_LABELS[h.oldValue] : '—';
+        newDisplay = h.newValue ? PRIORITY_LABELS[h.newValue] : '—';
+      } else if (h.field === 'assignedTo') {
+        oldDisplay = h.oldValue || 'neasignat';
+        newDisplay = h.newValue || 'neasignat';
+      }
+      return `${escapeHtml(h.agentName)} a schimbat ${label} din „${escapeHtml(String(oldDisplay))}” în „${escapeHtml(String(newDisplay))}”`;
+    }
+
+    const timelineItems = [
+      ...ticket.comments.map((c) => ({ type: 'comment', createdAt: c.createdAt, data: c })),
+      ...(ticket.history || []).map((h) => ({ type: 'history', createdAt: h.createdAt, data: h })),
+    ].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+
+    const comments = timelineItems.map((item) => {
+      if (item.type === 'history') {
+        const h = item.data;
+        return `
+          <div class="history-entry">
+            <span class="history-dot"></span>
+            <span class="history-text">${describeHistoryEntry(h)}</span>
+            <span class="c-time">${fmtDate(h.createdAt)}</span>
+          </div>
+        `;
+      }
+      const c = item.data;
+      return `
       <div class="comment">
         <div class="comment-head">
           <span class="c-author">${escapeHtml(c.authorName)}</span>
@@ -420,7 +460,8 @@ async function renderTicketDetail(ticketId) {
         </div>
         <div class="comment-body">${escapeHtml(c.body)}</div>
       </div>
-    `).join('') || '<div class="panel-empty" style="color:var(--text-dim);font-size:13px;">Niciun comentariu încă.</div>';
+    `;
+    }).join('') || '<div class="panel-empty" style="color:var(--text-dim);font-size:13px;">Niciun comentariu încă.</div>';
 
     content.innerHTML = `
       <div class="back-link" id="backLink">← Înapoi la tichete</div>
@@ -443,7 +484,7 @@ async function renderTicketDetail(ticketId) {
           </div>
 
           <div class="comments-panel">
-            <h2 style="font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary);margin:0 0 14px;">Conversație (${ticket.comments.length})</h2>
+            <h2 style="font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary);margin:0 0 14px;">Activitate (${ticket.comments.length} comentarii)</h2>
             ${comments}
             <form class="comment-form" id="commentForm">
               <textarea id="commentBody" placeholder="Scrie un răspuns sau o notă internă…" required></textarea>
@@ -606,6 +647,218 @@ function renderNewTicket() {
   });
 }
 
+// ---------------- Administrare (doar manageri) ----------------
+
+async function renderAdmin() {
+  if (currentAgent.role !== 'manager') {
+    navigate('#/dashboard');
+    return;
+  }
+
+  const content = el(`
+    <div>
+      <div class="page-header">
+        <div>
+          <h1>Administrare</h1>
+          <div class="sub">Gestionează agenții și categoriile de tichete</div>
+        </div>
+      </div>
+      <div class="admin-tabs">
+        <button class="admin-tab active" data-tab="agents">Agenți</button>
+        <button class="admin-tab" data-tab="categories">Categorii</button>
+      </div>
+      <div id="admin-body">Se încarcă…</div>
+    </div>
+  `);
+  renderShell('#/admin', content);
+
+  let activeTab = 'agents';
+  const body = content.querySelector('#admin-body');
+
+  content.querySelectorAll('.admin-tab').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      content.querySelectorAll('.admin-tab').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeTab = btn.dataset.tab;
+      paintTab();
+    });
+  });
+
+  async function paintTab() {
+    if (activeTab === 'agents') await paintAgents();
+    else await paintCategories();
+  }
+
+  async function paintAgents() {
+    body.innerHTML = 'Se încarcă…';
+    let agents;
+    try {
+      agents = await api('/api/admin/agents');
+    } catch (e) {
+      body.innerHTML = `<div class="panel">Eroare: ${escapeHtml(e.message)}</div>`;
+      return;
+    }
+
+    const rows = agents.map((a) => `
+      <div class="admin-row" data-id="${a.id}">
+        <div class="admin-row-main">
+          <div class="admin-row-name">${escapeHtml(a.name)} ${!a.active ? '<span class="badge badge-status-closed">Inactiv</span>' : ''}</div>
+          <div class="admin-row-sub">${escapeHtml(a.email)} · ${a.role === 'manager' ? 'Manager' : 'Agent'}</div>
+        </div>
+        <div class="admin-row-actions">
+          <button class="btn btn-sm btn-ghost edit-agent-btn" data-id="${a.id}">Editează</button>
+        </div>
+      </div>
+      <div class="admin-edit-panel" id="edit-${a.id}" style="display:none;"></div>
+    `).join('');
+
+    body.innerHTML = `
+      <div class="panel" style="margin-bottom:16px;">
+        <h2>Agent nou</h2>
+        <form id="newAgentForm" class="admin-inline-form">
+          <input type="text" id="na-name" placeholder="Nume" required />
+          <input type="email" id="na-email" placeholder="Email" required />
+          <input type="password" id="na-password" placeholder="Parolă (min. 6 caractere)" required minlength="6" />
+          <select id="na-role">
+            <option value="agent">Agent</option>
+            <option value="manager">Manager</option>
+          </select>
+          <button class="btn btn-primary btn-sm" type="submit">+ Adaugă</button>
+        </form>
+      </div>
+      <div class="panel">
+        <h2>Agenți existenți (${agents.length})</h2>
+        ${rows}
+      </div>
+    `;
+
+    body.querySelector('#newAgentForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const payload = {
+        name: body.querySelector('#na-name').value.trim(),
+        email: body.querySelector('#na-email').value.trim(),
+        password: body.querySelector('#na-password').value,
+        role: body.querySelector('#na-role').value,
+      };
+      try {
+        await api('/api/admin/agents', { method: 'POST', body: JSON.stringify(payload) });
+        showToast('Agent adăugat');
+        agentsCache = await api('/api/agents');
+        paintAgents();
+      } catch (err) {
+        showToast('Eroare: ' + err.message);
+      }
+    });
+
+    body.querySelectorAll('.edit-agent-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.id;
+        const panel = body.querySelector(`#edit-${id}`);
+        const agent = agents.find((a) => a.id === id);
+        const isOpen = panel.style.display !== 'none';
+        body.querySelectorAll('.admin-edit-panel').forEach((p) => (p.style.display = 'none'));
+        if (isOpen) return;
+        panel.style.display = 'block';
+        panel.innerHTML = `
+          <form class="admin-inline-form edit-form">
+            <input type="text" class="ea-name" value="${escapeHtml(agent.name)}" placeholder="Nume" />
+            <input type="email" class="ea-email" value="${escapeHtml(agent.email)}" placeholder="Email" />
+            <input type="password" class="ea-password" placeholder="Parolă nouă (opțional)" minlength="6" />
+            <select class="ea-role">
+              <option value="agent" ${agent.role === 'agent' ? 'selected' : ''}>Agent</option>
+              <option value="manager" ${agent.role === 'manager' ? 'selected' : ''}>Manager</option>
+            </select>
+            <label class="checkbox-label"><input type="checkbox" class="ea-active" ${agent.active ? 'checked' : ''} /> Activ</label>
+            <button class="btn btn-primary btn-sm" type="submit">Salvează</button>
+          </form>
+        `;
+        panel.querySelector('.edit-form').addEventListener('submit', async (ev) => {
+          ev.preventDefault();
+          const payload = {
+            name: panel.querySelector('.ea-name').value.trim(),
+            email: panel.querySelector('.ea-email').value.trim(),
+            role: panel.querySelector('.ea-role').value,
+            active: panel.querySelector('.ea-active').checked,
+          };
+          const newPw = panel.querySelector('.ea-password').value;
+          if (newPw) payload.password = newPw;
+          try {
+            await api(`/api/admin/agents/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+            showToast('Agent actualizat');
+            agentsCache = await api('/api/agents');
+            paintAgents();
+          } catch (err) {
+            showToast('Eroare: ' + err.message);
+          }
+        });
+      });
+    });
+  }
+
+  async function paintCategories() {
+    body.innerHTML = 'Se încarcă…';
+    let categories;
+    try {
+      categories = await api('/api/categories');
+    } catch (e) {
+      body.innerHTML = `<div class="panel">Eroare: ${escapeHtml(e.message)}</div>`;
+      return;
+    }
+
+    const rows = categories.map((c) => `
+      <div class="admin-row">
+        <div class="admin-row-main"><div class="admin-row-name">${escapeHtml(c)}</div></div>
+        <div class="admin-row-actions">
+          <button class="btn btn-sm btn-ghost delete-cat-btn" data-name="${escapeHtml(c)}">Șterge</button>
+        </div>
+      </div>
+    `).join('');
+
+    body.innerHTML = `
+      <div class="panel" style="margin-bottom:16px;">
+        <h2>Categorie nouă</h2>
+        <form id="newCatForm" class="admin-inline-form">
+          <input type="text" id="nc-name" placeholder="Nume categorie" required />
+          <button class="btn btn-primary btn-sm" type="submit">+ Adaugă</button>
+        </form>
+      </div>
+      <div class="panel">
+        <h2>Categorii existente (${categories.length})</h2>
+        ${rows}
+      </div>
+    `;
+
+    body.querySelector('#newCatForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = body.querySelector('#nc-name').value.trim();
+      try {
+        await api('/api/categories', { method: 'POST', body: JSON.stringify({ name }) });
+        showToast('Categorie adăugată');
+        categoriesCache = await api('/api/categories');
+        paintCategories();
+      } catch (err) {
+        showToast('Eroare: ' + err.message);
+      }
+    });
+
+    body.querySelectorAll('.delete-cat-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        if (!confirm(`Ștergi categoria „${btn.dataset.name}”? Tichetele existente care o folosesc nu sunt afectate.`)) return;
+        try {
+          await api(`/api/categories/${encodeURIComponent(btn.dataset.name)}`, { method: 'DELETE' });
+          showToast('Categorie ștearsă');
+          categoriesCache = await api('/api/categories');
+          paintCategories();
+        } catch (err) {
+          showToast('Eroare: ' + err.message);
+        }
+      });
+    });
+  }
+
+  paintTab();
+}
+
 // ---------------- router principal ----------------
 
 function render() {
@@ -622,6 +875,8 @@ function render() {
     renderTicketsList();
   } else if (path === '#/new') {
     renderNewTicket();
+  } else if (path === '#/admin') {
+    renderAdmin();
   } else if (path.startsWith('#/tickets/')) {
     renderTicketDetail(path.replace('#/tickets/', ''));
   } else {
