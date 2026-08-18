@@ -9,6 +9,7 @@ const crypto = require('crypto');
 const url = require('url');
 
 const db = require('./lib/db');
+const orderSync = require('./lib/order-sync');
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -324,6 +325,64 @@ async function handleApi(req, res, pathname, query) {
       return sendJSON(res, 201, comment);
     }
 
+    // ---- comenzi (MerchantPro) ----
+
+    if (pathname === '/api/orders/sync-status' && req.method === 'GET') {
+      return sendJSON(res, 200, orderSync.getSyncStatus());
+    }
+
+    if (pathname === '/api/orders/sync' && req.method === 'POST') {
+      try {
+        const result = await orderSync.runSync();
+        return sendJSON(res, 200, result);
+      } catch (e) {
+        return sendJSON(res, 502, { error: e.message });
+      }
+    }
+
+    if (pathname === '/api/orders/stats' && req.method === 'GET') {
+      return sendJSON(res, 200, db.getOrderStats());
+    }
+
+    if (pathname === '/api/orders' && req.method === 'GET') {
+      const filters = {
+        shippingStatus: query.shippingStatus || undefined,
+        paymentStatus: query.paymentStatus || undefined,
+        internalStatus: query.internalStatus || undefined,
+        assignedTo: query.assignedTo || undefined,
+        needsAwb: query.needsAwb === '1' ? true : undefined,
+        q: query.q || undefined,
+      };
+      return sendJSON(res, 200, db.listOrders(filters));
+    }
+
+    const orderMatch = pathname.match(/^\/api\/orders\/([^/]+)$/);
+    if (orderMatch && req.method === 'GET') {
+      const order = db.getOrder(orderMatch[1]);
+      if (!order) return sendJSON(res, 404, { error: 'Comandă negăsită' });
+      return sendJSON(res, 200, order);
+    }
+
+    if (orderMatch && req.method === 'PATCH') {
+      const body = await readBody(req);
+      try {
+        const order = db.updateOrderInternal(orderMatch[1], body, currentAgent);
+        if (!order) return sendJSON(res, 404, { error: 'Comandă negăsită' });
+        return sendJSON(res, 200, order);
+      } catch (e) {
+        return sendJSON(res, 400, { error: e.message });
+      }
+    }
+
+    const orderNoteMatch = pathname.match(/^\/api\/orders\/([^/]+)\/notes$/);
+    if (orderNoteMatch && req.method === 'POST') {
+      const body = await readBody(req);
+      if (!body.body || !body.body.trim()) return sendJSON(res, 400, { error: 'Notița nu poate fi goală' });
+      const note = db.addOrderNote(orderNoteMatch[1], { agentId: currentAgent.id, agentName: currentAgent.name, body: body.body });
+      if (!note) return sendJSON(res, 404, { error: 'Comandă negăsită' });
+      return sendJSON(res, 201, note);
+    }
+
     return sendJSON(res, 404, { error: 'Rută necunoscută' });
   } catch (e) {
     return sendJSON(res, 500, { error: e.message || 'Eroare internă' });
@@ -343,4 +402,6 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, () => {
   console.log(`Ticket support app rulează pe http://localhost:${PORT}`);
+  const syncIntervalMs = Number(process.env.MERCHANTPRO_SYNC_INTERVAL_MS || 2 * 60 * 1000);
+  orderSync.startBackgroundSync(syncIntervalMs);
 });

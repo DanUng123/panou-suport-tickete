@@ -11,6 +11,38 @@ const STATUS_LABELS = {
 };
 const PRIORITY_LABELS = { urgent: 'Urgent', high: 'Ridicată', medium: 'Medie', low: 'Scăzută' };
 
+const SHIPPING_STATUS_LABELS_MP = {
+  awaiting: 'În așteptare', confirmed: 'Confirmată', in_process: 'În procesare',
+  shipped: 'Expediată', delivered: 'Livrată', returned: 'Returnată', cancelled: 'Anulată',
+};
+const PAYMENT_STATUS_LABELS_MP = {
+  temporary: 'Temporară', awaiting: 'În așteptare', paid: 'Plătită', failed: 'Eșuată',
+  canceled: 'Anulată', refunded: 'Rambursată', rejected: 'Respinsă',
+};
+const INTERNAL_ORDER_STATUS_LABELS = {
+  new: 'Nouă', processing: 'În lucru', awb_generated: 'AWB generat',
+  shipped: 'Expediată', problem: 'Problemă', done: 'Finalizată',
+};
+
+function shippingBadgeClass(s) {
+  return {
+    awaiting: 'badge-status-open', confirmed: 'badge-status-in_progress', in_process: 'badge-status-in_progress',
+    shipped: 'badge-status-waiting', delivered: 'badge-status-resolved', returned: 'badge-status-closed', cancelled: 'badge-priority-urgent',
+  }[s] || 'badge-status-closed';
+}
+function paymentBadgeClass(s) {
+  return {
+    temporary: 'badge-status-closed', awaiting: 'badge-status-open', paid: 'badge-status-resolved',
+    failed: 'badge-priority-urgent', canceled: 'badge-status-closed', refunded: 'badge-status-waiting', rejected: 'badge-priority-urgent',
+  }[s] || 'badge-status-closed';
+}
+function internalOrderBadgeClass(s) {
+  return {
+    new: 'badge-status-open', processing: 'badge-status-in_progress', awb_generated: 'badge-status-waiting',
+    shipped: 'badge-status-resolved', problem: 'badge-priority-urgent', done: 'badge-status-closed',
+  }[s] || 'badge-status-closed';
+}
+
 let currentAgent = null;
 let agentsCache = [];
 let categoriesCache = [];
@@ -166,6 +198,7 @@ function renderShell(activeRoute, contentNode) {
       <nav class="nav">
         <div class="nav-item" data-route="#/dashboard"><span class="dot"></span>Dashboard</div>
         <div class="nav-item" data-route="#/tickets"><span class="dot"></span>Tichete</div>
+        <div class="nav-item" data-route="#/orders"><span class="dot"></span>Comenzi</div>
         <div class="nav-item nav-new" data-route="#/new"><span class="dot"></span>+ Tichet nou</div>
         ${currentAgent.role === 'manager' ? '<div class="nav-item" data-route="#/admin"><span class="dot"></span>Administrare</div>' : ''}
       </nav>
@@ -187,7 +220,7 @@ function renderShell(activeRoute, contentNode) {
 
   sidebar.querySelectorAll('.nav-item').forEach((item) => {
     const route = item.dataset.route;
-    if (route === activeRoute || (activeRoute.startsWith('#/tickets/') && route === '#/tickets')) {
+    if (route === activeRoute || (activeRoute.startsWith('#/tickets/') && route === '#/tickets') || (activeRoute.startsWith('#/orders/') && route === '#/orders')) {
       item.classList.add('active');
     }
     item.addEventListener('click', () => navigate(route));
@@ -647,6 +680,312 @@ function renderNewTicket() {
   });
 }
 
+// ---------------- Comenzi (MerchantPro) ----------------
+
+function fmtMoney(amount, currency) {
+  if (amount === null || amount === undefined) return '—';
+  return `${Number(amount).toFixed(2)} ${currency || ''}`.trim();
+}
+
+async function renderOrdersList() {
+  const filters = parseListRoute(window.location.hash);
+
+  const content = el(`
+    <div>
+      <div class="page-header">
+        <div>
+          <h1>Comenzi</h1>
+          <div class="sub">Sincronizate din MerchantPro</div>
+        </div>
+        <button class="btn btn-primary" id="syncNowBtn">↻ Sincronizează acum</button>
+      </div>
+      <div id="sync-banner"></div>
+      <div class="stat-grid" id="order-stats" style="margin-bottom:18px;"></div>
+      <div class="filters-bar">
+        <input type="text" id="q" placeholder="Caută client, oraș, ID comandă…" value="${escapeHtml(filters.q || '')}" />
+        <select id="f-shipping">
+          <option value="">Toate statusurile livrare</option>
+          ${Object.entries(SHIPPING_STATUS_LABELS_MP).map(([v, l]) => `<option value="${v}" ${filters.shippingStatus === v ? 'selected' : ''}>${l}</option>`).join('')}
+        </select>
+        <select id="f-payment">
+          <option value="">Toate statusurile plată</option>
+          ${Object.entries(PAYMENT_STATUS_LABELS_MP).map(([v, l]) => `<option value="${v}" ${filters.paymentStatus === v ? 'selected' : ''}>${l}</option>`).join('')}
+        </select>
+        <select id="f-internal">
+          <option value="">Toate statusurile interne</option>
+          ${Object.entries(INTERNAL_ORDER_STATUS_LABELS).map(([v, l]) => `<option value="${v}" ${filters.internalStatus === v ? 'selected' : ''}>${l}</option>`).join('')}
+        </select>
+        <select id="f-assigned">
+          <option value="">Toți agenții</option>
+          <option value="unassigned" ${filters.assignedTo === 'unassigned' ? 'selected' : ''}>Neasignat</option>
+          ${agentsCache.map((a) => `<option value="${a.id}" ${filters.assignedTo === a.id ? 'selected' : ''}>${escapeHtml(a.name)}</option>`).join('')}
+        </select>
+        <label class="checkbox-label"><input type="checkbox" id="f-needsawb" ${filters.needsAwb === '1' ? 'checked' : ''} /> Fără AWB</label>
+      </div>
+      <div id="orders-body">Se încarcă…</div>
+    </div>
+  `);
+  renderShell('#/orders', content);
+
+  // status sincronizare
+  try {
+    const syncStatus = await api('/api/orders/sync-status');
+    const banner = content.querySelector('#sync-banner');
+    if (!syncStatus.configured) {
+      banner.innerHTML = `<div class="panel" style="margin-bottom:16px;border-color:var(--priority-high);">
+        <strong style="color:var(--priority-high);">Integrarea MerchantPro nu e configurată.</strong>
+        <div style="color:var(--text-secondary);font-size:12.5px;margin-top:4px;">Adaugă variabilele de mediu MERCHANTPRO_SHOP_URL, MERCHANTPRO_API_KEY, MERCHANTPRO_API_SECRET pe server.</div>
+      </div>`;
+    } else if (syncStatus.lastSyncResult) {
+      const r = syncStatus.lastSyncResult;
+      banner.innerHTML = `<div style="color:var(--text-dim);font-size:12px;margin-bottom:14px;">Ultima sincronizare: ${fmtDate(r.at)} · ${r.created} noi, ${r.updated} actualizate</div>`;
+    }
+  } catch (e) { /* n-o afisam ca eroare blocanta */ }
+
+  content.querySelector('#syncNowBtn').addEventListener('click', async (e) => {
+    e.target.disabled = true;
+    e.target.textContent = 'Se sincronizează…';
+    try {
+      await api('/api/orders/sync', { method: 'POST' });
+      showToast('Sincronizare finalizată');
+      renderOrdersList();
+    } catch (err) {
+      showToast('Eroare: ' + err.message);
+      e.target.disabled = false;
+      e.target.textContent = '↻ Sincronizează acum';
+    }
+  });
+
+  // statistici
+  try {
+    const stats = await api('/api/orders/stats');
+    content.querySelector('#order-stats').innerHTML = `
+      <div class="stat-tile accented"><div class="label">Total comenzi</div><div class="value">${stats.total}</div></div>
+      <div class="stat-tile"><div class="label">Fără AWB</div><div class="value">${stats.needsAwb}</div></div>
+      ${Object.entries(stats.byShippingStatus).map(([s, c]) => `<div class="stat-tile"><div class="label">${escapeHtml(SHIPPING_STATUS_LABELS_MP[s] || s)}</div><div class="value">${c}</div></div>`).join('')}
+    `;
+  } catch (e) { /* n-o afisam ca eroare blocanta */ }
+
+  function applyFiltersFromForm() {
+    const params = new URLSearchParams();
+    const q = content.querySelector('#q').value.trim();
+    const shippingStatus = content.querySelector('#f-shipping').value;
+    const paymentStatus = content.querySelector('#f-payment').value;
+    const internalStatus = content.querySelector('#f-internal').value;
+    const assignedTo = content.querySelector('#f-assigned').value;
+    const needsAwb = content.querySelector('#f-needsawb').checked;
+    if (q) params.set('q', q);
+    if (shippingStatus) params.set('shippingStatus', shippingStatus);
+    if (paymentStatus) params.set('paymentStatus', paymentStatus);
+    if (internalStatus) params.set('internalStatus', internalStatus);
+    if (assignedTo) params.set('assignedTo', assignedTo);
+    if (needsAwb) params.set('needsAwb', '1');
+    navigate(`#/orders?${params.toString()}`);
+  }
+  ['#f-shipping', '#f-payment', '#f-internal', '#f-assigned', '#f-needsawb'].forEach((sel) => {
+    content.querySelector(sel).addEventListener('change', applyFiltersFromForm);
+  });
+  let qTimer;
+  content.querySelector('#q').addEventListener('input', () => {
+    clearTimeout(qTimer);
+    qTimer = setTimeout(applyFiltersFromForm, 350);
+  });
+
+  const listBody = content.querySelector('#orders-body');
+  const apiFilters = { ...filters };
+  const query = new URLSearchParams(apiFilters).toString();
+  let orders;
+  try {
+    orders = await api(`/api/orders?${query}`);
+  } catch (e) {
+    listBody.innerHTML = `<div class="panel">Eroare la încărcarea comenzilor: ${escapeHtml(e.message)}</div>`;
+    return;
+  }
+
+  if (!orders.length) {
+    listBody.innerHTML = `
+      <div class="ticket-table">
+        <div class="empty-state">
+          <div class="big">◌</div>
+          Nicio comandă nu corespunde filtrelor curente (sau nu a rulat încă nicio sincronizare).
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  const rows = orders.map((o) => `
+    <div class="order-row" data-id="${o.id}">
+      <div class="order-id">#${o.mpId}</div>
+      <div class="order-client">
+        <div class="t-title">${escapeHtml(o.shippingName || o.billingName || '—')}</div>
+        <div class="t-requester">${escapeHtml(o.shippingCity || '')}${o.shippingCity && o.shippingCountryName ? ', ' : ''}${escapeHtml(o.shippingCountryName || '')}</div>
+      </div>
+      <div class="order-total">${fmtMoney(o.totalAmount, o.currency)}</div>
+      <div><span class="badge ${paymentBadgeClass(o.paymentStatus)}">${PAYMENT_STATUS_LABELS_MP[o.paymentStatus] || o.paymentStatus || '—'}</span></div>
+      <div><span class="badge ${shippingBadgeClass(o.shippingStatus)}">${SHIPPING_STATUS_LABELS_MP[o.shippingStatus] || o.shippingStatus || '—'}</span></div>
+      <div><span class="badge ${internalOrderBadgeClass(o.internalStatus)}">${INTERNAL_ORDER_STATUS_LABELS[o.internalStatus] || o.internalStatus}</span></div>
+      <div class="order-awb">${o.awbNumber ? escapeHtml(o.awbNumber) : '<span style="color:var(--text-dim);">—</span>'}</div>
+      <div class="ticket-date">${fmtDate(o.dateCreated)}</div>
+    </div>
+  `).join('');
+
+  listBody.innerHTML = `
+    <div class="ticket-table">
+      <div class="order-row header">
+        <div>ID</div><div>Client</div><div>Total</div><div>Plată</div><div>Livrare</div><div>Status intern</div><div>AWB</div><div>Creată</div>
+      </div>
+      ${rows}
+    </div>
+  `;
+  listBody.querySelectorAll('.order-row[data-id]').forEach((row) => {
+    row.addEventListener('click', () => navigate(`#/orders/${row.dataset.id}`));
+  });
+}
+
+async function renderOrderDetail(orderId) {
+  const content = el(`<div id="order-detail-body">Se încarcă…</div>`);
+  renderShell('#/orders', content);
+
+  let order;
+  try {
+    order = await api(`/api/orders/${orderId}`);
+  } catch (e) {
+    content.innerHTML = `<div class="panel">Comanda nu a fost găsită. <a href="#/orders" style="color:var(--accent)">Înapoi la listă</a></div>`;
+    return;
+  }
+
+  function paint() {
+    const items = (order.lineItems || []).map((it) => `
+      <div class="line-item-row">
+        <div class="li-name">${escapeHtml(it.product_name || '—')}${it.product_sku ? ` <span style="color:var(--text-dim);">(${escapeHtml(it.product_sku)})</span>` : ''}</div>
+        <div class="li-qty">× ${it.quantity ?? 1}</div>
+        <div class="li-price">${fmtMoney(it.line_subtotal_gross ?? it.unit_price_gross, order.currency)}</div>
+      </div>
+    `).join('') || '<div style="color:var(--text-dim);font-size:13px;">Niciun produs listat.</div>';
+
+    const notes = order.notes.map((n) => `
+      <div class="comment">
+        <div class="comment-head">
+          <span class="c-author">${escapeHtml(n.agentName)}</span>
+          <span class="c-time">${fmtDate(n.createdAt)}</span>
+        </div>
+        <div class="comment-body">${escapeHtml(n.body)}</div>
+      </div>
+    `).join('') || '<div style="color:var(--text-dim);font-size:13px;">Nicio notiță încă.</div>';
+
+    content.innerHTML = `
+      <div class="back-link" id="backLink">← Înapoi la comenzi</div>
+      <div class="ticket-detail-grid">
+        <div>
+          <div class="ticket-header-card">
+            <div class="t-id">Comandă MerchantPro #${order.mpId}</div>
+            <h1>${escapeHtml(order.shippingName || order.billingName || '—')}</h1>
+            <div class="badges-row">
+              <span class="badge ${paymentBadgeClass(order.paymentStatus)}">${PAYMENT_STATUS_LABELS_MP[order.paymentStatus] || order.paymentStatus || '—'}</span>
+              <span class="badge ${shippingBadgeClass(order.shippingStatus)}">${SHIPPING_STATUS_LABELS_MP[order.shippingStatus] || order.shippingStatus || '—'}</span>
+              <span class="badge ${internalOrderBadgeClass(order.internalStatus)}">${INTERNAL_ORDER_STATUS_LABELS[order.internalStatus] || order.internalStatus}</span>
+            </div>
+            <div class="meta-row" style="margin-top:2px;padding-top:0;border-top:none;">
+              <div class="meta-item"><div class="meta-label">Email</div><div class="meta-value">${escapeHtml(order.customerEmail || '—')}</div></div>
+              <div class="meta-item"><div class="meta-label">Telefon</div><div class="meta-value">${escapeHtml(order.shippingPhone || '—')}</div></div>
+              <div class="meta-item"><div class="meta-label">Total</div><div class="meta-value">${fmtMoney(order.totalAmount, order.currency)}</div></div>
+              <div class="meta-item"><div class="meta-label">Creată</div><div class="meta-value">${fmtDate(order.dateCreated)}</div></div>
+            </div>
+            <div class="meta-row">
+              <div class="meta-item" style="flex:1;">
+                <div class="meta-label">Adresă livrare</div>
+                <div class="meta-value">${escapeHtml(order.shippingAddress || '—')}, ${escapeHtml(order.shippingCity || '')}, ${escapeHtml(order.shippingState || '')} ${escapeHtml(order.shippingPostalCode || '')}, ${escapeHtml(order.shippingCountryName || '')}</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="comments-panel" style="margin-bottom:16px;">
+            <h2 style="font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary);margin:0 0 14px;">Produse comandate</h2>
+            <div class="line-items-list">${items}</div>
+          </div>
+
+          <div class="comments-panel">
+            <h2 style="font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary);margin:0 0 14px;">Notițe interne (${order.notes.length})</h2>
+            ${notes}
+            <form class="comment-form" id="noteForm">
+              <textarea id="noteBody" placeholder="Adaugă o notiță pentru echipă…" required></textarea>
+              <div class="comment-form-actions" style="justify-content:flex-end;">
+                <button class="btn btn-primary btn-sm" type="submit">Adaugă notiță</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <div>
+          <div class="side-panel" style="margin-bottom:16px;">
+            <h2>Gestionare comandă</h2>
+            <div class="side-field">
+              <label>Status intern</label>
+              <select id="sel-internal">
+                ${Object.entries(INTERNAL_ORDER_STATUS_LABELS).map(([v, l]) => `<option value="${v}" ${order.internalStatus === v ? 'selected' : ''}>${l}</option>`).join('')}
+              </select>
+            </div>
+            <div class="side-field">
+              <label>Agent responsabil</label>
+              <select id="sel-assigned">
+                <option value="">Neasignat</option>
+                ${agentsCache.map((a) => `<option value="${a.id}" ${order.assignedTo === a.id ? 'selected' : ''}>${escapeHtml(a.name)}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+
+          <div class="side-panel">
+            <h2>Livrare / AWB</h2>
+            <div class="side-field">
+              <label>Curier</label>
+              <select disabled title="Integrare GLS neconfigurată încă">
+                <option>GLS</option>
+              </select>
+            </div>
+            <div class="side-field">
+              <label>Număr AWB</label>
+              <input type="text" disabled placeholder="Se generează după configurarea GLS" value="${order.awbNumber ? escapeHtml(order.awbNumber) : ''}" style="width:100%;background:var(--surface-raised);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text-dim);" />
+            </div>
+            <button class="btn btn-block" disabled style="opacity:0.5;cursor:not-allowed;" title="Configurează integrarea GLS pentru a activa">Generează AWB</button>
+            <div class="hint" style="margin-top:10px;">Emiterea AWB prin GLS va fi activă după configurarea credențialelor API GLS pe server.</div>
+            ${order.shippingAwb ? `<div class="hint" style="margin-top:8px;">AWB existent în MerchantPro: <strong style="color:var(--text);">${escapeHtml(order.shippingAwb)}</strong></div>` : ''}
+          </div>
+        </div>
+      </div>
+    `;
+
+    content.querySelector('#backLink').addEventListener('click', () => navigate('#/orders'));
+
+    async function patchOrder(field, value) {
+      try {
+        order = await api(`/api/orders/${order.id}`, { method: 'PATCH', body: JSON.stringify({ [field]: value }) });
+        showToast('Comandă actualizată');
+        paint();
+      } catch (e) {
+        showToast('Eroare: ' + e.message);
+      }
+    }
+    content.querySelector('#sel-internal').addEventListener('change', (e) => patchOrder('internalStatus', e.target.value));
+    content.querySelector('#sel-assigned').addEventListener('change', (e) => patchOrder('assignedTo', e.target.value));
+
+    content.querySelector('#noteForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const body = content.querySelector('#noteBody').value.trim();
+      if (!body) return;
+      try {
+        await api(`/api/orders/${order.id}/notes`, { method: 'POST', body: JSON.stringify({ body }) });
+        order = await api(`/api/orders/${order.id}`);
+        paint();
+      } catch (err) {
+        showToast('Eroare: ' + err.message);
+      }
+    });
+  }
+
+  paint();
+}
+
 // ---------------- Administrare (doar manageri) ----------------
 
 async function renderAdmin() {
@@ -873,12 +1212,16 @@ function render() {
     renderDashboard();
   } else if (path === '#/tickets') {
     renderTicketsList();
+  } else if (path === '#/orders') {
+    renderOrdersList();
   } else if (path === '#/new') {
     renderNewTicket();
   } else if (path === '#/admin') {
     renderAdmin();
   } else if (path.startsWith('#/tickets/')) {
     renderTicketDetail(path.replace('#/tickets/', ''));
+  } else if (path.startsWith('#/orders/')) {
+    renderOrderDetail(path.replace('#/orders/', ''));
   } else {
     navigate('#/dashboard');
   }
