@@ -421,6 +421,9 @@ async function handleApi(req, res, pathname, query) {
           awbCourier: 'GLS',
           awbNumber: result.trackingNumber,
           awbParcelId: result.parcelId,
+          // salvam PDF-ul local, o singura data, cat timp GLS chiar ni-l da --
+          // re-cererea lui de la GLS ulterior s-a dovedit nesigura (vezi getLabelPdf)
+          awbLabelPdf: result.labelPdf ? result.labelPdf.toString('base64') : undefined,
           internalStatus: 'awb_generated',
         }, currentAgent);
         // incercam si sa scriem AWB-ul inapoi in MerchantPro, dar nu blocam raspunsul daca esueaza
@@ -429,7 +432,7 @@ async function handleApi(req, res, pathname, query) {
             console.error('Nu am putut scrie AWB-ul înapoi în MerchantPro:', e.message);
           });
         }
-        return sendJSON(res, 200, updated);
+        return sendJSON(res, 200, { ...updated, labelAvailable: Boolean(result.labelPdf) });
       } catch (e) {
         return sendJSON(res, 502, { error: e.message });
       }
@@ -445,6 +448,7 @@ async function handleApi(req, res, pathname, query) {
         const updated = db.updateOrderInternal(order.id, {
           awbNumber: null,
           awbParcelId: null,
+          awbLabelPdf: null,
           awbCourier: null,
           internalStatus: 'processing',
         }, currentAgent);
@@ -458,8 +462,23 @@ async function handleApi(req, res, pathname, query) {
     if (labelMatch && req.method === 'GET') {
       const order = db.getOrder(labelMatch[1]);
       if (!order || !order.awbParcelId) return sendJSON(res, 404, { error: 'Nu există AWB pentru această comandă.' });
+
+      // servim eticheta salvata local, daca exista -- e mult mai fiabil decat
+      // sa o cerem din nou de la GLS (unele operatii GLS de "re-extragere"
+      // s-au dovedit sa raspunda cu eroare pentru colete deja emise)
+      if (order.awbLabelPdf) {
+        const pdfBuffer = Buffer.from(order.awbLabelPdf, 'base64');
+        res.writeHead(200, {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `inline; filename="awb-${order.awbNumber}.pdf"`,
+          'Content-Length': pdfBuffer.length,
+        });
+        return res.end(pdfBuffer);
+      }
+
       try {
         const pdfBuffer = await gls.getLabelPdf(order.awbParcelId);
+        db.updateOrderInternal(order.id, { awbLabelPdf: pdfBuffer.toString('base64') }, currentAgent);
         res.writeHead(200, {
           'Content-Type': 'application/pdf',
           'Content-Disposition': `inline; filename="awb-${order.awbNumber}.pdf"`,
@@ -467,7 +486,9 @@ async function handleApi(req, res, pathname, query) {
         });
         return res.end(pdfBuffer);
       } catch (e) {
-        return sendJSON(res, 502, { error: e.message });
+        return sendJSON(res, 502, {
+          error: `Eticheta nu e salvată local, iar re-cererea ei de la GLS a eșuat (${e.message}). Cel mai sigur pas acum: anulează acest AWB și generează unul nou — data viitoare eticheta se va salva automat local, la creare.`,
+        });
       }
     }
 
