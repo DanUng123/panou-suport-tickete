@@ -419,12 +419,13 @@ async function handleApi(req, res, pathname, query) {
         });
         const updated = db.updateOrderInternal(order.id, {
           awbCourier: 'GLS',
-          awbNumber: result.trackingCode,
+          awbNumber: result.trackingNumber,
+          awbParcelId: result.parcelId,
           internalStatus: 'awb_generated',
         }, currentAgent);
         // incercam si sa scriem AWB-ul inapoi in MerchantPro, dar nu blocam raspunsul daca esueaza
         if (mp.isConfigured()) {
-          mp.updateOrder(order.mpId, { shipping_awb: result.trackingCode }).catch((e) => {
+          mp.updateOrder(order.mpId, { shipping_awb: result.trackingNumber }).catch((e) => {
             console.error('Nu am putut scrie AWB-ul înapoi în MerchantPro:', e.message);
           });
         }
@@ -438,11 +439,12 @@ async function handleApi(req, res, pathname, query) {
     if (cancelAwbMatch && req.method === 'POST') {
       const order = db.getOrder(cancelAwbMatch[1]);
       if (!order) return sendJSON(res, 404, { error: 'Comandă negăsită' });
-      if (!order.awbNumber) return sendJSON(res, 400, { error: 'Comanda nu are AWB generat.' });
+      if (!order.awbParcelId) return sendJSON(res, 400, { error: 'Comanda nu are AWB generat.' });
       try {
-        await gls.deleteParcel(order.awbNumber);
+        await gls.deleteParcel(order.awbParcelId);
         const updated = db.updateOrderInternal(order.id, {
           awbNumber: null,
+          awbParcelId: null,
           awbCourier: null,
           internalStatus: 'processing',
         }, currentAgent);
@@ -455,9 +457,9 @@ async function handleApi(req, res, pathname, query) {
     const labelMatch = pathname.match(/^\/api\/orders\/([^/]+)\/awb-label$/);
     if (labelMatch && req.method === 'GET') {
       const order = db.getOrder(labelMatch[1]);
-      if (!order || !order.awbNumber) return sendJSON(res, 404, { error: 'Nu există AWB pentru această comandă.' });
+      if (!order || !order.awbParcelId) return sendJSON(res, 404, { error: 'Nu există AWB pentru această comandă.' });
       try {
-        const pdfBuffer = await gls.getLabelPdf(order.awbNumber);
+        const pdfBuffer = await gls.getLabelPdf(order.awbParcelId);
         res.writeHead(200, {
           'Content-Type': 'application/pdf',
           'Content-Disposition': `inline; filename="awb-${order.awbNumber}.pdf"`,
