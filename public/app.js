@@ -104,7 +104,60 @@ function navigate(hash) {
   window.location.hash = hash;
 }
 
+// ruta curenta afisata "sub" panoul lateral (lista din spate) -- folosita
+// pentru a sti unde revenim la inchiderea panoului si pentru a evita
+// re-randarea inutila a fundalului cand deja arata ce trebuie
+let currentMainRoute = null;
+
 window.addEventListener('hashchange', render);
+window.addEventListener('popstate', render); // butonul Inapoi/Inainte al browserului
+
+// ---------------- panou lateral (drawer) ----------------
+
+function ensureDrawerEl() {
+  let overlay = document.querySelector('.drawer-overlay');
+  if (overlay) return overlay;
+
+  overlay = document.createElement('div');
+  overlay.className = 'drawer-overlay';
+  const panel = document.createElement('div');
+  panel.className = 'drawer-panel';
+  panel.id = 'drawerPanel';
+  overlay.appendChild(panel);
+  document.body.appendChild(overlay);
+
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) closeDrawer();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && overlay.classList.contains('open')) closeDrawer();
+  });
+
+  return overlay;
+}
+
+function openDrawer(contentNode) {
+  const overlay = ensureDrawerEl();
+  const panel = overlay.querySelector('#drawerPanel');
+  panel.innerHTML = '';
+  const closeBtn = el('<button class="drawer-close-btn" title="Închide">✕</button>');
+  closeBtn.addEventListener('click', closeDrawer);
+  panel.appendChild(closeBtn);
+  panel.appendChild(contentNode);
+  requestAnimationFrame(() => overlay.classList.add('open'));
+}
+
+function hideDrawer() {
+  const overlay = document.querySelector('.drawer-overlay');
+  if (overlay) overlay.classList.remove('open');
+}
+
+function closeDrawer() {
+  hideDrawer();
+  if (currentMainRoute) {
+    history.pushState(null, '', currentMainRoute);
+  }
+}
 
 async function boot() {
   try {
@@ -190,6 +243,7 @@ async function logout() {
 
 function renderShell(activeRoute, contentNode) {
   app.innerHTML = '';
+  currentMainRoute = activeRoute;
 
   // Construim sidebar si zona principala ca doua elemente separate (nu un
   // singur bloc cu doi radacini surori) -- el() intoarce doar primul element
@@ -318,7 +372,10 @@ async function renderDashboard() {
   `;
 
   body.querySelectorAll('.queue-item').forEach((item) => {
-    item.addEventListener('click', () => navigate(`#/tickets/${item.dataset.id}`));
+    item.addEventListener('click', () => {
+      history.pushState(null, '', `#/tickets/${item.dataset.id}`);
+      openTicketDrawer(item.dataset.id);
+    });
   });
 }
 
@@ -374,7 +431,7 @@ async function renderTicketsList(route) {
   `);
   renderShell(route, content);
 
-  content.querySelector('#newTicketBtn').addEventListener('click', () => navigate('#/new'));
+  content.querySelector('#newTicketBtn').addEventListener('click', () => openNewTicketDrawer(null));
 
   function applyFiltersFromForm() {
     const params = new URLSearchParams();
@@ -441,27 +498,45 @@ async function renderTicketsList(route) {
   `;
 
   listBody.querySelectorAll('.ticket-row[data-id]').forEach((row) => {
-    row.addEventListener('click', () => navigate(`#/tickets/${row.dataset.id}`));
+    row.addEventListener('click', () => {
+      history.pushState(null, '', `#/tickets/${row.dataset.id}`);
+      openTicketDrawer(row.dataset.id);
+    });
   });
 }
 
 // ---------------- Detaliu tichet ----------------
 
+/** Navigare directă (link, refresh, buton Înapoi browser) — asigură fundalul corect, apoi deschide panoul. */
 async function renderTicketDetail(ticketId) {
   let ticket;
   try {
     ticket = await api(`/api/tickets/${ticketId}`);
   } catch (e) {
-    const errContent = el(`<div id="detail-body">Se încarcă…</div>`);
-    renderShell('#/tickets', errContent);
-    errContent.innerHTML = `<div class="panel">Tichetul nu a fost găsit. <a href="#/tickets" style="color:var(--accent)">Înapoi la listă</a></div>`;
+    if (currentMainRoute !== '#/tickets') await renderTicketsList('#/tickets');
+    openDrawer(el('<div class="panel">Tichetul nu a fost găsit.</div>'));
     return;
   }
+  const bgRoute = ticket.section === 'service' ? '#/service' : ticket.section === 'retur' ? '#/retur' : '#/tickets';
+  if (currentMainRoute !== bgRoute) await renderTicketsList(bgRoute);
+  await paintTicketDrawer(ticket);
+}
 
-  const backRoute = ticket.section === 'service' ? '#/service' : ticket.section === 'retur' ? '#/retur' : '#/tickets';
+/** Deschidere din click pe o listă deja afișată — fundalul rămâne neschimbat. */
+async function openTicketDrawer(ticketId) {
+  let ticket;
+  try {
+    ticket = await api(`/api/tickets/${ticketId}`);
+  } catch (e) {
+    showToast('Tichet negăsit');
+    return;
+  }
+  await paintTicketDrawer(ticket);
+}
 
+async function paintTicketDrawer(ticket) {
   const content = el(`<div id="detail-body">Se încarcă…</div>`);
-  renderShell(backRoute, content);
+  openDrawer(content);
 
   let relatedOrder = null;
   if (ticket.relatedOrderId) {
@@ -520,10 +595,8 @@ async function renderTicketDetail(ticketId) {
     `;
     }).join('') || '<div class="panel-empty" style="color:var(--text-dim);font-size:13px;">Niciun comentariu încă.</div>';
 
-    const backLabel = ticket.section === 'service' ? '← Înapoi la Service' : ticket.section === 'retur' ? '← Înapoi la Retur' : '← Înapoi la tichete';
     content.innerHTML = `
-      <div class="back-link" id="backLink">${backLabel}</div>
-      <div class="ticket-detail-grid">
+      <div class="ticket-detail-grid" style="grid-template-columns: 1fr;">
         <div>
           <div class="ticket-header-card">
             <div class="t-id">${ticket.id}</div>
@@ -544,6 +617,97 @@ async function renderTicketDetail(ticketId) {
             </div>
           </div>
 
+          <div class="side-panel" style="margin-bottom:16px;">
+            <h2>Gestionare tichet</h2>
+            <div class="form-row">
+              <div class="side-field">
+                <label>Status</label>
+                <select id="sel-status">
+                  ${Object.entries(STATUS_LABELS).map(([v, l]) => `<option value="${v}" ${ticket.status === v ? 'selected' : ''}>${l}</option>`).join('')}
+                </select>
+              </div>
+              <div class="side-field">
+                <label>Prioritate</label>
+                <select id="sel-priority">
+                  ${Object.entries(PRIORITY_LABELS).map(([v, l]) => `<option value="${v}" ${ticket.priority === v ? 'selected' : ''}>${l}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="side-field">
+                <label>Categorie</label>
+                <select id="sel-category">
+                  ${categoriesCache.map((c) => `<option value="${escapeHtml(c)}" ${ticket.category === c ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}
+                </select>
+              </div>
+              <div class="side-field">
+                <label>Agent asignat</label>
+                <select id="sel-assigned">
+                  <option value="">Neasignat</option>
+                  ${agentsCache.map((a) => `<option value="${a.id}" ${ticket.assignedTo === a.id ? 'selected' : ''}>${escapeHtml(a.name)}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+            <div class="side-field">
+              <label>Secțiune</label>
+              <select id="sel-section">
+                <option value="support" ${ticket.section === 'support' ? 'selected' : ''}>Tichete (suport general)</option>
+                <option value="service" ${ticket.section === 'service' ? 'selected' : ''}>Service</option>
+                <option value="retur" ${ticket.section === 'retur' ? 'selected' : ''}>Retur</option>
+              </select>
+              <div class="hint" style="margin-top:6px;">Se schimbă automat la generarea unui AWB de ridicare — sau poți muta manual tichetul de aici.</div>
+            </div>
+          </div>
+
+          <div class="side-panel" style="margin-bottom:16px;">
+            <h2>Ridicare de la client (GLS)</h2>
+            ${ticket.pickupAwbNumber ? `
+              <div class="form-row">
+                <div class="side-field">
+                  <label>Motiv</label>
+                  <div style="font-size:13px;color:var(--text);padding:8px 0;">${ticket.section === 'retur' ? 'Retur produs' : 'Service / reparație'}</div>
+                </div>
+                <div class="side-field">
+                  <label>Număr AWB ridicare</label>
+                  <div style="font-family:var(--font-mono);font-size:14px;color:var(--accent);font-weight:600;padding:8px 0;">${escapeHtml(ticket.pickupAwbNumber)}</div>
+                </div>
+              </div>
+              <button class="btn btn-block btn-primary" id="downloadPickupLabelBtn" style="margin-bottom:8px;">↓ Descarcă eticheta PDF</button>
+              <button class="btn btn-block" id="cancelPickupAwbBtn" style="color:var(--priority-urgent);">Anulează AWB ridicare</button>
+            ` : `
+              <form id="pickupAwbForm">
+                <div class="field">
+                  <label>Motiv ridicare *</label>
+                  <select id="pu-reason" required>
+                    <option value="service">Service / reparație</option>
+                    <option value="retur">Retur produs</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label>Adresă ridicare *</label>
+                  <input type="text" id="pu-address" required placeholder="Stradă, număr" value="${escapeHtml(relatedOrder?.shippingAddress || '')}" />
+                </div>
+                <div class="form-row">
+                  <div class="field">
+                    <label>Oraș *</label>
+                    <input type="text" id="pu-city" required value="${escapeHtml(relatedOrder?.shippingCity || '')}" />
+                  </div>
+                  <div class="field">
+                    <label>Cod poștal *</label>
+                    <input type="text" id="pu-postal" required value="${escapeHtml(relatedOrder?.shippingPostalCode || '')}" />
+                  </div>
+                </div>
+                <div class="field">
+                  <label>Telefon client *</label>
+                  <input type="text" id="pu-phone" required value="${escapeHtml(relatedOrder?.shippingPhone || '')}" />
+                </div>
+                ${!glsConfigured ? '<div class="hint" style="margin-bottom:10px;">Integrarea GLS nu este configurată pe server.</div>' : ''}
+                <button class="btn btn-block btn-primary" type="submit" ${glsConfigured ? '' : 'disabled style="opacity:0.5;cursor:not-allowed;"'}>Generează AWB ridicare</button>
+                ${relatedOrder ? '<div class="hint" style="margin-top:8px;">Adresa a fost preluată automat din comanda asociată — o poți edita mai sus.</div>' : ''}
+              </form>
+            `}
+          </div>
+
           <div class="comments-panel">
             <h2 style="font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary);margin:0 0 14px;">Activitate (${ticket.comments.length} comentarii)</h2>
             ${comments}
@@ -556,97 +720,11 @@ async function renderTicketDetail(ticketId) {
             </form>
           </div>
         </div>
-
-        <div class="side-panel">
-          <h2>Gestionare tichet</h2>
-          <div class="side-field">
-            <label>Status</label>
-            <select id="sel-status">
-              ${Object.entries(STATUS_LABELS).map(([v, l]) => `<option value="${v}" ${ticket.status === v ? 'selected' : ''}>${l}</option>`).join('')}
-            </select>
-          </div>
-          <div class="side-field">
-            <label>Prioritate</label>
-            <select id="sel-priority">
-              ${Object.entries(PRIORITY_LABELS).map(([v, l]) => `<option value="${v}" ${ticket.priority === v ? 'selected' : ''}>${l}</option>`).join('')}
-            </select>
-          </div>
-          <div class="side-field">
-            <label>Categorie</label>
-            <select id="sel-category">
-              ${categoriesCache.map((c) => `<option value="${escapeHtml(c)}" ${ticket.category === c ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}
-            </select>
-          </div>
-          <div class="side-field">
-            <label>Agent asignat</label>
-            <select id="sel-assigned">
-              <option value="">Neasignat</option>
-              ${agentsCache.map((a) => `<option value="${a.id}" ${ticket.assignedTo === a.id ? 'selected' : ''}>${escapeHtml(a.name)}</option>`).join('')}
-            </select>
-          </div>
-          <div class="side-field">
-            <label>Secțiune</label>
-            <select id="sel-section">
-              <option value="support" ${ticket.section === 'support' ? 'selected' : ''}>Tichete (suport general)</option>
-              <option value="service" ${ticket.section === 'service' ? 'selected' : ''}>Service</option>
-              <option value="retur" ${ticket.section === 'retur' ? 'selected' : ''}>Retur</option>
-            </select>
-            <div class="hint" style="margin-top:6px;">Se schimbă automat la generarea unui AWB de ridicare — sau poți muta manual tichetul de aici.</div>
-          </div>
-        </div>
-
-        <div class="side-panel" style="margin-top:16px;">
-          <h2>Ridicare de la client (GLS)</h2>
-          ${ticket.pickupAwbNumber ? `
-            <div class="side-field">
-              <label>Motiv</label>
-              <div style="font-size:13px;color:var(--text);padding:8px 0;">${ticket.section === 'retur' ? 'Retur produs' : 'Service / reparație'}</div>
-            </div>
-            <div class="side-field">
-              <label>Număr AWB ridicare</label>
-              <div style="font-family:var(--font-mono);font-size:14px;color:var(--accent);font-weight:600;padding:8px 0;">${escapeHtml(ticket.pickupAwbNumber)}</div>
-            </div>
-            <button class="btn btn-block btn-primary" id="downloadPickupLabelBtn" style="margin-bottom:8px;">↓ Descarcă eticheta PDF</button>
-            <button class="btn btn-block" id="cancelPickupAwbBtn" style="color:var(--priority-urgent);">Anulează AWB ridicare</button>
-          ` : `
-            <form id="pickupAwbForm">
-              <div class="field">
-                <label>Motiv ridicare *</label>
-                <select id="pu-reason" required>
-                  <option value="service">Service / reparație</option>
-                  <option value="retur">Retur produs</option>
-                </select>
-              </div>
-              <div class="field">
-                <label>Adresă ridicare *</label>
-                <input type="text" id="pu-address" required placeholder="Stradă, număr" value="${escapeHtml(relatedOrder?.shippingAddress || '')}" />
-              </div>
-              <div class="form-row">
-                <div class="field">
-                  <label>Oraș *</label>
-                  <input type="text" id="pu-city" required value="${escapeHtml(relatedOrder?.shippingCity || '')}" />
-                </div>
-                <div class="field">
-                  <label>Cod poștal *</label>
-                  <input type="text" id="pu-postal" required value="${escapeHtml(relatedOrder?.shippingPostalCode || '')}" />
-                </div>
-              </div>
-              <div class="field">
-                <label>Telefon client *</label>
-                <input type="text" id="pu-phone" required value="${escapeHtml(relatedOrder?.shippingPhone || '')}" />
-              </div>
-              ${!glsConfigured ? '<div class="hint" style="margin-bottom:10px;">Integrarea GLS nu este configurată pe server.</div>' : ''}
-              <button class="btn btn-block btn-primary" type="submit" ${glsConfigured ? '' : 'disabled style="opacity:0.5;cursor:not-allowed;"'}>Generează AWB ridicare</button>
-              ${relatedOrder ? '<div class="hint" style="margin-top:8px;">Adresa a fost preluată automat din comanda asociată — o poți edita mai sus.</div>' : ''}
-            </form>
-          `}
-        </div>
       </div>
     `;
 
-    content.querySelector('#backLink').addEventListener('click', () => navigate(backRoute));
     if (relatedOrder) {
-      content.querySelector('#relatedOrderLink').addEventListener('click', () => navigate(`#/orders/${relatedOrder.id}`));
+      content.querySelector('#relatedOrderLink').addEventListener('click', () => openOrderDrawerCrossLink(relatedOrder.id));
     }
 
     async function patchField(field, value) {
@@ -734,10 +812,20 @@ async function renderTicketDetail(ticketId) {
 
 // ---------------- Tichet nou ----------------
 
+/** Navigare directă (link, refresh) — citește fromOrder din URL. */
 async function renderNewTicket() {
   const params = parseListRoute(window.location.hash);
-  const fromOrderId = params.fromOrder || null;
+  if (currentMainRoute !== '#/tickets') await renderTicketsList('#/tickets');
+  await paintNewTicketDrawer(params.fromOrder || null);
+}
 
+/** Deschidere din click (ex: butonul „+ Deschide tichet" de pe o comandă) — fundalul rămâne neschimbat. */
+async function openNewTicketDrawer(fromOrderId) {
+  history.pushState(null, '', fromOrderId ? `#/new?fromOrder=${fromOrderId}` : '#/new');
+  await paintNewTicketDrawer(fromOrderId || null);
+}
+
+async function paintNewTicketDrawer(fromOrderId) {
   let prefill = null;
   if (fromOrderId) {
     try {
@@ -778,7 +866,7 @@ Telefon: ${order.shippingPhone || '—'}
         </div>
       </div>
       ${prefill ? `<div class="hint" style="margin-bottom:16px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 14px;">📦 Informațiile clientului și ale comenzii au fost preluate automat mai jos — poți edita orice câmp înainte de a salva.</div>` : ''}
-      <div class="form-card">
+      <div class="form-card" style="max-width:100%;">
         <form id="newForm">
           <div class="field">
             <label>Subiect *</label>
@@ -827,9 +915,9 @@ Telefon: ${order.shippingPhone || '—'}
       </div>
     </div>
   `);
-  renderShell('#/new', content);
+  openDrawer(content);
 
-  content.querySelector('#cancelBtn').addEventListener('click', () => navigate(prefill ? `#/orders/${prefill.orderId}` : '#/tickets'));
+  content.querySelector('#cancelBtn').addEventListener('click', () => closeDrawer());
 
   content.querySelector('#newForm').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -846,7 +934,9 @@ Telefon: ${order.shippingPhone || '—'}
     try {
       const ticket = await api('/api/tickets', { method: 'POST', body: JSON.stringify(payload) });
       showToast('Tichet creat cu succes');
-      navigate(`#/tickets/${ticket.id}`);
+      if (currentMainRoute !== '#/tickets') await renderTicketsList('#/tickets');
+      history.pushState(null, '', `#/tickets/${ticket.id}`);
+      await paintTicketDrawer(await api(`/api/tickets/${ticket.id}`));
     } catch (err) {
       showToast('Eroare: ' + err.message);
     }
@@ -1012,21 +1102,31 @@ async function renderOrdersList() {
     </div>
   `;
   listBody.querySelectorAll('.order-row[data-id]').forEach((row) => {
-    row.addEventListener('click', () => navigate(`#/orders/${row.dataset.id}`));
+    row.addEventListener('click', () => {
+      history.pushState(null, '', `#/orders/${row.dataset.id}`);
+      openOrderDrawer(row.dataset.id);
+    });
   });
 }
 
+/** Navigare directă (link, refresh, buton Înapoi browser). */
 async function renderOrderDetail(orderId) {
-  const content = el(`<div id="order-detail-body">Se încarcă…</div>`);
-  renderShell('#/orders', content);
+  if (currentMainRoute !== '#/orders') await renderOrdersList();
+  await openOrderDrawer(orderId);
+}
 
+/** Deschidere din click pe o listă deja afișată — fundalul rămâne neschimbat. */
+async function openOrderDrawer(orderId) {
   let order;
   try {
     order = await api(`/api/orders/${orderId}`);
   } catch (e) {
-    content.innerHTML = `<div class="panel">Comanda nu a fost găsită. <a href="#/orders" style="color:var(--accent)">Înapoi la listă</a></div>`;
+    openDrawer(el('<div class="panel">Comanda nu a fost găsită.</div>'));
     return;
   }
+
+  const content = el(`<div id="order-detail-body">Se încarcă…</div>`);
+  openDrawer(content);
 
   let linkedTickets = [];
   try {
@@ -1062,8 +1162,7 @@ async function renderOrderDetail(orderId) {
     `).join('');
 
     content.innerHTML = `
-      <div class="back-link" id="backLink">← Înapoi la comenzi</div>
-      <div class="ticket-detail-grid">
+      <div class="ticket-detail-grid" style="grid-template-columns: 1fr;">
         <div>
           <div class="ticket-header-card">
             <div class="t-id" style="display:flex;align-items:center;justify-content:space-between;">
@@ -1096,6 +1195,61 @@ async function renderOrderDetail(orderId) {
             ` : ''}
           </div>
 
+          <div class="side-panel" style="margin-bottom:16px;">
+            <h2>Gestionare comandă</h2>
+            <div class="form-row">
+              <div class="side-field">
+                <label>Status intern</label>
+                <select id="sel-internal">
+                  ${Object.entries(INTERNAL_ORDER_STATUS_LABELS).map(([v, l]) => `<option value="${v}" ${order.internalStatus === v ? 'selected' : ''}>${l}</option>`).join('')}
+                </select>
+              </div>
+              <div class="side-field">
+                <label>Agent responsabil</label>
+                <select id="sel-assigned">
+                  <option value="">Neasignat</option>
+                  ${agentsCache.map((a) => `<option value="${a.id}" ${order.assignedTo === a.id ? 'selected' : ''}>${escapeHtml(a.name)}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="side-panel" style="margin-bottom:16px;">
+            <h2>Livrare / AWB</h2>
+            ${order.awbNumber ? `
+              <div class="form-row">
+                <div class="side-field">
+                  <label>Curier</label>
+                  <div style="font-size:13px;color:var(--text);padding:8px 0;">${escapeHtml(order.awbCourier || 'GLS')}</div>
+                </div>
+                <div class="side-field">
+                  <label>Număr AWB</label>
+                  <div style="font-family:var(--font-mono);font-size:14px;color:var(--accent);font-weight:600;padding:8px 0;">${escapeHtml(order.awbNumber)}</div>
+                </div>
+              </div>
+              <button class="btn btn-block btn-primary" id="downloadLabelBtn" style="margin-bottom:8px;">↓ Descarcă eticheta PDF</button>
+              <button class="btn btn-block" id="cancelAwbBtn" style="color:var(--priority-urgent);">Anulează AWB</button>
+            ` : `
+              <div class="form-row">
+                <div class="side-field">
+                  <label>Curier</label>
+                  <select disabled title="Doar GLS momentan">
+                    <option>GLS</option>
+                  </select>
+                </div>
+                <div class="side-field">
+                  <label>Număr AWB</label>
+                  <input type="text" disabled placeholder="Nu a fost generat încă" style="width:100%;background:var(--surface-raised);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text-dim);" />
+                </div>
+              </div>
+              <button class="btn btn-block ${glsConfigured ? 'btn-primary' : ''}" id="generateAwbBtn" ${glsConfigured ? '' : 'disabled style="opacity:0.5;cursor:not-allowed;" title="Configurează integrarea GLS pentru a activa"'}>Generează AWB</button>
+              ${glsConfigured
+                ? '<div class="hint" style="margin-top:10px;">Prima generare de AWB pentru firma ta — verifică cu atenție rezultatul.</div>'
+                : '<div class="hint" style="margin-top:10px;">Emiterea AWB prin GLS va fi activă după configurarea credențialelor API GLS pe server.</div>'}
+            `}
+            ${order.shippingAwb && !order.awbNumber ? `<div class="hint" style="margin-top:8px;">AWB existent în MerchantPro: <strong style="color:var(--text);">${escapeHtml(order.shippingAwb)}</strong></div>` : ''}
+          </div>
+
           <div class="comments-panel" style="margin-bottom:16px;">
             <h2 style="font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary);margin:0 0 14px;">Produse comandate</h2>
             <div class="line-items-list">${items}</div>
@@ -1112,64 +1266,12 @@ async function renderOrderDetail(orderId) {
             </form>
           </div>
         </div>
-
-        <div>
-          <div class="side-panel" style="margin-bottom:16px;">
-            <h2>Gestionare comandă</h2>
-            <div class="side-field">
-              <label>Status intern</label>
-              <select id="sel-internal">
-                ${Object.entries(INTERNAL_ORDER_STATUS_LABELS).map(([v, l]) => `<option value="${v}" ${order.internalStatus === v ? 'selected' : ''}>${l}</option>`).join('')}
-              </select>
-            </div>
-            <div class="side-field">
-              <label>Agent responsabil</label>
-              <select id="sel-assigned">
-                <option value="">Neasignat</option>
-                ${agentsCache.map((a) => `<option value="${a.id}" ${order.assignedTo === a.id ? 'selected' : ''}>${escapeHtml(a.name)}</option>`).join('')}
-              </select>
-            </div>
-          </div>
-
-          <div class="side-panel">
-            <h2>Livrare / AWB</h2>
-            ${order.awbNumber ? `
-              <div class="side-field">
-                <label>Curier</label>
-                <div style="font-size:13px;color:var(--text);padding:8px 0;">${escapeHtml(order.awbCourier || 'GLS')}</div>
-              </div>
-              <div class="side-field">
-                <label>Număr AWB</label>
-                <div style="font-family:var(--font-mono);font-size:14px;color:var(--accent);font-weight:600;padding:8px 0;">${escapeHtml(order.awbNumber)}</div>
-              </div>
-              <button class="btn btn-block btn-primary" id="downloadLabelBtn" style="margin-bottom:8px;">↓ Descarcă eticheta PDF</button>
-              <button class="btn btn-block" id="cancelAwbBtn" style="color:var(--priority-urgent);">Anulează AWB</button>
-            ` : `
-              <div class="side-field">
-                <label>Curier</label>
-                <select disabled title="Doar GLS momentan">
-                  <option>GLS</option>
-                </select>
-              </div>
-              <div class="side-field">
-                <label>Număr AWB</label>
-                <input type="text" disabled placeholder="Nu a fost generat încă" style="width:100%;background:var(--surface-raised);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text-dim);" />
-              </div>
-              <button class="btn btn-block ${glsConfigured ? 'btn-primary' : ''}" id="generateAwbBtn" ${glsConfigured ? '' : 'disabled style="opacity:0.5;cursor:not-allowed;" title="Configurează integrarea GLS pentru a activa"'}>Generează AWB</button>
-              ${glsConfigured
-                ? '<div class="hint" style="margin-top:10px;">Prima generare de AWB pentru firma ta — verifică cu atenție rezultatul.</div>'
-                : '<div class="hint" style="margin-top:10px;">Emiterea AWB prin GLS va fi activă după configurarea credențialelor API GLS pe server.</div>'}
-            `}
-            ${order.shippingAwb && !order.awbNumber ? `<div class="hint" style="margin-top:8px;">AWB existent în MerchantPro: <strong style="color:var(--text);">${escapeHtml(order.shippingAwb)}</strong></div>` : ''}
-          </div>
-        </div>
       </div>
     `;
 
-    content.querySelector('#backLink').addEventListener('click', () => navigate('#/orders'));
-    content.querySelector('#openTicketBtn').addEventListener('click', () => navigate(`#/new?fromOrder=${order.id}`));
+    content.querySelector('#openTicketBtn').addEventListener('click', () => openNewTicketDrawer(order.id));
     content.querySelectorAll('.queue-item[data-tid]').forEach((item) => {
-      item.addEventListener('click', () => navigate(`#/tickets/${item.dataset.tid}`));
+      item.addEventListener('click', () => openTicketDrawerCrossLink(item.dataset.tid));
     });
 
     async function patchOrder(field, value) {
@@ -1239,6 +1341,23 @@ async function renderOrderDetail(orderId) {
   }
 
   paint();
+}
+
+/** Deschide tichetul asociat unei comenzi, comutând fundalul la lista de tichete corectă. */
+async function openTicketDrawerCrossLink(ticketId) {
+  let ticket;
+  try { ticket = await api(`/api/tickets/${ticketId}`); } catch (e) { showToast('Tichet negăsit'); return; }
+  const bgRoute = ticket.section === 'service' ? '#/service' : ticket.section === 'retur' ? '#/retur' : '#/tickets';
+  if (currentMainRoute !== bgRoute) await renderTicketsList(bgRoute);
+  history.pushState(null, '', `#/tickets/${ticketId}`);
+  await paintTicketDrawer(ticket);
+}
+
+/** Deschide comanda asociată unui tichet, comutând fundalul la lista de comenzi. */
+async function openOrderDrawerCrossLink(orderId) {
+  if (currentMainRoute !== '#/orders') await renderOrdersList();
+  history.pushState(null, '', `#/orders/${orderId}`);
+  await openOrderDrawer(orderId);
 }
 
 // ---------------- Administrare (doar manageri) ----------------
@@ -1464,18 +1583,24 @@ function render() {
   const path = hash.split('?')[0];
 
   if (path === '#/dashboard' || hash === '') {
+    hideDrawer();
     renderDashboard();
   } else if (path === '#/tickets') {
+    hideDrawer();
     renderTicketsList('#/tickets');
   } else if (path === '#/service') {
+    hideDrawer();
     renderTicketsList('#/service');
   } else if (path === '#/retur') {
+    hideDrawer();
     renderTicketsList('#/retur');
   } else if (path === '#/orders') {
+    hideDrawer();
     renderOrdersList();
   } else if (path === '#/new') {
     renderNewTicket();
   } else if (path === '#/admin') {
+    hideDrawer();
     renderAdmin();
   } else if (path.startsWith('#/tickets/')) {
     renderTicketDetail(path.replace('#/tickets/', ''));
