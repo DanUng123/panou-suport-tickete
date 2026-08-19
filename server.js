@@ -277,6 +277,7 @@ async function handleApi(req, res, pathname, query) {
         status: query.status || undefined,
         priority: query.priority || undefined,
         category: query.category || undefined,
+        section: query.section || undefined,
         assignedTo: query.assignedTo || undefined,
         q: query.q || undefined,
         sort: query.sort || undefined,
@@ -488,6 +489,99 @@ async function handleApi(req, res, pathname, query) {
       } catch (e) {
         return sendJSON(res, 502, {
           error: `Eticheta nu e salvată local, iar re-cererea ei de la GLS a eșuat (${e.message}). Cel mai sigur pas acum: anulează acest AWB și generează unul nou — data viitoare eticheta se va salva automat local, la creare.`,
+        });
+      }
+    }
+
+    // ---- AWB de ridicare de la client (Service / Retur) ----
+
+    const generatePickupMatch = pathname.match(/^\/api\/tickets\/([^/]+)\/generate-pickup-awb$/);
+    if (generatePickupMatch && req.method === 'POST') {
+      if (!gls.isConfigured()) return sendJSON(res, 400, { error: 'Integrarea GLS nu este configurată pe server.' });
+      const ticket = db.getTicket(generatePickupMatch[1]);
+      if (!ticket) return sendJSON(res, 404, { error: 'Tichet negăsit' });
+
+      const body = await readBody(req);
+      const reason = body.reason === 'retur' ? 'retur' : 'service';
+
+      // adresa: folosim ce vine explicit in cerere; daca lipseste cate un
+      // camp, completam din comanda asociata tichetului (daca exista)
+      let linkedOrder = null;
+      if (ticket.relatedOrderId) linkedOrder = db.getOrder(ticket.relatedOrderId);
+
+      const address = body.address || linkedOrder?.shippingAddress || '';
+      const city = body.city || linkedOrder?.shippingCity || '';
+      const postalCode = body.postalCode || linkedOrder?.shippingPostalCode || '';
+      const phone = body.phone || linkedOrder?.shippingPhone || '';
+      const customerName = body.customerName || linkedOrder?.shippingName || ticket.requesterName;
+      const email = body.email || linkedOrder?.customerEmail || ticket.requesterEmail || '';
+
+      if (!address || !city || !postalCode || !phone) {
+        return sendJSON(res, 400, { error: 'Adresă/telefon incomplete pentru ridicare — completează-le în formular.' });
+      }
+
+      try {
+        const result = await gls.createPickupAwb({
+          ticketId: ticket.id, reason, customerName, address, city, postalCode, phone, email,
+        });
+        const updated = db.setTicketPickupAwb(ticket.id, {
+          awbNumber: result.trackingNumber,
+          parcelId: result.parcelId,
+          labelPdf: result.labelPdf ? result.labelPdf.toString('base64') : null,
+          section: reason,
+        }, currentAgent);
+        return sendJSON(res, 200, { ...updated, labelAvailable: Boolean(result.labelPdf) });
+      } catch (e) {
+        return sendJSON(res, 502, { error: e.message });
+      }
+    }
+
+    const cancelPickupMatch = pathname.match(/^\/api\/tickets\/([^/]+)\/cancel-pickup-awb$/);
+    if (cancelPickupMatch && req.method === 'POST') {
+      const ticket = db.getTicket(cancelPickupMatch[1]);
+      if (!ticket) return sendJSON(res, 404, { error: 'Tichet negăsit' });
+      if (!ticket.pickupAwbParcelId) return sendJSON(res, 400, { error: 'Tichetul nu are AWB de ridicare generat.' });
+      try {
+        await gls.deleteParcel(ticket.pickupAwbParcelId);
+        const updated = db.clearTicketPickupAwb(ticket.id, currentAgent);
+        return sendJSON(res, 200, updated);
+      } catch (e) {
+        return sendJSON(res, 502, { error: e.message });
+      }
+    }
+
+    const pickupLabelMatch = pathname.match(/^\/api\/tickets\/([^/]+)\/pickup-awb-label$/);
+    if (pickupLabelMatch && req.method === 'GET') {
+      const ticket = db.getTicket(pickupLabelMatch[1]);
+      if (!ticket || !ticket.pickupAwbParcelId) return sendJSON(res, 404, { error: 'Nu există AWB de ridicare pentru acest tichet.' });
+
+      if (ticket.pickupAwbLabelPdf) {
+        const pdfBuffer = Buffer.from(ticket.pickupAwbLabelPdf, 'base64');
+        res.writeHead(200, {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `inline; filename="ridicare-${ticket.pickupAwbNumber}.pdf"`,
+          'Content-Length': pdfBuffer.length,
+        });
+        return res.end(pdfBuffer);
+      }
+
+      try {
+        const pdfBuffer = await gls.getLabelPdf(ticket.pickupAwbParcelId);
+        db.setTicketPickupAwb(ticket.id, {
+          awbNumber: ticket.pickupAwbNumber,
+          parcelId: ticket.pickupAwbParcelId,
+          labelPdf: pdfBuffer.toString('base64'),
+          section: ticket.section,
+        }, currentAgent);
+        res.writeHead(200, {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `inline; filename="ridicare-${ticket.pickupAwbNumber}.pdf"`,
+          'Content-Length': pdfBuffer.length,
+        });
+        return res.end(pdfBuffer);
+      } catch (e) {
+        return sendJSON(res, 502, {
+          error: `Eticheta nu e salvată local, iar re-cererea ei de la GLS a eșuat (${e.message}). Anulează acest AWB de ridicare și generează unul nou.`,
         });
       }
     }

@@ -204,6 +204,8 @@ function renderShell(activeRoute, contentNode) {
         <div class="nav-item" data-route="#/dashboard"><span class="dot"></span>Dashboard</div>
         <div class="nav-item" data-route="#/tickets"><span class="dot"></span>Tichete</div>
         <div class="nav-item" data-route="#/orders"><span class="dot"></span>Comenzi</div>
+        <div class="nav-item" data-route="#/service"><span class="dot"></span>Service</div>
+        <div class="nav-item" data-route="#/retur"><span class="dot"></span>Retur</div>
         <div class="nav-item nav-new" data-route="#/new"><span class="dot"></span>+ Tichet nou</div>
         ${currentAgent.role === 'manager' ? '<div class="nav-item" data-route="#/admin"><span class="dot"></span>Administrare</div>' : ''}
       </nav>
@@ -327,15 +329,23 @@ function parseListRoute(hash) {
   return Object.fromEntries(new URLSearchParams(qs || ''));
 }
 
-async function renderTicketsList() {
+const SECTION_CONFIG = {
+  '#/tickets': { section: 'support', title: 'Tichete', sub: 'Toate solicitările clienților' },
+  '#/service': { section: 'service', title: 'Service', sub: 'Tichete cu ridicare pentru reparație/service' },
+  '#/retur': { section: 'retur', title: 'Retur', sub: 'Tichete cu ridicare pentru returnare produs' },
+};
+
+async function renderTicketsList(route) {
+  route = route || '#/tickets';
+  const cfg = SECTION_CONFIG[route] || SECTION_CONFIG['#/tickets'];
   const filters = parseListRoute(window.location.hash);
 
   const content = el(`
     <div>
       <div class="page-header">
         <div>
-          <h1>Tichete</h1>
-          <div class="sub">Toate solicitările clienților</div>
+          <h1>${escapeHtml(cfg.title)}</h1>
+          <div class="sub">${escapeHtml(cfg.sub)}</div>
         </div>
         <button class="btn btn-primary" id="newTicketBtn">+ Tichet nou</button>
       </div>
@@ -362,7 +372,7 @@ async function renderTicketsList() {
       <div id="list-body">Se încarcă…</div>
     </div>
   `);
-  renderShell('#/tickets', content);
+  renderShell(route, content);
 
   content.querySelector('#newTicketBtn').addEventListener('click', () => navigate('#/new'));
 
@@ -378,7 +388,7 @@ async function renderTicketsList() {
     if (priority) params.set('priority', priority);
     if (category) params.set('category', category);
     if (assignedTo) params.set('assignedTo', assignedTo);
-    navigate(`#/tickets?${params.toString()}`);
+    navigate(`${route}?${params.toString()}`);
   }
 
   ['#f-status', '#f-priority', '#f-category', '#f-assigned'].forEach((sel) => {
@@ -391,7 +401,7 @@ async function renderTicketsList() {
   });
 
   const listBody = content.querySelector('#list-body');
-  const query = new URLSearchParams(filters).toString();
+  const query = new URLSearchParams({ ...filters, section: cfg.section }).toString();
   const tickets = await api(`/api/tickets?${query}`);
 
   if (!tickets.length) {
@@ -438,16 +448,20 @@ async function renderTicketsList() {
 // ---------------- Detaliu tichet ----------------
 
 async function renderTicketDetail(ticketId) {
-  const content = el(`<div id="detail-body">Se încarcă…</div>`);
-  renderShell('#/tickets', content);
-
   let ticket;
   try {
     ticket = await api(`/api/tickets/${ticketId}`);
   } catch (e) {
-    content.innerHTML = `<div class="panel">Tichetul nu a fost găsit. <a href="#/tickets" style="color:var(--accent)">Înapoi la listă</a></div>`;
+    const errContent = el(`<div id="detail-body">Se încarcă…</div>`);
+    renderShell('#/tickets', errContent);
+    errContent.innerHTML = `<div class="panel">Tichetul nu a fost găsit. <a href="#/tickets" style="color:var(--accent)">Înapoi la listă</a></div>`;
     return;
   }
+
+  const backRoute = ticket.section === 'service' ? '#/service' : ticket.section === 'retur' ? '#/retur' : '#/tickets';
+
+  const content = el(`<div id="detail-body">Se încarcă…</div>`);
+  renderShell(backRoute, content);
 
   let relatedOrder = null;
   if (ticket.relatedOrderId) {
@@ -506,8 +520,9 @@ async function renderTicketDetail(ticketId) {
     `;
     }).join('') || '<div class="panel-empty" style="color:var(--text-dim);font-size:13px;">Niciun comentariu încă.</div>';
 
+    const backLabel = ticket.section === 'service' ? '← Înapoi la Service' : ticket.section === 'retur' ? '← Înapoi la Retur' : '← Înapoi la tichete';
     content.innerHTML = `
-      <div class="back-link" id="backLink">← Înapoi la tichete</div>
+      <div class="back-link" id="backLink">${backLabel}</div>
       <div class="ticket-detail-grid">
         <div>
           <div class="ticket-header-card">
@@ -516,6 +531,8 @@ async function renderTicketDetail(ticketId) {
             <div class="badges-row">
               <span class="badge badge-status-${ticket.status}">${STATUS_LABELS[ticket.status]}</span>
               <span class="badge badge-priority-${ticket.priority}">${PRIORITY_LABELS[ticket.priority]}</span>
+              ${ticket.section === 'service' ? '<span class="badge badge-status-in_progress">🔧 Service</span>' : ''}
+              ${ticket.section === 'retur' ? '<span class="badge badge-priority-urgent">↩ Retur</span>' : ''}
               ${relatedOrder ? `<span class="badge badge-status-waiting" id="relatedOrderLink" style="cursor:pointer;">📦 Comandă #${relatedOrder.mpId}</span>` : ''}
             </div>
             <div class="description">${escapeHtml(ticket.description)}</div>
@@ -567,11 +584,67 @@ async function renderTicketDetail(ticketId) {
               ${agentsCache.map((a) => `<option value="${a.id}" ${ticket.assignedTo === a.id ? 'selected' : ''}>${escapeHtml(a.name)}</option>`).join('')}
             </select>
           </div>
+          <div class="side-field">
+            <label>Secțiune</label>
+            <select id="sel-section">
+              <option value="support" ${ticket.section === 'support' ? 'selected' : ''}>Tichete (suport general)</option>
+              <option value="service" ${ticket.section === 'service' ? 'selected' : ''}>Service</option>
+              <option value="retur" ${ticket.section === 'retur' ? 'selected' : ''}>Retur</option>
+            </select>
+            <div class="hint" style="margin-top:6px;">Se schimbă automat la generarea unui AWB de ridicare — sau poți muta manual tichetul de aici.</div>
+          </div>
+        </div>
+
+        <div class="side-panel" style="margin-top:16px;">
+          <h2>Ridicare de la client (GLS)</h2>
+          ${ticket.pickupAwbNumber ? `
+            <div class="side-field">
+              <label>Motiv</label>
+              <div style="font-size:13px;color:var(--text);padding:8px 0;">${ticket.section === 'retur' ? 'Retur produs' : 'Service / reparație'}</div>
+            </div>
+            <div class="side-field">
+              <label>Număr AWB ridicare</label>
+              <div style="font-family:var(--font-mono);font-size:14px;color:var(--accent);font-weight:600;padding:8px 0;">${escapeHtml(ticket.pickupAwbNumber)}</div>
+            </div>
+            <button class="btn btn-block btn-primary" id="downloadPickupLabelBtn" style="margin-bottom:8px;">↓ Descarcă eticheta PDF</button>
+            <button class="btn btn-block" id="cancelPickupAwbBtn" style="color:var(--priority-urgent);">Anulează AWB ridicare</button>
+          ` : `
+            <form id="pickupAwbForm">
+              <div class="field">
+                <label>Motiv ridicare *</label>
+                <select id="pu-reason" required>
+                  <option value="service">Service / reparație</option>
+                  <option value="retur">Retur produs</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>Adresă ridicare *</label>
+                <input type="text" id="pu-address" required placeholder="Stradă, număr" value="${escapeHtml(relatedOrder?.shippingAddress || '')}" />
+              </div>
+              <div class="form-row">
+                <div class="field">
+                  <label>Oraș *</label>
+                  <input type="text" id="pu-city" required value="${escapeHtml(relatedOrder?.shippingCity || '')}" />
+                </div>
+                <div class="field">
+                  <label>Cod poștal *</label>
+                  <input type="text" id="pu-postal" required value="${escapeHtml(relatedOrder?.shippingPostalCode || '')}" />
+                </div>
+              </div>
+              <div class="field">
+                <label>Telefon client *</label>
+                <input type="text" id="pu-phone" required value="${escapeHtml(relatedOrder?.shippingPhone || '')}" />
+              </div>
+              ${!glsConfigured ? '<div class="hint" style="margin-bottom:10px;">Integrarea GLS nu este configurată pe server.</div>' : ''}
+              <button class="btn btn-block btn-primary" type="submit" ${glsConfigured ? '' : 'disabled style="opacity:0.5;cursor:not-allowed;"'}>Generează AWB ridicare</button>
+              ${relatedOrder ? '<div class="hint" style="margin-top:8px;">Adresa a fost preluată automat din comanda asociată — o poți edita mai sus.</div>' : ''}
+            </form>
+          `}
         </div>
       </div>
     `;
 
-    content.querySelector('#backLink').addEventListener('click', () => navigate('#/tickets'));
+    content.querySelector('#backLink').addEventListener('click', () => navigate(backRoute));
     if (relatedOrder) {
       content.querySelector('#relatedOrderLink').addEventListener('click', () => navigate(`#/orders/${relatedOrder.id}`));
     }
@@ -590,6 +663,56 @@ async function renderTicketDetail(ticketId) {
     content.querySelector('#sel-priority').addEventListener('change', (e) => patchField('priority', e.target.value));
     content.querySelector('#sel-category').addEventListener('change', (e) => patchField('category', e.target.value));
     content.querySelector('#sel-assigned').addEventListener('change', (e) => patchField('assignedTo', e.target.value));
+    content.querySelector('#sel-section').addEventListener('change', (e) => patchField('section', e.target.value));
+
+    const pickupForm = content.querySelector('#pickupAwbForm');
+    if (pickupForm) {
+      pickupForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const submitBtn = pickupForm.querySelector('button[type="submit"]');
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Se generează…';
+        const payload = {
+          reason: content.querySelector('#pu-reason').value,
+          address: content.querySelector('#pu-address').value.trim(),
+          city: content.querySelector('#pu-city').value.trim(),
+          postalCode: content.querySelector('#pu-postal').value.trim(),
+          phone: content.querySelector('#pu-phone').value.trim(),
+        };
+        try {
+          ticket = await api(`/api/tickets/${ticket.id}/generate-pickup-awb`, { method: 'POST', body: JSON.stringify(payload) });
+          showToast('AWB de ridicare generat — tichetul a fost mutat');
+          paint();
+        } catch (err) {
+          showToast('Eroare la generarea AWB: ' + err.message);
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Generează AWB ridicare';
+        }
+      });
+    }
+
+    const downloadPickupBtn = content.querySelector('#downloadPickupLabelBtn');
+    if (downloadPickupBtn) {
+      downloadPickupBtn.addEventListener('click', () => {
+        window.open(`/api/tickets/${ticket.id}/pickup-awb-label`, '_blank');
+      });
+    }
+
+    const cancelPickupBtn = content.querySelector('#cancelPickupAwbBtn');
+    if (cancelPickupBtn) {
+      cancelPickupBtn.addEventListener('click', async () => {
+        if (!confirm(`Anulezi AWB-ul de ridicare ${ticket.pickupAwbNumber}? Această acțiune îl șterge și la GLS.`)) return;
+        cancelPickupBtn.disabled = true;
+        try {
+          ticket = await api(`/api/tickets/${ticket.id}/cancel-pickup-awb`, { method: 'POST' });
+          showToast('AWB de ridicare anulat');
+          paint();
+        } catch (err) {
+          showToast('Eroare la anulare: ' + err.message);
+          cancelPickupBtn.disabled = false;
+        }
+      });
+    }
 
     content.querySelector('#commentForm').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -1343,7 +1466,11 @@ function render() {
   if (path === '#/dashboard' || hash === '') {
     renderDashboard();
   } else if (path === '#/tickets') {
-    renderTicketsList();
+    renderTicketsList('#/tickets');
+  } else if (path === '#/service') {
+    renderTicketsList('#/service');
+  } else if (path === '#/retur') {
+    renderTicketsList('#/retur');
   } else if (path === '#/orders') {
     renderOrdersList();
   } else if (path === '#/new') {
