@@ -444,6 +444,11 @@ async function renderTicketDetail(ticketId) {
     return;
   }
 
+  let relatedOrder = null;
+  if (ticket.relatedOrderId) {
+    try { relatedOrder = await api(`/api/orders/${ticket.relatedOrderId}`); } catch (e) { /* comanda poate a fost stearsa */ }
+  }
+
   function paint() {
     const FIELD_LABELS_RO = {
       status: 'statusul', priority: 'prioritatea', category: 'categoria', assignedTo: 'agentul asignat',
@@ -506,6 +511,7 @@ async function renderTicketDetail(ticketId) {
             <div class="badges-row">
               <span class="badge badge-status-${ticket.status}">${STATUS_LABELS[ticket.status]}</span>
               <span class="badge badge-priority-${ticket.priority}">${PRIORITY_LABELS[ticket.priority]}</span>
+              ${relatedOrder ? `<span class="badge badge-status-waiting" id="relatedOrderLink" style="cursor:pointer;">📦 Comandă #${relatedOrder.mpId}</span>` : ''}
             </div>
             <div class="description">${escapeHtml(ticket.description)}</div>
             <div class="meta-row">
@@ -561,6 +567,9 @@ async function renderTicketDetail(ticketId) {
     `;
 
     content.querySelector('#backLink').addEventListener('click', () => navigate('#/tickets'));
+    if (relatedOrder) {
+      content.querySelector('#relatedOrderLink').addEventListener('click', () => navigate(`#/orders/${relatedOrder.id}`));
+    }
 
     async function patchField(field, value) {
       try {
@@ -597,40 +606,75 @@ async function renderTicketDetail(ticketId) {
 
 // ---------------- Tichet nou ----------------
 
-function renderNewTicket() {
+async function renderNewTicket() {
+  const params = parseListRoute(window.location.hash);
+  const fromOrderId = params.fromOrder || null;
+
+  let prefill = null;
+  if (fromOrderId) {
+    try {
+      const order = await api(`/api/orders/${fromOrderId}`);
+      const itemsList = (order.lineItems || [])
+        .map((it) => `- ${it.product_name || '—'} × ${it.quantity ?? 1}${it.product_sku ? ` (${it.product_sku})` : ''}`)
+        .join('\n');
+      prefill = {
+        subject: `Comandă #${order.mpId} — `,
+        description:
+`Comandă MerchantPro #${order.mpId}
+Status livrare: ${SHIPPING_STATUS_LABELS_MP[order.shippingStatus] || order.shippingStatus || '—'} | Status plată: ${PAYMENT_STATUS_LABELS_MP[order.paymentStatus] || order.paymentStatus || '—'}
+
+Produse:
+${itemsList || '(niciun produs listat)'}
+
+Adresă livrare: ${order.shippingAddress || '—'}, ${order.shippingCity || ''}, ${order.shippingState || ''} ${order.shippingPostalCode || ''}, ${order.shippingCountryName || ''}
+Telefon: ${order.shippingPhone || '—'}
+
+—
+`,
+        requesterName: order.shippingName || order.billingName || '',
+        requesterEmail: order.customerEmail || '',
+        orderId: order.id,
+        orderMpId: order.mpId,
+      };
+    } catch (e) {
+      showToast('Nu am putut încărca datele comenzii: ' + e.message);
+    }
+  }
+
   const content = el(`
     <div>
       <div class="page-header">
         <div>
           <h1>Tichet nou</h1>
-          <div class="sub">Înregistrează o solicitare de suport</div>
+          <div class="sub">${prefill ? `Creat din comanda #${prefill.orderMpId}` : 'Înregistrează o solicitare de suport'}</div>
         </div>
       </div>
+      ${prefill ? `<div class="hint" style="margin-bottom:16px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 14px;">📦 Informațiile clientului și ale comenzii au fost preluate automat mai jos — poți edita orice câmp înainte de a salva.</div>` : ''}
       <div class="form-card">
         <form id="newForm">
           <div class="field">
             <label>Subiect *</label>
-            <input type="text" id="f-subject" required placeholder="Ex: Nu pot accesa contul" />
+            <input type="text" id="f-subject" required placeholder="Ex: Nu pot accesa contul" value="${prefill ? escapeHtml(prefill.subject) : ''}" />
           </div>
           <div class="field">
             <label>Descriere *</label>
-            <textarea id="f-description" required placeholder="Detaliază problema semnalată de client…"></textarea>
+            <textarea id="f-description" required placeholder="Detaliază problema semnalată de client…">${prefill ? escapeHtml(prefill.description) : ''}</textarea>
           </div>
           <div class="form-row">
             <div class="field">
               <label>Nume solicitant *</label>
-              <input type="text" id="f-reqname" required placeholder="Ex: Vlad Marinescu" />
+              <input type="text" id="f-reqname" required placeholder="Ex: Vlad Marinescu" value="${prefill ? escapeHtml(prefill.requesterName) : ''}" />
             </div>
             <div class="field">
               <label>Email solicitant</label>
-              <input type="email" id="f-reqemail" placeholder="client@exemplu.ro" />
+              <input type="email" id="f-reqemail" placeholder="client@exemplu.ro" value="${prefill ? escapeHtml(prefill.requesterEmail) : ''}" />
             </div>
           </div>
           <div class="form-row">
             <div class="field">
               <label>Categorie *</label>
               <select id="f-category" required>
-                ${categoriesCache.map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')}
+                ${categoriesCache.map((c) => `<option value="${escapeHtml(c)}" ${prefill && c === 'Livrare' ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}
               </select>
             </div>
             <div class="field">
@@ -657,7 +701,7 @@ function renderNewTicket() {
   `);
   renderShell('#/new', content);
 
-  content.querySelector('#cancelBtn').addEventListener('click', () => navigate('#/tickets'));
+  content.querySelector('#cancelBtn').addEventListener('click', () => navigate(prefill ? `#/orders/${prefill.orderId}` : '#/tickets'));
 
   content.querySelector('#newForm').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -669,6 +713,7 @@ function renderNewTicket() {
       category: content.querySelector('#f-category').value,
       priority: content.querySelector('#f-priority').value,
       assignedTo: content.querySelector('#f-assigned').value || null,
+      relatedOrderId: prefill ? prefill.orderId : null,
     };
     try {
       const ticket = await api('/api/tickets', { method: 'POST', body: JSON.stringify(payload) });
@@ -855,6 +900,11 @@ async function renderOrderDetail(orderId) {
     return;
   }
 
+  let linkedTickets = [];
+  try {
+    linkedTickets = await api(`/api/orders/${orderId}/tickets`);
+  } catch (e) { /* nu blocam afisarea comenzii pentru asta */ }
+
   function paint() {
     const items = (order.lineItems || []).map((it) => `
       <div class="line-item-row">
@@ -874,12 +924,24 @@ async function renderOrderDetail(orderId) {
       </div>
     `).join('') || '<div style="color:var(--text-dim);font-size:13px;">Nicio notiță încă.</div>';
 
+    const linkedTicketsHtml = linkedTickets.map((t) => `
+      <div class="queue-item" data-tid="${t.id}">
+        <span class="badge badge-priority-${t.priority}">${PRIORITY_LABELS[t.priority]}</span>
+        <span class="qid">${t.id.replace('TCK_', '#')}</span>
+        <span class="qsubject">${escapeHtml(t.subject)}</span>
+        <span class="badge badge-status-${t.status}">${STATUS_LABELS[t.status]}</span>
+      </div>
+    `).join('');
+
     content.innerHTML = `
       <div class="back-link" id="backLink">← Înapoi la comenzi</div>
       <div class="ticket-detail-grid">
         <div>
           <div class="ticket-header-card">
-            <div class="t-id">Comandă MerchantPro #${order.mpId}</div>
+            <div class="t-id" style="display:flex;align-items:center;justify-content:space-between;">
+              <span>Comandă MerchantPro #${order.mpId}</span>
+              <button class="btn btn-sm btn-primary" id="openTicketBtn">+ Deschide tichet</button>
+            </div>
             <h1>${escapeHtml(order.shippingName || order.billingName || '—')}</h1>
             <div class="badges-row">
               <span class="badge ${paymentBadgeClass(order.paymentStatus)}">${PAYMENT_STATUS_LABELS_MP[order.paymentStatus] || order.paymentStatus || '—'}</span>
@@ -898,6 +960,12 @@ async function renderOrderDetail(orderId) {
                 <div class="meta-value">${escapeHtml(order.shippingAddress || '—')}, ${escapeHtml(order.shippingCity || '')}, ${escapeHtml(order.shippingState || '')} ${escapeHtml(order.shippingPostalCode || '')}, ${escapeHtml(order.shippingCountryName || '')}</div>
               </div>
             </div>
+            ${linkedTickets.length ? `
+              <div class="meta-row" style="flex-direction:column;align-items:stretch;">
+                <div class="meta-label" style="margin-bottom:8px;">Tichete asociate (${linkedTickets.length})</div>
+                ${linkedTicketsHtml}
+              </div>
+            ` : ''}
           </div>
 
           <div class="comments-panel" style="margin-bottom:16px;">
@@ -956,6 +1024,10 @@ async function renderOrderDetail(orderId) {
     `;
 
     content.querySelector('#backLink').addEventListener('click', () => navigate('#/orders'));
+    content.querySelector('#openTicketBtn').addEventListener('click', () => navigate(`#/new?fromOrder=${order.id}`));
+    content.querySelectorAll('.queue-item[data-tid]').forEach((item) => {
+      item.addEventListener('click', () => navigate(`#/tickets/${item.dataset.tid}`));
+    });
 
     async function patchOrder(field, value) {
       try {

@@ -383,6 +383,11 @@ async function handleApi(req, res, pathname, query) {
       return sendJSON(res, 201, note);
     }
 
+    const orderTicketsMatch = pathname.match(/^\/api\/orders\/([^/]+)\/tickets$/);
+    if (orderTicketsMatch && req.method === 'GET') {
+      return sendJSON(res, 200, db.getTicketsForOrder(orderTicketsMatch[1]));
+    }
+
     return sendJSON(res, 404, { error: 'Rută necunoscută' });
   } catch (e) {
     return sendJSON(res, 500, { error: e.message || 'Eroare internă' });
