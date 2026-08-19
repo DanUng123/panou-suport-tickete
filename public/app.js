@@ -46,6 +46,7 @@ function internalOrderBadgeClass(s) {
 let currentAgent = null;
 let agentsCache = [];
 let categoriesCache = [];
+let glsConfigured = false;
 
 // ---------------- utilitare ----------------
 
@@ -116,10 +117,14 @@ async function boot() {
 }
 
 async function loadReferenceData() {
-  [agentsCache, categoriesCache] = await Promise.all([
+  const [agents, categories, glsStatus] = await Promise.all([
     api('/api/agents'),
     api('/api/categories'),
+    api('/api/gls/status').catch(() => ({ configured: false })),
   ]);
+  agentsCache = agents;
+  categoriesCache = categories;
+  glsConfigured = glsStatus.configured;
 }
 
 // ---------------- ecran login ----------------
@@ -1005,19 +1010,34 @@ async function renderOrderDetail(orderId) {
 
           <div class="side-panel">
             <h2>Livrare / AWB</h2>
-            <div class="side-field">
-              <label>Curier</label>
-              <select disabled title="Integrare GLS neconfigurată încă">
-                <option>GLS</option>
-              </select>
-            </div>
-            <div class="side-field">
-              <label>Număr AWB</label>
-              <input type="text" disabled placeholder="Se generează după configurarea GLS" value="${order.awbNumber ? escapeHtml(order.awbNumber) : ''}" style="width:100%;background:var(--surface-raised);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text-dim);" />
-            </div>
-            <button class="btn btn-block" disabled style="opacity:0.5;cursor:not-allowed;" title="Configurează integrarea GLS pentru a activa">Generează AWB</button>
-            <div class="hint" style="margin-top:10px;">Emiterea AWB prin GLS va fi activă după configurarea credențialelor API GLS pe server.</div>
-            ${order.shippingAwb ? `<div class="hint" style="margin-top:8px;">AWB existent în MerchantPro: <strong style="color:var(--text);">${escapeHtml(order.shippingAwb)}</strong></div>` : ''}
+            ${order.awbNumber ? `
+              <div class="side-field">
+                <label>Curier</label>
+                <div style="font-size:13px;color:var(--text);padding:8px 0;">${escapeHtml(order.awbCourier || 'GLS')}</div>
+              </div>
+              <div class="side-field">
+                <label>Număr AWB</label>
+                <div style="font-family:var(--font-mono);font-size:14px;color:var(--accent);font-weight:600;padding:8px 0;">${escapeHtml(order.awbNumber)}</div>
+              </div>
+              <button class="btn btn-block btn-primary" id="downloadLabelBtn" style="margin-bottom:8px;">↓ Descarcă eticheta PDF</button>
+              <button class="btn btn-block" id="cancelAwbBtn" style="color:var(--priority-urgent);">Anulează AWB</button>
+            ` : `
+              <div class="side-field">
+                <label>Curier</label>
+                <select disabled title="Doar GLS momentan">
+                  <option>GLS</option>
+                </select>
+              </div>
+              <div class="side-field">
+                <label>Număr AWB</label>
+                <input type="text" disabled placeholder="Nu a fost generat încă" style="width:100%;background:var(--surface-raised);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text-dim);" />
+              </div>
+              <button class="btn btn-block ${glsConfigured ? 'btn-primary' : ''}" id="generateAwbBtn" ${glsConfigured ? '' : 'disabled style="opacity:0.5;cursor:not-allowed;" title="Configurează integrarea GLS pentru a activa"'}>Generează AWB</button>
+              ${glsConfigured
+                ? '<div class="hint" style="margin-top:10px;">Prima generare de AWB pentru firma ta — verifică cu atenție rezultatul.</div>'
+                : '<div class="hint" style="margin-top:10px;">Emiterea AWB prin GLS va fi activă după configurarea credențialelor API GLS pe server.</div>'}
+            `}
+            ${order.shippingAwb && !order.awbNumber ? `<div class="hint" style="margin-top:8px;">AWB existent în MerchantPro: <strong style="color:var(--text);">${escapeHtml(order.shippingAwb)}</strong></div>` : ''}
           </div>
         </div>
       </div>
@@ -1040,6 +1060,46 @@ async function renderOrderDetail(orderId) {
     }
     content.querySelector('#sel-internal').addEventListener('change', (e) => patchOrder('internalStatus', e.target.value));
     content.querySelector('#sel-assigned').addEventListener('change', (e) => patchOrder('assignedTo', e.target.value));
+
+    const generateBtn = content.querySelector('#generateAwbBtn');
+    if (generateBtn && glsConfigured) {
+      generateBtn.addEventListener('click', async () => {
+        generateBtn.disabled = true;
+        generateBtn.textContent = 'Se generează…';
+        try {
+          order = await api(`/api/orders/${order.id}/generate-awb`, { method: 'POST' });
+          showToast('AWB generat cu succes');
+          paint();
+        } catch (err) {
+          showToast('Eroare la generarea AWB: ' + err.message);
+          generateBtn.disabled = false;
+          generateBtn.textContent = 'Generează AWB';
+        }
+      });
+    }
+
+    const downloadBtn = content.querySelector('#downloadLabelBtn');
+    if (downloadBtn) {
+      downloadBtn.addEventListener('click', () => {
+        window.open(`/api/orders/${order.id}/awb-label`, '_blank');
+      });
+    }
+
+    const cancelBtn = content.querySelector('#cancelAwbBtn');
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', async () => {
+        if (!confirm(`Anulezi AWB-ul ${order.awbNumber}? Această acțiune îl șterge și la GLS.`)) return;
+        cancelBtn.disabled = true;
+        try {
+          order = await api(`/api/orders/${order.id}/cancel-awb`, { method: 'POST' });
+          showToast('AWB anulat');
+          paint();
+        } catch (err) {
+          showToast('Eroare la anularea AWB: ' + err.message);
+          cancelBtn.disabled = false;
+        }
+      });
+    }
 
     content.querySelector('#noteForm').addEventListener('submit', async (e) => {
       e.preventDefault();

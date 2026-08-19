@@ -10,6 +10,8 @@ const url = require('url');
 
 const db = require('./lib/db');
 const orderSync = require('./lib/order-sync');
+const gls = require('./lib/gls');
+const mp = require('./lib/merchantpro');
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -386,6 +388,85 @@ async function handleApi(req, res, pathname, query) {
     const orderTicketsMatch = pathname.match(/^\/api\/orders\/([^/]+)\/tickets$/);
     if (orderTicketsMatch && req.method === 'GET') {
       return sendJSON(res, 200, db.getTicketsForOrder(orderTicketsMatch[1]));
+    }
+
+    // ---- AWB / curier GLS ----
+
+    if (pathname === '/api/gls/status' && req.method === 'GET') {
+      return sendJSON(res, 200, { configured: gls.isConfigured() });
+    }
+
+    const generateAwbMatch = pathname.match(/^\/api\/orders\/([^/]+)\/generate-awb$/);
+    if (generateAwbMatch && req.method === 'POST') {
+      if (!gls.isConfigured()) return sendJSON(res, 400, { error: 'Integrarea GLS nu este configurată pe server.' });
+      const order = db.getOrder(generateAwbMatch[1]);
+      if (!order) return sendJSON(res, 404, { error: 'Comandă negăsită' });
+      if (!order.shippingAddress || !order.shippingCity || !order.shippingPostalCode || !order.shippingPhone) {
+        return sendJSON(res, 400, { error: 'Comanda nu are adresă/telefon complete — verifică datele înainte de a genera AWB.' });
+      }
+      try {
+        const isCod = (order.paymentStatus === 'awaiting');
+        const result = await gls.createParcel({
+          mpId: order.mpId,
+          codAmount: isCod ? order.totalAmount : 0,
+          currency: order.currency,
+          shippingName: order.shippingName || order.billingName,
+          shippingAddress: order.shippingAddress,
+          shippingPostalCode: order.shippingPostalCode,
+          shippingCity: order.shippingCity,
+          shippingPhone: order.shippingPhone,
+          customerEmail: order.customerEmail,
+        });
+        const updated = db.updateOrderInternal(order.id, {
+          awbCourier: 'GLS',
+          awbNumber: result.trackingCode,
+          internalStatus: 'awb_generated',
+        }, currentAgent);
+        // incercam si sa scriem AWB-ul inapoi in MerchantPro, dar nu blocam raspunsul daca esueaza
+        if (mp.isConfigured()) {
+          mp.updateOrder(order.mpId, { shipping_awb: result.trackingCode }).catch((e) => {
+            console.error('Nu am putut scrie AWB-ul înapoi în MerchantPro:', e.message);
+          });
+        }
+        return sendJSON(res, 200, updated);
+      } catch (e) {
+        return sendJSON(res, 502, { error: e.message });
+      }
+    }
+
+    const cancelAwbMatch = pathname.match(/^\/api\/orders\/([^/]+)\/cancel-awb$/);
+    if (cancelAwbMatch && req.method === 'POST') {
+      const order = db.getOrder(cancelAwbMatch[1]);
+      if (!order) return sendJSON(res, 404, { error: 'Comandă negăsită' });
+      if (!order.awbNumber) return sendJSON(res, 400, { error: 'Comanda nu are AWB generat.' });
+      try {
+        await gls.deleteParcel(order.awbNumber);
+        const updated = db.updateOrderInternal(order.id, {
+          awbNumber: null,
+          awbCourier: null,
+          internalStatus: 'processing',
+        }, currentAgent);
+        return sendJSON(res, 200, updated);
+      } catch (e) {
+        return sendJSON(res, 502, { error: e.message });
+      }
+    }
+
+    const labelMatch = pathname.match(/^\/api\/orders\/([^/]+)\/awb-label$/);
+    if (labelMatch && req.method === 'GET') {
+      const order = db.getOrder(labelMatch[1]);
+      if (!order || !order.awbNumber) return sendJSON(res, 404, { error: 'Nu există AWB pentru această comandă.' });
+      try {
+        const pdfBuffer = await gls.getLabelPdf(order.awbNumber);
+        res.writeHead(200, {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `inline; filename="awb-${order.awbNumber}.pdf"`,
+          'Content-Length': pdfBuffer.length,
+        });
+        return res.end(pdfBuffer);
+      } catch (e) {
+        return sendJSON(res, 502, { error: e.message });
+      }
     }
 
     return sendJSON(res, 404, { error: 'Rută necunoscută' });
