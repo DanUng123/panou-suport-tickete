@@ -14,9 +14,9 @@
   --text: #e9ecf1;
   --text-secondary: #8d96a6;
   --text-dim: #5f6878;
-  --accent: #e8a33d;
-  --accent-dim: #7a5a28;
-  --accent-text: #1a1206;
+  --accent: #2f6fed;
+  --accent-dim: #0f2138;
+  --accent-text: #ffffff;
 
   --status-open: #e8a33d;
   --status-in_progress: #4c8fe8;
@@ -66,7 +66,7 @@ a { color: inherit; text-decoration: none; }
   align-items: center;
   justify-content: center;
   background:
-    radial-gradient(circle at 20% 20%, rgba(232,163,61,0.08), transparent 40%),
+    radial-gradient(circle at 20% 20%, rgba(47,111,237,0.08), transparent 40%),
     var(--bg);
 }
 
