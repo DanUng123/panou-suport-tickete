@@ -279,6 +279,8 @@ async function handleApi(req, res, pathname, query) {
         category: query.category || undefined,
         section: query.section || undefined,
         assignedTo: query.assignedTo || undefined,
+        dateFrom: query.dateFrom || undefined,
+        dateTo: query.dateTo || undefined,
         q: query.q || undefined,
         sort: query.sort || undefined,
       };
@@ -362,6 +364,8 @@ async function handleApi(req, res, pathname, query) {
         assignedTo: query.assignedTo || undefined,
         needsAwb: query.needsAwb === '1' ? true : undefined,
         hasAwb: query.needsAwb === '0' ? true : undefined,
+        dateFrom: query.dateFrom || undefined,
+        dateTo: query.dateTo || undefined,
         q: query.q || undefined,
       };
       return sendJSON(res, 200, db.listOrders(filters));

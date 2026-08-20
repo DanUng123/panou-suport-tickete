@@ -386,6 +386,88 @@ function parseListRoute(hash) {
   return Object.fromEntries(new URLSearchParams(qs || ''));
 }
 
+// ---------------- Selector de perioadă (reutilizabil: tichete + comenzi) ----------------
+
+function computePeriodRange(period, customFrom, customTo) {
+  const now = new Date();
+  let from = null, to = null;
+  if (period === 'today') {
+    from = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    to = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+  } else if (period === 'week') {
+    const day = now.getDay();
+    const diffToMonday = (day === 0 ? -6 : 1 - day);
+    const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diffToMonday, 0, 0, 0, 0);
+    const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6, 23, 59, 59, 999);
+    from = monday; to = sunday;
+  } else if (period === 'month') {
+    from = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+    to = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+  } else if (period === 'custom') {
+    from = customFrom ? new Date(customFrom + 'T00:00:00') : null;
+    to = customTo ? new Date(customTo + 'T23:59:59') : null;
+  }
+  return { dateFrom: from ? from.toISOString() : '', dateTo: to ? to.toISOString() : '' };
+}
+
+function detectActivePeriod(dateFrom, dateTo) {
+  if (!dateFrom && !dateTo) return 'all';
+  for (const p of ['today', 'week', 'month']) {
+    const r = computePeriodRange(p);
+    if (r.dateFrom === dateFrom && r.dateTo === dateTo) return p;
+  }
+  return 'custom';
+}
+
+/** Randează selectorul de perioadă într-un container și apelează applyFn({dateFrom, dateTo}) la selecție. */
+function renderPeriodPicker(container, filters, applyFn) {
+  const active = detectActivePeriod(filters.dateFrom, filters.dateTo);
+  const options = [
+    { key: 'all', label: '↺ Toate' },
+    { key: 'today', label: 'Azi' },
+    { key: 'week', label: 'Săptămâna aceasta' },
+    { key: 'month', label: 'Luna aceasta' },
+    { key: 'custom', label: 'Personalizat' },
+  ];
+  container.innerHTML = `
+    <div class="status-pills" id="periodPillsRow">
+      ${options.map((o) => `<button class="status-pill ${active === o.key ? 'active' : ''}" data-period="${o.key}">${o.label}</button>`).join('')}
+    </div>
+    <div class="period-custom-inputs" id="periodCustomInputs" style="${active === 'custom' ? 'display:flex;' : 'display:none;'}">
+      <input type="date" id="periodFromInput" value="${filters.dateFrom ? filters.dateFrom.slice(0, 10) : ''}" />
+      <span class="period-arrow">→</span>
+      <input type="date" id="periodToInput" value="${filters.dateTo ? filters.dateTo.slice(0, 10) : ''}" />
+      <button class="btn btn-sm btn-primary" id="periodApplyBtn">Aplică</button>
+    </div>
+  `;
+
+  container.querySelectorAll('.status-pill').forEach((pill) => {
+    pill.addEventListener('click', () => {
+      const period = pill.dataset.period;
+      if (period === 'custom') {
+        container.querySelectorAll('.status-pill').forEach((p) => p.classList.remove('active'));
+        pill.classList.add('active');
+        container.querySelector('#periodCustomInputs').style.display = 'flex';
+        return; // asteptam butonul Aplica
+      }
+      if (period === 'all') {
+        applyFn({ dateFrom: '', dateTo: '' });
+        return;
+      }
+      applyFn(computePeriodRange(period));
+    });
+  });
+
+  const applyBtn = container.querySelector('#periodApplyBtn');
+  if (applyBtn) {
+    applyBtn.addEventListener('click', () => {
+      const from = container.querySelector('#periodFromInput').value;
+      const to = container.querySelector('#periodToInput').value;
+      applyFn(computePeriodRange('custom', from, to));
+    });
+  }
+}
+
 const SECTION_CONFIG = {
   '#/tickets': { section: 'support', title: 'Tichete', sub: 'Toate solicitările clienților' },
   '#/service': { section: 'service', title: 'Service', sub: 'Tichete cu ridicare pentru reparație/service' },
@@ -407,7 +489,7 @@ async function renderTicketsList(route) {
         <button class="btn btn-primary" id="newTicketBtn">+ Tichet nou</button>
       </div>
       <div class="filters-bar">
-        <input type="text" id="q" placeholder="Caută subiect, client, ID…" value="${escapeHtml(filters.q || '')}" />
+        <input type="text" id="q" placeholder="Caută subiect, client, ID, telefon, AWB…" value="${escapeHtml(filters.q || '')}" />
         <select id="f-status">
           <option value="">Toate statusurile</option>
           ${Object.entries(STATUS_LABELS).map(([v, l]) => `<option value="${v}" ${filters.status === v ? 'selected' : ''}>${l}</option>`).join('')}
@@ -426,6 +508,8 @@ async function renderTicketsList(route) {
           ${agentsCache.map((a) => `<option value="${a.id}" ${filters.assignedTo === a.id ? 'selected' : ''}>${escapeHtml(a.name)}</option>`).join('')}
         </select>
       </div>
+      <div class="status-pills-label">Perioadă</div>
+      <div id="periodPickerContainer"></div>
       <div id="list-body">Se încarcă…</div>
     </div>
   `);
@@ -433,28 +517,33 @@ async function renderTicketsList(route) {
 
   content.querySelector('#newTicketBtn').addEventListener('click', () => openNewTicketDrawer(null));
 
-  function applyFiltersFromForm() {
+  function applyFiltersFromForm(overrides = {}) {
     const params = new URLSearchParams();
     const q = content.querySelector('#q').value.trim();
     const status = content.querySelector('#f-status').value;
     const priority = content.querySelector('#f-priority').value;
     const category = content.querySelector('#f-category').value;
     const assignedTo = content.querySelector('#f-assigned').value;
+    const merged = { dateFrom: filters.dateFrom || '', dateTo: filters.dateTo || '', ...overrides };
     if (q) params.set('q', q);
     if (status) params.set('status', status);
     if (priority) params.set('priority', priority);
     if (category) params.set('category', category);
     if (assignedTo) params.set('assignedTo', assignedTo);
+    if (merged.dateFrom) params.set('dateFrom', merged.dateFrom);
+    if (merged.dateTo) params.set('dateTo', merged.dateTo);
     navigate(`${route}?${params.toString()}`);
   }
 
+  renderPeriodPicker(content.querySelector('#periodPickerContainer'), filters, applyFiltersFromForm);
+
   ['#f-status', '#f-priority', '#f-category', '#f-assigned'].forEach((sel) => {
-    content.querySelector(sel).addEventListener('change', applyFiltersFromForm);
+    content.querySelector(sel).addEventListener('change', () => applyFiltersFromForm());
   });
   let qTimer;
   content.querySelector('#q').addEventListener('input', () => {
     clearTimeout(qTimer);
-    qTimer = setTimeout(applyFiltersFromForm, 350);
+    qTimer = setTimeout(() => applyFiltersFromForm(), 350);
   });
 
   const listBody = content.querySelector('#list-body');
@@ -973,8 +1062,10 @@ async function renderOrdersList() {
       <div id="sync-banner"></div>
       <div class="stat-grid" id="order-stats" style="margin-bottom:18px;"></div>
       <div class="filters-search-row">
-        <input type="text" id="q" placeholder="Caută client, oraș, ID comandă…" value="${escapeHtml(filters.q || '')}" />
+        <input type="text" id="q" placeholder="Caută client, oraș, ID comandă, telefon, AWB…" value="${escapeHtml(filters.q || '')}" />
       </div>
+      <div class="status-pills-label">Perioadă</div>
+      <div id="periodPickerContainer"></div>
       <div class="status-pills-label">Status livrare</div>
       <div class="status-pills" id="statusPills"></div>
       <div class="status-pills-label">Status plată</div>
@@ -985,6 +1076,8 @@ async function renderOrdersList() {
     </div>
   `);
   renderShell('#/orders', content);
+
+  renderPeriodPicker(content.querySelector('#periodPickerContainer'), filters, (range) => applyFiltersFromForm(range));
 
   // status sincronizare
   try {
@@ -1026,6 +1119,8 @@ async function renderOrdersList() {
       internalStatus: filters.internalStatus || '',
       assignedTo: filters.assignedTo || '',
       needsAwb: filters.needsAwb || '',
+      dateFrom: filters.dateFrom || '',
+      dateTo: filters.dateTo || '',
       ...overrides,
     };
     if (q) params.set('q', q);
@@ -1034,6 +1129,8 @@ async function renderOrdersList() {
     if (merged.internalStatus) params.set('internalStatus', merged.internalStatus);
     if (merged.assignedTo) params.set('assignedTo', merged.assignedTo);
     if (merged.needsAwb) params.set('needsAwb', merged.needsAwb);
+    if (merged.dateFrom) params.set('dateFrom', merged.dateFrom);
+    if (merged.dateTo) params.set('dateTo', merged.dateTo);
     navigate(`#/orders?${params.toString()}`);
   }
 
