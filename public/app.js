@@ -1136,6 +1136,9 @@ async function openOrderDrawer(orderId) {
   function paint() {
     const items = (order.lineItems || []).map((it) => `
       <div class="line-item-row">
+        ${it.product_image_url
+          ? `<img class="li-thumb" src="${escapeHtml(it.product_image_url)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'li-thumb li-thumb-placeholder',textContent:'—'}))" />`
+          : `<div class="li-thumb li-thumb-placeholder">—</div>`}
         <div class="li-name">${escapeHtml(it.product_name || '—')}${it.product_sku ? ` <span style="color:var(--text-dim);">(${escapeHtml(it.product_sku)})</span>` : ''}</div>
         <div class="li-qty">× ${it.quantity ?? 1}</div>
         <div class="li-price">${fmtMoney(it.line_subtotal_gross ?? it.unit_price_gross, order.currency)}</div>
