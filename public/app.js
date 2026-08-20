@@ -47,6 +47,7 @@ let currentAgent = null;
 let agentsCache = [];
 let categoriesCache = [];
 let glsConfigured = false;
+let platformLabel = 'MERCHANTPRO';
 
 // ---------------- utilitare ----------------
 
@@ -993,6 +994,7 @@ async function renderOrdersList() {
   // status sincronizare
   try {
     const syncStatus = await api('/api/orders/sync-status');
+    platformLabel = syncStatus.platformLabel || 'MERCHANTPRO';
     const banner = content.querySelector('#sync-banner');
     if (!syncStatus.configured) {
       banner.innerHTML = `<div class="panel" style="margin-bottom:16px;border-color:var(--priority-high);">
@@ -1077,26 +1079,34 @@ async function renderOrdersList() {
     return;
   }
 
-  const rows = orders.map((o) => `
+  const rows = orders.map((o) => {
+    const thumbs = (o.lineItems || []).slice(0, 3).map((it) => it.product_image_url
+      ? `<img class="order-thumb" src="${escapeHtml(it.product_image_url)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'order-thumb order-thumb-placeholder',textContent:'—'}))" />`
+      : `<div class="order-thumb order-thumb-placeholder">—</div>`).join('');
+    const extraCount = (o.lineItems || []).length - 3;
+
+    return `
     <div class="order-row" data-id="${o.id}">
+      <div class="order-platform"><span class="platform-dot"></span>${escapeHtml(platformLabel)}</div>
       <div class="order-id">#${o.mpId}</div>
       <div class="order-client">
         <div class="t-title">${escapeHtml(o.shippingName || o.billingName || '—')}</div>
-        <div class="t-requester">${escapeHtml(o.shippingCity || '')}${o.shippingCity && o.shippingCountryName ? ', ' : ''}${escapeHtml(o.shippingCountryName || '')}</div>
+        <div class="t-requester">${escapeHtml(o.shippingCity || '')}</div>
       </div>
+      <div class="order-thumbs">${thumbs}${extraCount > 0 ? `<div class="order-thumb order-thumb-more">+${extraCount}</div>` : ''}</div>
       <div class="order-total">${fmtMoney(o.totalAmount, o.currency)}</div>
-      <div><span class="badge ${paymentBadgeClass(o.paymentStatus)}">${PAYMENT_STATUS_LABELS_MP[o.paymentStatus] || o.paymentStatus || '—'}</span></div>
+      <div><span class="badge badge-status-closed">${escapeHtml(o.paymentMethodName || '—')}</span></div>
       <div><span class="badge ${shippingBadgeClass(o.shippingStatus)}">${SHIPPING_STATUS_LABELS_MP[o.shippingStatus] || o.shippingStatus || '—'}</span></div>
-      <div><span class="badge ${internalOrderBadgeClass(o.internalStatus)}">${INTERNAL_ORDER_STATUS_LABELS[o.internalStatus] || o.internalStatus}</span></div>
-      <div class="order-awb">${o.awbNumber ? escapeHtml(o.awbNumber) : '<span style="color:var(--text-dim);">—</span>'}</div>
+      <div class="order-invoice">—</div>
       <div class="ticket-date">${fmtDate(o.dateCreated)}</div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 
   listBody.innerHTML = `
     <div class="ticket-table">
       <div class="order-row header">
-        <div>ID</div><div>Client</div><div>Total</div><div>Plată</div><div>Livrare</div><div>Status intern</div><div>AWB</div><div>Creată</div>
+        <div>Platformă</div><div>Comandă</div><div>Client</div><div>Produse</div><div>Total</div><div>Metodă</div><div>Livrare</div><div>Factură</div><div>Data</div>
       </div>
       ${rows}
     </div>

@@ -331,7 +331,14 @@ async function handleApi(req, res, pathname, query) {
     // ---- comenzi (MerchantPro) ----
 
     if (pathname === '/api/orders/sync-status' && req.method === 'GET') {
-      return sendJSON(res, 200, orderSync.getSyncStatus());
+      const status = orderSync.getSyncStatus();
+      let platformLabel = 'MERCHANTPRO';
+      try {
+        const host = new URL(process.env.MERCHANTPRO_SHOP_URL || '').hostname;
+        const bareHost = host.replace(/^www\./, '').split('.')[0];
+        if (bareHost) platformLabel = bareHost.toUpperCase();
+      } catch (e) { /* URL lipsa/invalida, pastram implicitul */ }
+      return sendJSON(res, 200, { ...status, platformLabel });
     }
 
     if (pathname === '/api/orders/sync' && req.method === 'POST') {
