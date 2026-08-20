@@ -964,12 +964,10 @@ async function renderOrdersList() {
       </div>
       <div id="sync-banner"></div>
       <div class="stat-grid" id="order-stats" style="margin-bottom:18px;"></div>
+      <div class="status-pills-label">Status livrare</div>
+      <div class="status-pills" id="statusPills"></div>
       <div class="filters-bar">
         <input type="text" id="q" placeholder="Caută client, oraș, ID comandă…" value="${escapeHtml(filters.q || '')}" />
-        <select id="f-shipping">
-          <option value="">Toate statusurile livrare</option>
-          ${Object.entries(SHIPPING_STATUS_LABELS_MP).map(([v, l]) => `<option value="${v}" ${filters.shippingStatus === v ? 'selected' : ''}>${l}</option>`).join('')}
-        </select>
         <select id="f-payment">
           <option value="">Toate statusurile plată</option>
           ${Object.entries(PAYMENT_STATUS_LABELS_MP).map(([v, l]) => `<option value="${v}" ${filters.paymentStatus === v ? 'selected' : ''}>${l}</option>`).join('')}
@@ -1020,20 +1018,42 @@ async function renderOrdersList() {
     }
   });
 
-  // statistici
+  // statistici + pastile de status livrare
   try {
     const stats = await api('/api/orders/stats');
     content.querySelector('#order-stats').innerHTML = `
       <div class="stat-tile accented"><div class="label">Total comenzi</div><div class="value">${stats.total}</div></div>
       <div class="stat-tile"><div class="label">Fără AWB</div><div class="value">${stats.needsAwb}</div></div>
-      ${Object.entries(stats.byShippingStatus).map(([s, c]) => `<div class="stat-tile"><div class="label">${escapeHtml(SHIPPING_STATUS_LABELS_MP[s] || s)}</div><div class="value">${c}</div></div>`).join('')}
     `;
+
+    const statusDotVar = {
+      awaiting: 'var(--status-open)',
+      confirmed: 'var(--accent)',
+      in_process: 'var(--status-waiting)',
+      shipped: 'var(--status-in_progress)',
+      delivered: 'var(--status-resolved)',
+      returned: 'var(--status-closed)',
+      cancelled: 'var(--priority-urgent)',
+    };
+
+    const pillsHtml = [
+      `<button class="status-pill ${!filters.shippingStatus ? 'active' : ''}" data-status="">↺ Toate</button>`,
+      ...Object.entries(SHIPPING_STATUS_LABELS_MP).map(([v, l]) => {
+        const count = stats.byShippingStatus[v] || 0;
+        return `<button class="status-pill ${filters.shippingStatus === v ? 'active' : ''}" data-status="${v}"><span class="status-pill-dot" style="background:${statusDotVar[v] || 'var(--text-dim)'}"></span>${l}<span class="status-pill-count">${count}</span></button>`;
+      }),
+    ].join('');
+    content.querySelector('#statusPills').innerHTML = pillsHtml;
+
+    content.querySelectorAll('.status-pill').forEach((pill) => {
+      pill.addEventListener('click', () => applyFiltersFromForm({ shippingStatus: pill.dataset.status }));
+    });
   } catch (e) { /* n-o afisam ca eroare blocanta */ }
 
-  function applyFiltersFromForm() {
+  function applyFiltersFromForm(overrides = {}) {
     const params = new URLSearchParams();
     const q = content.querySelector('#q').value.trim();
-    const shippingStatus = content.querySelector('#f-shipping').value;
+    const shippingStatus = overrides.shippingStatus !== undefined ? overrides.shippingStatus : (filters.shippingStatus || '');
     const paymentStatus = content.querySelector('#f-payment').value;
     const internalStatus = content.querySelector('#f-internal').value;
     const assignedTo = content.querySelector('#f-assigned').value;
@@ -1046,13 +1066,13 @@ async function renderOrdersList() {
     if (needsAwb) params.set('needsAwb', '1');
     navigate(`#/orders?${params.toString()}`);
   }
-  ['#f-shipping', '#f-payment', '#f-internal', '#f-assigned', '#f-needsawb'].forEach((sel) => {
-    content.querySelector(sel).addEventListener('change', applyFiltersFromForm);
+  ['#f-payment', '#f-internal', '#f-assigned', '#f-needsawb'].forEach((sel) => {
+    content.querySelector(sel).addEventListener('change', () => applyFiltersFromForm());
   });
   let qTimer;
   content.querySelector('#q').addEventListener('input', () => {
     clearTimeout(qTimer);
-    qTimer = setTimeout(applyFiltersFromForm, 350);
+    qTimer = setTimeout(() => applyFiltersFromForm(), 350);
   });
 
   const listBody = content.querySelector('#orders-body');
