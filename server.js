@@ -361,6 +361,7 @@ async function handleApi(req, res, pathname, query) {
         internalStatus: query.internalStatus || undefined,
         assignedTo: query.assignedTo || undefined,
         needsAwb: query.needsAwb === '1' ? true : undefined,
+        hasAwb: query.needsAwb === '0' ? true : undefined,
         q: query.q || undefined,
       };
       return sendJSON(res, 200, db.listOrders(filters));

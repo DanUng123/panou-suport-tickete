@@ -964,25 +964,19 @@ async function renderOrdersList() {
       </div>
       <div id="sync-banner"></div>
       <div class="stat-grid" id="order-stats" style="margin-bottom:18px;"></div>
+      <div class="filters-search-row">
+        <input type="text" id="q" placeholder="Caută client, oraș, ID comandă…" value="${escapeHtml(filters.q || '')}" />
+      </div>
       <div class="status-pills-label">Status livrare</div>
       <div class="status-pills" id="statusPills"></div>
-      <div class="filters-bar">
-        <input type="text" id="q" placeholder="Caută client, oraș, ID comandă…" value="${escapeHtml(filters.q || '')}" />
-        <select id="f-payment">
-          <option value="">Toate statusurile plată</option>
-          ${Object.entries(PAYMENT_STATUS_LABELS_MP).map(([v, l]) => `<option value="${v}" ${filters.paymentStatus === v ? 'selected' : ''}>${l}</option>`).join('')}
-        </select>
-        <select id="f-internal">
-          <option value="">Toate statusurile interne</option>
-          ${Object.entries(INTERNAL_ORDER_STATUS_LABELS).map(([v, l]) => `<option value="${v}" ${filters.internalStatus === v ? 'selected' : ''}>${l}</option>`).join('')}
-        </select>
-        <select id="f-assigned">
-          <option value="">Toți agenții</option>
-          <option value="unassigned" ${filters.assignedTo === 'unassigned' ? 'selected' : ''}>Neasignat</option>
-          ${agentsCache.map((a) => `<option value="${a.id}" ${filters.assignedTo === a.id ? 'selected' : ''}>${escapeHtml(a.name)}</option>`).join('')}
-        </select>
-        <label class="checkbox-label"><input type="checkbox" id="f-needsawb" ${filters.needsAwb === '1' ? 'checked' : ''} /> Fără AWB</label>
-      </div>
+      <div class="status-pills-label">Status plată</div>
+      <div class="status-pills" id="paymentPills"></div>
+      <div class="status-pills-label">Status intern</div>
+      <div class="status-pills" id="internalPills"></div>
+      <div class="status-pills-label">Agent responsabil</div>
+      <div class="status-pills" id="agentPills"></div>
+      <div class="status-pills-label">AWB</div>
+      <div class="status-pills" id="awbPills"></div>
       <div id="orders-body">Se încarcă…</div>
     </div>
   `);
@@ -1018,7 +1012,47 @@ async function renderOrdersList() {
     }
   });
 
-  // statistici + pastile de status livrare
+  // statistici + pastile pentru toate filtrele
+  function applyFiltersFromForm(overrides = {}) {
+    const params = new URLSearchParams();
+    const q = content.querySelector('#q').value.trim();
+    const merged = {
+      shippingStatus: filters.shippingStatus || '',
+      paymentStatus: filters.paymentStatus || '',
+      internalStatus: filters.internalStatus || '',
+      assignedTo: filters.assignedTo || '',
+      needsAwb: filters.needsAwb || '',
+      ...overrides,
+    };
+    if (q) params.set('q', q);
+    if (merged.shippingStatus) params.set('shippingStatus', merged.shippingStatus);
+    if (merged.paymentStatus) params.set('paymentStatus', merged.paymentStatus);
+    if (merged.internalStatus) params.set('internalStatus', merged.internalStatus);
+    if (merged.assignedTo) params.set('assignedTo', merged.assignedTo);
+    if (merged.needsAwb) params.set('needsAwb', merged.needsAwb);
+    navigate(`#/orders?${params.toString()}`);
+  }
+
+  let qTimer;
+  content.querySelector('#q').addEventListener('input', () => {
+    clearTimeout(qTimer);
+    qTimer = setTimeout(() => applyFiltersFromForm(), 350);
+  });
+
+  function buildPillRow(containerId, { activeValue, filterKey, allLabel, entries }) {
+    const html = [
+      `<button class="status-pill ${!activeValue ? 'active' : ''}" data-value="">↺ ${allLabel}</button>`,
+      ...entries.map(({ value, label, count, dot }) =>
+        `<button class="status-pill ${activeValue === value ? 'active' : ''}" data-value="${value}">${dot ? `<span class="status-pill-dot" style="background:${dot}"></span>` : ''}${label}<span class="status-pill-count">${count}</span></button>`
+      ),
+    ].join('');
+    const container = content.querySelector(containerId);
+    container.innerHTML = html;
+    container.querySelectorAll('.status-pill').forEach((pill) => {
+      pill.addEventListener('click', () => applyFiltersFromForm({ [filterKey]: pill.dataset.value }));
+    });
+  }
+
   try {
     const stats = await api('/api/orders/stats');
     content.querySelector('#order-stats').innerHTML = `
@@ -1026,54 +1060,50 @@ async function renderOrdersList() {
       <div class="stat-tile"><div class="label">Fără AWB</div><div class="value">${stats.needsAwb}</div></div>
     `;
 
-    const statusDotVar = {
-      awaiting: 'var(--status-open)',
-      confirmed: 'var(--accent)',
-      in_process: 'var(--status-waiting)',
-      shipped: 'var(--status-in_progress)',
-      delivered: 'var(--status-resolved)',
-      returned: 'var(--status-closed)',
-      cancelled: 'var(--priority-urgent)',
+    const shippingDotVar = {
+      awaiting: 'var(--status-open)', confirmed: 'var(--accent)', in_process: 'var(--status-waiting)',
+      shipped: 'var(--status-in_progress)', delivered: 'var(--status-resolved)',
+      returned: 'var(--status-closed)', cancelled: 'var(--priority-urgent)',
     };
+    buildPillRow('#statusPills', {
+      activeValue: filters.shippingStatus || '', filterKey: 'shippingStatus', allLabel: 'Toate',
+      entries: Object.entries(SHIPPING_STATUS_LABELS_MP).map(([v, l]) => ({ value: v, label: l, count: stats.byShippingStatus[v] || 0, dot: shippingDotVar[v] })),
+    });
 
-    const pillsHtml = [
-      `<button class="status-pill ${!filters.shippingStatus ? 'active' : ''}" data-status="">↺ Toate</button>`,
-      ...Object.entries(SHIPPING_STATUS_LABELS_MP).map(([v, l]) => {
-        const count = stats.byShippingStatus[v] || 0;
-        return `<button class="status-pill ${filters.shippingStatus === v ? 'active' : ''}" data-status="${v}"><span class="status-pill-dot" style="background:${statusDotVar[v] || 'var(--text-dim)'}"></span>${l}<span class="status-pill-count">${count}</span></button>`;
-      }),
-    ].join('');
-    content.querySelector('#statusPills').innerHTML = pillsHtml;
+    const paymentDotVar = {
+      temporary: 'var(--status-closed)', awaiting: 'var(--status-open)', paid: 'var(--status-resolved)',
+      failed: 'var(--priority-urgent)', canceled: 'var(--status-closed)', refunded: 'var(--status-waiting)', rejected: 'var(--priority-urgent)',
+    };
+    buildPillRow('#paymentPills', {
+      activeValue: filters.paymentStatus || '', filterKey: 'paymentStatus', allLabel: 'Toate',
+      entries: Object.entries(PAYMENT_STATUS_LABELS_MP).map(([v, l]) => ({ value: v, label: l, count: stats.byPaymentStatus[v] || 0, dot: paymentDotVar[v] })),
+    });
 
-    content.querySelectorAll('.status-pill').forEach((pill) => {
-      pill.addEventListener('click', () => applyFiltersFromForm({ shippingStatus: pill.dataset.status }));
+    const internalDotVar = {
+      new: 'var(--status-open)', processing: 'var(--status-in_progress)', awb_generated: 'var(--status-waiting)',
+      shipped: 'var(--status-resolved)', problem: 'var(--priority-urgent)', done: 'var(--status-closed)',
+    };
+    buildPillRow('#internalPills', {
+      activeValue: filters.internalStatus || '', filterKey: 'internalStatus', allLabel: 'Toate',
+      entries: Object.entries(INTERNAL_ORDER_STATUS_LABELS).map(([v, l]) => ({ value: v, label: l, count: stats.byInternalStatus[v] || 0, dot: internalDotVar[v] })),
+    });
+
+    buildPillRow('#agentPills', {
+      activeValue: filters.assignedTo || '', filterKey: 'assignedTo', allLabel: 'Toți',
+      entries: [
+        { value: 'unassigned', label: 'Neasignat', count: stats.byAssignedTo.unassigned || 0 },
+        ...agentsCache.map((a) => ({ value: a.id, label: a.name, count: stats.byAssignedTo[a.id] || 0 })),
+      ],
+    });
+
+    buildPillRow('#awbPills', {
+      activeValue: filters.needsAwb || '', filterKey: 'needsAwb', allLabel: 'Toate',
+      entries: [
+        { value: '1', label: 'Fără AWB', count: stats.needsAwb, dot: 'var(--priority-high)' },
+        { value: '0', label: 'Cu AWB', count: stats.withAwb, dot: 'var(--status-resolved)' },
+      ],
     });
   } catch (e) { /* n-o afisam ca eroare blocanta */ }
-
-  function applyFiltersFromForm(overrides = {}) {
-    const params = new URLSearchParams();
-    const q = content.querySelector('#q').value.trim();
-    const shippingStatus = overrides.shippingStatus !== undefined ? overrides.shippingStatus : (filters.shippingStatus || '');
-    const paymentStatus = content.querySelector('#f-payment').value;
-    const internalStatus = content.querySelector('#f-internal').value;
-    const assignedTo = content.querySelector('#f-assigned').value;
-    const needsAwb = content.querySelector('#f-needsawb').checked;
-    if (q) params.set('q', q);
-    if (shippingStatus) params.set('shippingStatus', shippingStatus);
-    if (paymentStatus) params.set('paymentStatus', paymentStatus);
-    if (internalStatus) params.set('internalStatus', internalStatus);
-    if (assignedTo) params.set('assignedTo', assignedTo);
-    if (needsAwb) params.set('needsAwb', '1');
-    navigate(`#/orders?${params.toString()}`);
-  }
-  ['#f-payment', '#f-internal', '#f-assigned', '#f-needsawb'].forEach((sel) => {
-    content.querySelector(sel).addEventListener('change', () => applyFiltersFromForm());
-  });
-  let qTimer;
-  content.querySelector('#q').addEventListener('input', () => {
-    clearTimeout(qTimer);
-    qTimer = setTimeout(() => applyFiltersFromForm(), 350);
-  });
 
   const listBody = content.querySelector('#orders-body');
   const apiFilters = { ...filters };

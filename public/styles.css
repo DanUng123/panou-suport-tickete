@@ -446,6 +446,25 @@ a { color: inherit; text-decoration: none; }
   color: var(--accent);
 }
 
+.filters-search-row {
+  margin-bottom: 18px;
+}
+.filters-search-row input[type="text"] {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 9px 12px;
+  font-size: 12.5px;
+  color: var(--text);
+  width: 100%;
+  max-width: 360px;
+}
+.filters-search-row input[type="text"]:focus { border-color: var(--accent); }
+
+.status-pills-label:not(:first-of-type) {
+  margin-top: 6px;
+}
+
 .filters-bar {
   display: flex;
   gap: 8px;
