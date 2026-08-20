@@ -1146,7 +1146,7 @@ async function renderOrdersList() {
       <div class="order-total">${fmtMoney(o.totalAmount, o.currency)}</div>
       <div><span class="badge badge-status-closed">${escapeHtml(o.paymentMethodName || '—')}</span></div>
       <div><span class="badge ${shippingBadgeClass(o.shippingStatus)}">${SHIPPING_STATUS_LABELS_MP[o.shippingStatus] || o.shippingStatus || '—'}</span></div>
-      <div class="order-invoice">—</div>
+      <div class="order-invoice">${o.invoice && !o.invoice.cancelled ? `<span class="badge badge-status-resolved" title="Factura ${escapeHtml(o.invoice.prefix || '')} ${escapeHtml(o.invoice.number || '')}">📄</span>` : '<span style="color:var(--text-dim);">—</span>'}</div>
       <div class="ticket-date">${fmtDate(o.dateCreated)}</div>
     </div>
   `;
@@ -1312,6 +1312,29 @@ async function openOrderDrawer(orderId) {
             ${order.shippingAwb && !order.awbNumber ? `<div class="hint" style="margin-top:8px;">AWB existent în MerchantPro: <strong style="color:var(--text);">${escapeHtml(order.shippingAwb)}</strong></div>` : ''}
           </div>
 
+          <div class="side-panel" style="margin-bottom:16px;">
+            <h2>MerchantPro — AWB &amp; Factură</h2>
+            <div class="form-row">
+              <div class="side-field">
+                <label>AWB (din MerchantPro)</label>
+                <div style="font-size:13px;color:${order.shippingAwb ? 'var(--text)' : 'var(--text-dim)'};padding:8px 0;">${order.shippingAwb ? escapeHtml(order.shippingAwb) : 'Neînregistrat'}</div>
+              </div>
+              <div class="side-field">
+                <label>Factură</label>
+                ${order.invoice && !order.invoice.cancelled ? `
+                  <div style="font-size:13px;color:var(--text);padding:8px 0;">${escapeHtml(order.invoice.prefix || '')} ${escapeHtml(order.invoice.number || '')}</div>
+                ` : `<div style="font-size:13px;color:var(--text-dim);padding:8px 0;">Neemisă</div>`}
+              </div>
+            </div>
+            ${order.invoice && !order.invoice.cancelled && order.invoice.url ? `
+              <a href="${escapeHtml(order.invoice.url)}" target="_blank" rel="noopener" class="btn btn-block" style="margin-bottom:8px;text-decoration:none;">↗ Deschide factura</a>
+            ` : `
+              <button class="btn btn-block btn-primary" id="issueInvoiceBtn">Emite factură în MerchantPro</button>
+              <div class="hint" style="margin-top:8px;">Factura se generează direct în MerchantPro, cu seria și numărătoarea configurate acolo.</div>
+            `}
+            ${order.proformaUrl ? `<a href="${escapeHtml(order.proformaUrl)}" target="_blank" rel="noopener" class="hint" style="display:block;margin-top:8px;color:var(--accent);">↗ Vezi proforma</a>` : ''}
+          </div>
+
           <div class="comments-panel" style="margin-bottom:16px;">
             <h2 style="font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary);margin:0 0 14px;">Produse comandate</h2>
             <div class="line-items-list">${items}</div>
@@ -1384,6 +1407,23 @@ async function openOrderDrawer(orderId) {
         } catch (err) {
           showToast('Eroare la anularea AWB: ' + err.message);
           cancelBtn.disabled = false;
+        }
+      });
+    }
+
+    const issueInvoiceBtn = content.querySelector('#issueInvoiceBtn');
+    if (issueInvoiceBtn) {
+      issueInvoiceBtn.addEventListener('click', async () => {
+        issueInvoiceBtn.disabled = true;
+        issueInvoiceBtn.textContent = 'Se emite…';
+        try {
+          order = await api(`/api/orders/${order.id}/issue-invoice`, { method: 'POST' });
+          showToast('Factură emisă cu succes');
+          paint();
+        } catch (err) {
+          showToast('Eroare la emiterea facturii: ' + err.message);
+          issueInvoiceBtn.disabled = false;
+          issueInvoiceBtn.textContent = 'Emite factură în MerchantPro';
         }
       });
     }

@@ -399,6 +399,22 @@ async function handleApi(req, res, pathname, query) {
       return sendJSON(res, 200, db.getTicketsForOrder(orderTicketsMatch[1]));
     }
 
+    const issueInvoiceMatch = pathname.match(/^\/api\/orders\/([^/]+)\/issue-invoice$/);
+    if (issueInvoiceMatch && req.method === 'POST') {
+      if (!mp.isConfigured()) return sendJSON(res, 400, { error: 'Integrarea MerchantPro nu este configurată pe server.' });
+      const order = db.getOrder(issueInvoiceMatch[1]);
+      if (!order) return sendJSON(res, 404, { error: 'Comandă negăsită' });
+      try {
+        await mp.issueInvoice(order.mpId);
+        // factura nu vine in raspunsul de mai sus -- resincronizam comanda ca sa o preluam
+        const fresh = await mp.getOrder(order.mpId);
+        db.upsertOrderFromMerchantPro(fresh);
+        return sendJSON(res, 200, db.getOrder(order.id));
+      } catch (e) {
+        return sendJSON(res, 502, { error: e.message });
+      }
+    }
+
     // ---- AWB / curier GLS ----
 
     if (pathname === '/api/gls/status' && req.method === 'GET') {
