@@ -1144,7 +1144,7 @@ async function renderOrdersList() {
       </div>
       <div class="order-thumbs">${thumbs}${extraCount > 0 ? `<div class="order-thumb order-thumb-more">+${extraCount}</div>` : ''}</div>
       <div class="order-total">${fmtMoney(o.totalAmount, o.currency)}</div>
-      <div><span class="badge badge-status-closed">${escapeHtml(o.paymentMethodName || '—')}</span></div>
+      <div style="min-width:0;overflow:hidden;"><span class="badge badge-status-closed" style="max-width:100%;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(o.paymentMethodName || '—')}</span></div>
       <div class="order-awb-status">
         <div class="awb-status-line"><span class="awb-status-dot ${o.awbNumber || o.shippingAwb ? 'has-awb' : ''}"></span>${o.awbNumber || o.shippingAwb ? 'AWB emis' : 'Fără AWB'}</div>
         <div class="awb-status-sub">site: ${escapeHtml(SHIPPING_STATUS_LABELS_MP[o.shippingStatus] || o.shippingStatus || '—')}</div>

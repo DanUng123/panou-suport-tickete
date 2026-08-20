@@ -522,8 +522,8 @@ a { color: inherit; text-decoration: none; }
 
 .ticket-id { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-dim); }
 .ticket-subject { min-width: 0; }
-.ticket-subject .t-title { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ticket-subject .t-requester { font-size: 11.5px; color: var(--text-dim); margin-top: 2px; }
+.ticket-subject .t-title, .order-client .t-title { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ticket-subject .t-requester, .order-client .t-requester { font-size: 11.5px; color: var(--text-dim); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ticket-cat { color: var(--text-secondary); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ticket-assignee { font-size: 12.5px; color: var(--text-secondary); }
 .ticket-date { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-dim); }
@@ -729,13 +729,16 @@ a { color: inherit; text-decoration: none; }
 
 .order-row {
   display: grid;
-  grid-template-columns: 110px 90px 1.2fr 100px 95px 105px 145px 105px 115px;
+  grid-template-columns: 105px 85px 1.1fr 90px 100px 130px 155px 145px 90px;
   align-items: center;
-  gap: 12px;
-  padding: 13px 16px;
+  gap: 10px;
+  padding: 14px 16px;
   border-bottom: 1px solid var(--border);
   cursor: pointer;
   font-size: 13px;
+}
+.order-row > * {
+  min-width: 0;
 }
 .order-row:last-child { border-bottom: none; }
 .order-row:hover { background: var(--surface-hover); }
@@ -753,15 +756,16 @@ a { color: inherit; text-decoration: none; }
 .order-client { min-width: 0; }
 .order-total { font-family: var(--font-mono); font-size: 13px; font-weight: 600; text-align: right; }
 .order-awb { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.order-invoice { color: var(--text-dim); }
+.order-invoice { color: var(--text-dim); overflow: hidden; }
 
-.order-awb-status { min-width: 0; }
+.order-awb-status { min-width: 0; overflow: hidden; }
 .awb-status-line {
   display: flex;
   align-items: center;
   gap: 6px;
   font-size: 12.5px;
   color: var(--text-secondary);
+  white-space: nowrap;
 }
 .awb-status-dot {
   width: 6px;
@@ -782,15 +786,19 @@ a { color: inherit; text-decoration: none; }
 
 .invoice-badge {
   display: inline-block;
+  max-width: 100%;
   padding: 3px 9px;
   border-radius: 6px;
   background: rgba(76,175,125,0.12);
   border: 1px solid rgba(76,175,125,0.35);
   color: var(--status-resolved);
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 600;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-sizing: border-box;
 }
 
 .order-platform {
