@@ -1145,8 +1145,11 @@ async function renderOrdersList() {
       <div class="order-thumbs">${thumbs}${extraCount > 0 ? `<div class="order-thumb order-thumb-more">+${extraCount}</div>` : ''}</div>
       <div class="order-total">${fmtMoney(o.totalAmount, o.currency)}</div>
       <div><span class="badge badge-status-closed">${escapeHtml(o.paymentMethodName || '—')}</span></div>
-      <div><span class="badge ${shippingBadgeClass(o.shippingStatus)}">${SHIPPING_STATUS_LABELS_MP[o.shippingStatus] || o.shippingStatus || '—'}</span></div>
-      <div class="order-invoice">${o.invoice && !o.invoice.cancelled ? `<span class="badge badge-status-resolved" title="Factura ${escapeHtml(o.invoice.prefix || '')} ${escapeHtml(o.invoice.number || '')}">📄</span>` : '<span style="color:var(--text-dim);">—</span>'}</div>
+      <div class="order-awb-status">
+        <div class="awb-status-line"><span class="awb-status-dot ${o.awbNumber || o.shippingAwb ? 'has-awb' : ''}"></span>${o.awbNumber || o.shippingAwb ? 'AWB emis' : 'Fără AWB'}</div>
+        <div class="awb-status-sub">site: ${escapeHtml(SHIPPING_STATUS_LABELS_MP[o.shippingStatus] || o.shippingStatus || '—')}</div>
+      </div>
+      <div class="order-invoice">${o.invoice && !o.invoice.cancelled ? `<span class="invoice-badge">${escapeHtml(o.invoice.prefix || '')}.${escapeHtml(o.invoice.number || '')}</span>` : '<span style="color:var(--text-dim);">—</span>'}</div>
       <div class="ticket-date">${fmtDate(o.dateCreated)}</div>
     </div>
   `;
