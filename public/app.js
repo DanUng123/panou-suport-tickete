@@ -950,6 +950,14 @@ function fmtMoney(amount, currency) {
   return `${Number(amount).toFixed(2)} ${currency || ''}`.trim();
 }
 
+/** Etichetă scurtă pentru metoda de plată — "Ramburs" pentru plata cash la curier. */
+function paymentMethodLabel(order) {
+  if (order.paymentMethodCode === 'cash_delivery') return 'Ramburs';
+  const name = order.paymentMethodName || '';
+  if (/ramburs|cash.*delivery|cash.*curier/i.test(name)) return 'Ramburs';
+  return name || '—';
+}
+
 async function renderOrdersList() {
   const filters = parseListRoute(window.location.hash);
 
@@ -971,10 +979,6 @@ async function renderOrdersList() {
       <div class="status-pills" id="statusPills"></div>
       <div class="status-pills-label">Status plată</div>
       <div class="status-pills" id="paymentPills"></div>
-      <div class="status-pills-label">Status intern</div>
-      <div class="status-pills" id="internalPills"></div>
-      <div class="status-pills-label">Agent responsabil</div>
-      <div class="status-pills" id="agentPills"></div>
       <div class="status-pills-label">AWB</div>
       <div class="status-pills" id="awbPills"></div>
       <div id="orders-body">Se încarcă…</div>
@@ -1079,23 +1083,6 @@ async function renderOrdersList() {
       entries: Object.entries(PAYMENT_STATUS_LABELS_MP).map(([v, l]) => ({ value: v, label: l, count: stats.byPaymentStatus[v] || 0, dot: paymentDotVar[v] })),
     });
 
-    const internalDotVar = {
-      new: 'var(--status-open)', processing: 'var(--status-in_progress)', awb_generated: 'var(--status-waiting)',
-      shipped: 'var(--status-resolved)', problem: 'var(--priority-urgent)', done: 'var(--status-closed)',
-    };
-    buildPillRow('#internalPills', {
-      activeValue: filters.internalStatus || '', filterKey: 'internalStatus', allLabel: 'Toate',
-      entries: Object.entries(INTERNAL_ORDER_STATUS_LABELS).map(([v, l]) => ({ value: v, label: l, count: stats.byInternalStatus[v] || 0, dot: internalDotVar[v] })),
-    });
-
-    buildPillRow('#agentPills', {
-      activeValue: filters.assignedTo || '', filterKey: 'assignedTo', allLabel: 'Toți',
-      entries: [
-        { value: 'unassigned', label: 'Neasignat', count: stats.byAssignedTo.unassigned || 0 },
-        ...agentsCache.map((a) => ({ value: a.id, label: a.name, count: stats.byAssignedTo[a.id] || 0 })),
-      ],
-    });
-
     buildPillRow('#awbPills', {
       activeValue: filters.needsAwb || '', filterKey: 'needsAwb', allLabel: 'Toate',
       entries: [
@@ -1129,9 +1116,13 @@ async function renderOrdersList() {
   }
 
   const rows = orders.map((o) => {
-    const thumbs = (o.lineItems || []).slice(0, 3).map((it) => it.product_image_url
-      ? `<img class="order-thumb" src="${escapeHtml(it.product_image_url)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'order-thumb order-thumb-placeholder',textContent:'—'}))" />`
-      : `<div class="order-thumb order-thumb-placeholder">—</div>`).join('');
+    const thumbs = (o.lineItems || []).slice(0, 3).map((it) => {
+      const qtyBadge = it.quantity > 1 ? `<span class="thumb-qty-badge">×${it.quantity}</span>` : '';
+      const img = it.product_image_url
+        ? `<img class="order-thumb" src="${escapeHtml(it.product_image_url)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'order-thumb order-thumb-placeholder',textContent:'—'}))" />`
+        : `<div class="order-thumb order-thumb-placeholder">—</div>`;
+      return `<span class="order-thumb-wrap">${img}${qtyBadge}</span>`;
+    }).join('');
     const extraCount = (o.lineItems || []).length - 3;
 
     return `
@@ -1144,7 +1135,7 @@ async function renderOrdersList() {
       </div>
       <div class="order-thumbs">${thumbs}${extraCount > 0 ? `<div class="order-thumb order-thumb-more">+${extraCount}</div>` : ''}</div>
       <div class="order-total">${fmtMoney(o.totalAmount, o.currency)}</div>
-      <div style="min-width:0;overflow:hidden;"><span class="badge badge-status-closed" style="max-width:100%;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(o.paymentMethodName || '—')}</span></div>
+      <div style="min-width:0;overflow:hidden;"><span class="badge badge-status-closed" style="max-width:100%;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(paymentMethodLabel(o))}</span></div>
       <div class="order-awb-status">
         <div class="awb-status-line"><span class="awb-status-dot ${o.awbNumber || o.shippingAwb ? 'has-awb' : ''}"></span>${o.awbNumber || o.shippingAwb ? 'AWB emis' : 'Fără AWB'}</div>
         <div class="awb-status-sub">site: ${escapeHtml(SHIPPING_STATUS_LABELS_MP[o.shippingStatus] || o.shippingStatus || '—')}</div>
