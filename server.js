@@ -557,6 +557,10 @@ async function handleApi(req, res, pathname, query) {
           parcelId: result.parcelId,
           labelPdf: result.labelPdf ? result.labelPdf.toString('base64') : null,
           section: reason,
+          pickupAddress: address,
+          pickupCity: city,
+          pickupPostalCode: postalCode,
+          pickupPhone: phone,
         }, currentAgent);
         return sendJSON(res, 200, { ...updated, labelAvailable: Boolean(result.labelPdf) });
       } catch (e) {
@@ -611,6 +615,129 @@ async function handleApi(req, res, pathname, query) {
         return sendJSON(res, 502, {
           error: `Eticheta nu e salvată local, iar re-cererea ei de la GLS a eșuat (${e.message}). Anulează acest AWB de ridicare și generează unul nou.`,
         });
+      }
+    }
+
+    // ---- AWB de retur (service -> client, dupa reparatie) ----
+
+    const generateReturnMatch = pathname.match(/^\/api\/tickets\/([^/]+)\/generate-return-awb$/);
+    if (generateReturnMatch && req.method === 'POST') {
+      if (!gls.isConfigured()) return sendJSON(res, 400, { error: 'Integrarea GLS nu este configurată pe server.' });
+      const ticket = db.getTicket(generateReturnMatch[1]);
+      if (!ticket) return sendJSON(res, 404, { error: 'Tichet negăsit' });
+      if (ticket.section !== 'service') return sendJSON(res, 400, { error: 'AWB-ul de retur e disponibil doar pentru tichetele de Service.' });
+      if (!ticket.pickupAddress || !ticket.pickupCity || !ticket.pickupPostalCode || !ticket.pickupPhone) {
+        return sendJSON(res, 400, { error: 'Lipsesc datele de adresă ale clientului — nu pot genera AWB-ul de retur.' });
+      }
+      try {
+        const result = await gls.createParcel({
+          mpId: `${ticket.id}-RETUR`,
+          codAmount: 0,
+          currency: 'RON',
+          shippingName: ticket.requesterName,
+          shippingAddress: ticket.pickupAddress,
+          shippingPostalCode: ticket.pickupPostalCode,
+          shippingCity: ticket.pickupCity,
+          shippingPhone: ticket.pickupPhone,
+          customerEmail: ticket.requesterEmail,
+        });
+        const updated = db.setTicketReturnAwb(ticket.id, {
+          awbNumber: result.trackingNumber,
+          parcelId: result.parcelId,
+          labelPdf: result.labelPdf ? result.labelPdf.toString('base64') : null,
+        }, currentAgent);
+        return sendJSON(res, 200, { ...updated, labelAvailable: Boolean(result.labelPdf) });
+      } catch (e) {
+        return sendJSON(res, 502, { error: e.message });
+      }
+    }
+
+    const cancelReturnMatch = pathname.match(/^\/api\/tickets\/([^/]+)\/cancel-return-awb$/);
+    if (cancelReturnMatch && req.method === 'POST') {
+      const ticket = db.getTicket(cancelReturnMatch[1]);
+      if (!ticket) return sendJSON(res, 404, { error: 'Tichet negăsit' });
+      if (!ticket.returnAwbParcelId) return sendJSON(res, 400, { error: 'Tichetul nu are AWB de retur generat.' });
+      try {
+        await gls.deleteParcel(ticket.returnAwbParcelId);
+        const updated = db.clearTicketReturnAwb(ticket.id, currentAgent);
+        return sendJSON(res, 200, updated);
+      } catch (e) {
+        return sendJSON(res, 502, { error: e.message });
+      }
+    }
+
+    const returnLabelMatch = pathname.match(/^\/api\/tickets\/([^/]+)\/return-awb-label$/);
+    if (returnLabelMatch && req.method === 'GET') {
+      const ticket = db.getTicket(returnLabelMatch[1]);
+      if (!ticket || !ticket.returnAwbParcelId) return sendJSON(res, 404, { error: 'Nu există AWB de retur pentru acest tichet.' });
+
+      if (ticket.returnAwbLabelPdf) {
+        const pdfBuffer = Buffer.from(ticket.returnAwbLabelPdf, 'base64');
+        res.writeHead(200, {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `inline; filename="retur-${ticket.returnAwbNumber}.pdf"`,
+          'Content-Length': pdfBuffer.length,
+        });
+        return res.end(pdfBuffer);
+      }
+      try {
+        const pdfBuffer = await gls.getLabelPdf(ticket.returnAwbParcelId);
+        db.setTicketReturnAwb(ticket.id, {
+          awbNumber: ticket.returnAwbNumber,
+          parcelId: ticket.returnAwbParcelId,
+          labelPdf: pdfBuffer.toString('base64'),
+        }, currentAgent);
+        res.writeHead(200, {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `inline; filename="retur-${ticket.returnAwbNumber}.pdf"`,
+          'Content-Length': pdfBuffer.length,
+        });
+        return res.end(pdfBuffer);
+      } catch (e) {
+        return sendJSON(res, 502, {
+          error: `Eticheta nu e salvată local, iar re-cererea ei de la GLS a eșuat (${e.message}). Anulează AWB-ul de retur și generează unul nou.`,
+        });
+      }
+    }
+
+    // ---- actualizare manuala status (etapa) + istoric tracking ----
+
+    const refreshStageMatch = pathname.match(/^\/api\/tickets\/([^/]+)\/refresh-awb-status$/);
+    if (refreshStageMatch && req.method === 'POST') {
+      const ticket = db.getTicket(refreshStageMatch[1]);
+      if (!ticket) return sendJSON(res, 404, { error: 'Tichet negăsit' });
+
+      // alegem care leg (ridicare sau retur) e activ, dupa etapa curenta
+      const isReturnLeg = ticket.stage === 'in_transit_to_client' || ticket.stage === 'delivered_to_client';
+      const trackingNumber = isReturnLeg ? ticket.returnAwbNumber : ticket.pickupAwbNumber;
+      if (!trackingNumber) return sendJSON(res, 400, { error: 'Tichetul nu are niciun AWB activ de urmărit.' });
+
+      try {
+        const statuses = await gls.getParcelStatus(trackingNumber);
+        const delivered = statuses.some((s) => /livrat|delivered|predat destinatar|handed over/i.test(s.StatusDescription || ''));
+        let newStage = ticket.stage;
+        if (delivered) {
+          newStage = isReturnLeg ? 'delivered_to_client' : 'at_service';
+        }
+        const updated = db.updateTicketStage(ticket.id, newStage, currentAgent);
+        return sendJSON(res, 200, { ...updated, trackingEventsCount: statuses.length });
+      } catch (e) {
+        return sendJSON(res, 502, { error: e.message });
+      }
+    }
+
+    const trackingMatch = pathname.match(/^\/api\/tickets\/([^/]+)\/awb-tracking$/);
+    if (trackingMatch && req.method === 'GET') {
+      const ticket = db.getTicket(trackingMatch[1]);
+      if (!ticket) return sendJSON(res, 404, { error: 'Tichet negăsit' });
+      const leg = query.leg === 'return' ? 'return' : 'pickup';
+      const trackingNumber = leg === 'return' ? ticket.returnAwbNumber : ticket.pickupAwbNumber;
+      if (!trackingNumber) return sendJSON(res, 404, { error: 'Nu există AWB pentru acest segment.' });
+      try {
+        const statuses = await gls.getParcelStatus(trackingNumber);
+        return sendJSON(res, 200, statuses);
+      } catch (e) {
+        return sendJSON(res, 502, { error: e.message });
       }
     }
 

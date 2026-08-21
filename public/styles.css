@@ -807,6 +807,30 @@ a { color: inherit; text-decoration: none; }
 
 /* ---------------- Comenzi (MerchantPro) ---------------- */
 
+.service-row {
+  display: grid;
+  grid-template-columns: 65px 105px 130px 130px 90px 1fr 1.2fr 105px;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 13px;
+}
+.service-row > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.service-row:last-child { border-bottom: none; }
+.service-row:hover { background: var(--surface-hover); }
+.service-row.header {
+  cursor: default;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+.service-row.header:hover { background: transparent; }
+.service-cod { font-family: var(--font-mono); font-weight: 700; color: var(--text); }
+
 .order-row {
   display: grid;
   grid-template-columns: 105px 85px 1.1fr 90px 100px 130px 155px 145px 90px;

@@ -70,6 +70,48 @@ function fmtDate(iso) {
     d.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' });
 }
 
+function fmtShortDate(date) {
+  if (!date) return '—';
+  return date.toLocaleDateString('ro-RO', { day: '2-digit', month: 'short' });
+}
+
+/** Etichete pentru "Unde e marfa" — text simplu, contextual pe secțiune (service/retur). */
+function stageLabel(stage, section) {
+  const isRetur = section === 'retur';
+  const map = {
+    in_transit_to_service: isRetur ? 'În drum spre depozit' : 'În drum spre service',
+    at_service: isRetur ? 'La depozit' : 'La service',
+    in_transit_to_client: 'În drum spre client',
+    delivered_to_client: 'Livrat la client',
+  };
+  return map[stage] || 'Neridicat încă';
+}
+
+function stageDotColor(stage) {
+  const map = {
+    in_transit_to_service: 'var(--status-in_progress)',
+    at_service: 'var(--status-open)',
+    in_transit_to_client: 'var(--status-waiting)',
+    delivered_to_client: 'var(--status-resolved)',
+  };
+  return map[stage] || 'var(--text-dim)';
+}
+
+/** Termenul de 7 zile, calculat de la generarea AWB-ului de ridicare. */
+function computeDeadline(ticket) {
+  if (!ticket.pickupAwbCreatedAt) return null;
+  const d = new Date(ticket.pickupAwbCreatedAt);
+  d.setDate(d.getDate() + 7);
+  return d;
+}
+
+function isPastDeadline(ticket) {
+  const deadline = computeDeadline(ticket);
+  if (!deadline) return false;
+  const isFinished = ticket.status === 'resolved' || ticket.status === 'closed';
+  return !isFinished && new Date() > deadline;
+}
+
 function agentName(id) {
   if (!id) return 'Neasignat';
   const a = agentsCache.find((x) => x.id === id);
@@ -487,6 +529,150 @@ const SECTION_CONFIG = {
   '#/retur': { section: 'retur', title: 'Retur', sub: 'Tichete cu ridicare pentru returnare produs' },
 };
 
+/** Randeaza fundalul corect pentru o ruta de lista de tichete (generica sau Service/Retur). */
+async function renderBackgroundForRoute(route) {
+  if (route === '#/service') return renderServiceReturnList('#/service', 'service');
+  if (route === '#/retur') return renderServiceReturnList('#/retur', 'retur');
+  return renderTicketsList(route);
+}
+
+/** Lista specializata pentru Service/Retur — coloane si tab-uri dedicate. */
+async function renderServiceReturnList(route, section) {
+  const isRetur = section === 'retur';
+  const title = isRetur ? 'Retur' : 'Service / Garanție';
+  const subtitle = isRetur
+    ? 'Retur produse: ridicare de la client → depozit → procesare rambursare.'
+    : 'Reparații în garanție: ridicare de la client → atelier → livrare înapoi.';
+  const filters = parseListRoute(window.location.hash);
+  const activeTab = filters.tab || 'open';
+
+  const content = el(`
+    <div>
+      <div class="page-header">
+        <div>
+          <h1>${title}</h1>
+          <div class="sub">${subtitle}</div>
+        </div>
+      </div>
+      <div class="status-pills segmented-group" id="tabRow" style="margin-bottom:18px;"></div>
+      <div class="filters-search-row">
+        <input type="text" id="q" placeholder="Caută: cod, comandă, client, produs, AWB…" value="${escapeHtml(filters.q || '')}" />
+      </div>
+      <div id="list-body">Se încarcă…</div>
+    </div>
+  `);
+  renderShell(route, content);
+
+  let tickets;
+  try {
+    tickets = await api(`/api/tickets?section=${section}`);
+  } catch (e) {
+    content.querySelector('#list-body').innerHTML = `<div class="panel">Eroare: ${escapeHtml(e.message)}</div>`;
+    return;
+  }
+
+  // preluam si comenzile asociate (pentru coloanele Comandă/Produs) — volum mic, fetch direct
+  const linkedOrders = {};
+  await Promise.all(tickets.filter((t) => t.relatedOrderId).map(async (t) => {
+    try { linkedOrders[t.id] = await api(`/api/orders/${t.relatedOrderId}`); } catch (e) { /* comanda poate lipsi */ }
+  }));
+
+  // asiguram eticheta platformei, daca nu a fost deja incarcata (ex: navigare directa, fara a trece prin Comenzi)
+  if (platformLabel === 'MERCHANTPRO') {
+    try { const s = await api('/api/orders/sync-status'); platformLabel = s.platformLabel || platformLabel; } catch (e) { /* n-o blocam */ }
+  }
+
+  const buckets = {
+    open: tickets.filter((t) => t.status !== 'resolved' && t.status !== 'closed'),
+    atelier: tickets.filter((t) => t.stage === 'at_service'),
+    overdue: tickets.filter((t) => isPastDeadline(t)),
+    closed: tickets.filter((t) => t.status === 'resolved' || t.status === 'closed'),
+    all: tickets,
+  };
+
+  const tabs = [
+    { key: 'open', label: 'Deschise' },
+    { key: 'atelier', label: isRetur ? 'La depozit' : 'La atelier' },
+    { key: 'overdue', label: 'Peste 7 zile' },
+    { key: 'closed', label: 'Închise' },
+    { key: 'all', label: 'Toate' },
+  ];
+  content.querySelector('#tabRow').innerHTML = tabs.map((t) =>
+    `<button class="status-pill ${activeTab === t.key ? 'active' : ''}" data-tab="${t.key}">${t.label}<span class="status-pill-count">${buckets[t.key].length}</span></button>`
+  ).join('');
+  content.querySelectorAll('#tabRow .status-pill').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const params = new URLSearchParams();
+      if (filters.q) params.set('q', filters.q);
+      params.set('tab', btn.dataset.tab);
+      navigate(`${route}?${params.toString()}`);
+    });
+  });
+
+  const q = (filters.q || '').toLowerCase();
+  let rows = buckets[activeTab] || buckets.open;
+  if (q) {
+    rows = rows.filter((t) => {
+      const order = linkedOrders[t.id];
+      const haystack = [t.sectionCode, t.requesterName, t.pickupAwbNumber, t.returnAwbNumber, order?.mpId, order?.lineItems?.[0]?.product_name, t.subject]
+        .filter(Boolean).join(' ').toLowerCase();
+      return haystack.includes(q);
+    });
+  }
+
+  const listBody = content.querySelector('#list-body');
+  if (!rows.length) {
+    listBody.innerHTML = `<div class="panel" style="text-align:center;color:var(--text-dim);">Niciun tichet în această categorie.</div>`;
+  } else {
+    const tableRows = rows.map((t) => {
+      const order = linkedOrders[t.id];
+      const product = order?.lineItems?.[0]
+        ? `${escapeHtml(order.lineItems[0].product_name || '—')}`
+        : escapeHtml(t.subject);
+      const deadline = computeDeadline(t);
+      const overdue = isPastDeadline(t);
+      return `
+      <div class="service-row" data-id="${t.id}">
+        <div class="service-cod">${escapeHtml(t.sectionCode || t.id)}</div>
+        <div class="order-platform"><span class="platform-dot"></span>${escapeHtml(platformLabel)}</div>
+        <div><span class="status-pill" style="cursor:default;padding:5px 11px;"><span class="status-pill-dot" style="background:${stageDotColor(t.stage)};"></span>${stageLabel(t.stage, t.section)}</span></div>
+        <div style="color:var(--text-secondary);font-size:12.5px;">${stageLabel(t.stage, t.section)}</div>
+        <div class="order-id">${order ? `#${order.mpId}` : '—'}</div>
+        <div class="t-title" style="font-size:13px;">${escapeHtml(t.requesterName)}</div>
+        <div class="t-requester" style="font-size:12.5px;color:var(--text-secondary);">${product}</div>
+        <div style="font-size:12px;color:${overdue ? 'var(--priority-urgent)' : 'var(--text-dim)'};white-space:nowrap;">${deadline ? `⏱ ${fmtShortDate(deadline)}` : '—'}</div>
+      </div>`;
+    }).join('');
+
+    listBody.innerHTML = `
+      <div class="ticket-table">
+        <div class="service-row header">
+          <div>COD</div><div>CANAL</div><div>STATUS</div><div>UNDE E MARFA</div><div>COMANDĂ</div><div>CLIENT</div><div>PRODUS</div><div>TERMEN 7 ZILE</div>
+        </div>
+        ${tableRows}
+      </div>
+    `;
+    listBody.querySelectorAll('.service-row[data-id]').forEach((row) => {
+      row.addEventListener('click', () => {
+        history.pushState(null, '', `#/tickets/${row.dataset.id}`);
+        openTicketDrawer(row.dataset.id);
+      });
+    });
+  }
+
+  let qTimer;
+  content.querySelector('#q').addEventListener('input', () => {
+    clearTimeout(qTimer);
+    qTimer = setTimeout(() => {
+      const params = new URLSearchParams();
+      const val = content.querySelector('#q').value.trim();
+      if (val) params.set('q', val);
+      if (activeTab) params.set('tab', activeTab);
+      navigate(`${route}?${params.toString()}`);
+    }, 350);
+  });
+}
+
 async function renderTicketsList(route) {
   route = route || '#/tickets';
   const cfg = SECTION_CONFIG[route] || SECTION_CONFIG['#/tickets'];
@@ -620,7 +806,7 @@ async function renderTicketDetail(ticketId) {
     return;
   }
   const bgRoute = ticket.section === 'service' ? '#/service' : ticket.section === 'retur' ? '#/retur' : '#/tickets';
-  if (currentMainRoute !== bgRoute) await renderTicketsList(bgRoute);
+  if (currentMainRoute !== bgRoute) await renderBackgroundForRoute(bgRoute);
   await paintTicketDrawer(ticket);
 }
 
@@ -701,13 +887,15 @@ async function paintTicketDrawer(ticket) {
       <div class="ticket-detail-grid" style="grid-template-columns: 1fr;">
         <div>
           <div class="ticket-header-card">
-            <div class="t-id">${ticket.id}</div>
+            <div class="t-id">${ticket.sectionCode ? escapeHtml(ticket.sectionCode) : ticket.id}</div>
             <h1>${escapeHtml(ticket.subject)}</h1>
             <div class="badges-row">
               <span class="badge badge-status-${ticket.status}">${STATUS_LABELS[ticket.status]}</span>
               <span class="badge badge-priority-${ticket.priority}">${PRIORITY_LABELS[ticket.priority]}</span>
               ${ticket.section === 'service' ? '<span class="badge badge-status-in_progress">🔧 Service</span>' : ''}
               ${ticket.section === 'retur' ? '<span class="badge badge-priority-urgent">↩ Retur</span>' : ''}
+              ${ticket.stage ? `<span class="badge" style="background:rgba(255,255,255,0.06);"><span class="status-pill-dot" style="background:${stageDotColor(ticket.stage)};"></span>${stageLabel(ticket.stage, ticket.section)}</span>` : ''}
+              ${computeDeadline(ticket) ? `<span class="badge" style="background:rgba(255,255,255,0.06);color:${isPastDeadline(ticket) ? 'var(--priority-urgent)' : 'var(--text-secondary)'};">⏱ ${fmtShortDate(computeDeadline(ticket))}</span>` : ''}
               ${relatedOrder ? `<span class="badge badge-status-waiting" id="relatedOrderLink" style="cursor:pointer;">📦 Comandă #${relatedOrder.mpId}</span>` : ''}
             </div>
             <div class="description">${escapeHtml(ticket.description)}</div>
@@ -762,18 +950,25 @@ async function paintTicketDrawer(ticket) {
           </div>
 
           <div class="side-panel" style="margin-bottom:16px;">
-            <h2>Ridicare de la client (GLS)</h2>
+            <h2>${ticket.section === 'retur' ? 'Ridicare de la client (GLS)' : 'AWB ridicare (client → service)'}</h2>
             ${ticket.pickupAwbNumber ? `
               <div class="form-row">
                 <div class="side-field">
-                  <label>Motiv</label>
-                  <div style="font-size:13px;color:var(--text);padding:8px 0;">${ticket.section === 'retur' ? 'Retur produs' : 'Service / reparație'}</div>
-                </div>
-                <div class="side-field">
-                  <label>Număr AWB ridicare</label>
+                  <label>Număr AWB</label>
                   <div style="font-family:var(--font-mono);font-size:14px;color:var(--accent);font-weight:600;padding:8px 0;">${escapeHtml(ticket.pickupAwbNumber)}</div>
                 </div>
+                <div class="side-field">
+                  <label>Unde e marfa</label>
+                  <div style="display:flex;align-items:center;gap:7px;padding:8px 0;font-size:13px;">
+                    <span class="status-pill-dot" style="background:${stageDotColor(ticket.stage)};"></span>${stageLabel(ticket.stage, ticket.section)}
+                  </div>
+                </div>
               </div>
+              <div style="display:flex;gap:8px;margin-bottom:8px;">
+                <button class="btn" id="refreshPickupStatusBtn" style="flex:1;">↻ Actualizează status</button>
+                <button class="btn" id="viewPickupTrackingBtn" style="flex:1;">Vezi drumul complet</button>
+              </div>
+              <div id="pickupTrackingBox" style="display:none;margin-bottom:10px;"></div>
               <button class="btn btn-block btn-primary" id="downloadPickupLabelBtn" style="margin-bottom:8px;">↓ Descarcă eticheta PDF</button>
               <button class="btn btn-block" id="cancelPickupAwbBtn" style="color:var(--priority-urgent);">Anulează AWB ridicare</button>
             ` : `
@@ -809,6 +1004,37 @@ async function paintTicketDrawer(ticket) {
               </form>
             `}
           </div>
+
+          ${ticket.section === 'service' && ticket.stage === 'at_service' && !ticket.returnAwbNumber ? `
+            <button class="btn btn-block" id="readyToShipBtn" style="margin-bottom:16px;background:var(--status-resolved);color:#fff;border-color:var(--status-resolved);font-weight:600;">✓ Gata de expediere</button>
+          ` : ''}
+
+          ${ticket.section === 'service' && (ticket.returnAwbNumber || ticket.stage === 'at_service') ? `
+            <div class="side-panel" style="margin-bottom:16px;">
+              <h2>AWB retur (service → client)</h2>
+              ${ticket.returnAwbNumber ? `
+                <div class="form-row">
+                  <div class="side-field">
+                    <label>Număr AWB</label>
+                    <div style="font-family:var(--font-mono);font-size:14px;color:var(--accent);font-weight:600;padding:8px 0;">${escapeHtml(ticket.returnAwbNumber)}</div>
+                  </div>
+                  <div class="side-field">
+                    <label>Unde e marfa</label>
+                    <div style="display:flex;align-items:center;gap:7px;padding:8px 0;font-size:13px;">
+                      <span class="status-pill-dot" style="background:${stageDotColor(ticket.stage)};"></span>${stageLabel(ticket.stage, ticket.section)}
+                    </div>
+                  </div>
+                </div>
+                <div style="display:flex;gap:8px;margin-bottom:8px;">
+                  <button class="btn" id="refreshReturnStatusBtn" style="flex:1;">↻ Actualizează status</button>
+                  <button class="btn" id="viewReturnTrackingBtn" style="flex:1;">Vezi drumul complet</button>
+                </div>
+                <div id="returnTrackingBox" style="display:none;margin-bottom:10px;"></div>
+                <button class="btn btn-block btn-primary" id="downloadReturnLabelBtn" style="margin-bottom:8px;">↓ Descarcă eticheta PDF</button>
+                <button class="btn btn-block" id="cancelReturnAwbBtn" style="color:var(--priority-urgent);">Anulează AWB retur</button>
+              ` : '<div class="hint">Apasă „Gata de expediere" mai sus pentru a genera AWB-ul de retur către client.</div>'}
+            </div>
+          ` : ''}
 
           <div class="comments-panel">
             <h2 style="font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary);margin:0 0 14px;">Activitate (${ticket.comments.length} comentarii)</h2>
@@ -890,6 +1116,103 @@ async function paintTicketDrawer(ticket) {
         } catch (err) {
           showToast('Eroare la anulare: ' + err.message);
           cancelPickupBtn.disabled = false;
+        }
+      });
+    }
+
+    // actualizare status (comuna pentru ridicare si retur -- backend-ul alege singur leg-ul activ)
+    async function handleRefreshStatus(btn) {
+      const original = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Se verifică…';
+      try {
+        ticket = await api(`/api/tickets/${ticket.id}/refresh-awb-status`, { method: 'POST' });
+        showToast('Status actualizat');
+        paint();
+      } catch (err) {
+        showToast('Eroare: ' + err.message);
+        btn.disabled = false;
+        btn.textContent = original;
+      }
+    }
+
+    async function handleViewTracking(leg, box) {
+      if (box.style.display === 'block') { box.style.display = 'none'; return; }
+      box.style.display = 'block';
+      box.innerHTML = '<div class="hint">Se încarcă…</div>';
+      try {
+        const events = await api(`/api/tickets/${ticket.id}/awb-tracking?leg=${leg}`);
+        if (!events.length) {
+          box.innerHTML = '<div class="hint">Niciun eveniment de tracking încă.</div>';
+          return;
+        }
+        box.innerHTML = `
+          <div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;max-height:220px;overflow-y:auto;">
+            ${events.map((e) => `
+              <div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;">
+                <div style="color:var(--text);">${escapeHtml(e.StatusDescription || '—')}</div>
+                <div style="color:var(--text-dim);margin-top:2px;">${escapeHtml(e.DepotCity || '')} · ${e.StatusDate ? fmtDate(new Date(Number((e.StatusDate.match(/\d+/) || [0])[0])).toISOString()) : ''}</div>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      } catch (err) {
+        box.innerHTML = `<div class="hint">Eroare: ${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    const refreshPickupBtn = content.querySelector('#refreshPickupStatusBtn');
+    if (refreshPickupBtn) refreshPickupBtn.addEventListener('click', () => handleRefreshStatus(refreshPickupBtn));
+
+    const viewPickupTrackingBtn = content.querySelector('#viewPickupTrackingBtn');
+    if (viewPickupTrackingBtn) {
+      viewPickupTrackingBtn.addEventListener('click', () => handleViewTracking('pickup', content.querySelector('#pickupTrackingBox')));
+    }
+
+    const readyToShipBtn = content.querySelector('#readyToShipBtn');
+    if (readyToShipBtn) {
+      readyToShipBtn.addEventListener('click', async () => {
+        readyToShipBtn.disabled = true;
+        readyToShipBtn.textContent = 'Se generează AWB retur…';
+        try {
+          ticket = await api(`/api/tickets/${ticket.id}/generate-return-awb`, { method: 'POST' });
+          showToast('AWB de retur generat — coletul e pe drum către client');
+          paint();
+        } catch (err) {
+          showToast('Eroare: ' + err.message);
+          readyToShipBtn.disabled = false;
+          readyToShipBtn.textContent = '✓ Gata de expediere';
+        }
+      });
+    }
+
+    const refreshReturnBtn = content.querySelector('#refreshReturnStatusBtn');
+    if (refreshReturnBtn) refreshReturnBtn.addEventListener('click', () => handleRefreshStatus(refreshReturnBtn));
+
+    const viewReturnTrackingBtn = content.querySelector('#viewReturnTrackingBtn');
+    if (viewReturnTrackingBtn) {
+      viewReturnTrackingBtn.addEventListener('click', () => handleViewTracking('return', content.querySelector('#returnTrackingBox')));
+    }
+
+    const downloadReturnBtn = content.querySelector('#downloadReturnLabelBtn');
+    if (downloadReturnBtn) {
+      downloadReturnBtn.addEventListener('click', () => {
+        window.open(`/api/tickets/${ticket.id}/return-awb-label`, '_blank');
+      });
+    }
+
+    const cancelReturnBtn = content.querySelector('#cancelReturnAwbBtn');
+    if (cancelReturnBtn) {
+      cancelReturnBtn.addEventListener('click', async () => {
+        if (!confirm(`Anulezi AWB-ul de retur ${ticket.returnAwbNumber}? Această acțiune îl șterge și la GLS.`)) return;
+        cancelReturnBtn.disabled = true;
+        try {
+          ticket = await api(`/api/tickets/${ticket.id}/cancel-return-awb`, { method: 'POST' });
+          showToast('AWB de retur anulat');
+          paint();
+        } catch (err) {
+          showToast('Eroare la anulare: ' + err.message);
+          cancelReturnBtn.disabled = false;
         }
       });
     }
@@ -1574,7 +1897,7 @@ async function openTicketDrawerCrossLink(ticketId) {
   let ticket;
   try { ticket = await api(`/api/tickets/${ticketId}`); } catch (e) { showToast('Tichet negăsit'); return; }
   const bgRoute = ticket.section === 'service' ? '#/service' : ticket.section === 'retur' ? '#/retur' : '#/tickets';
-  if (currentMainRoute !== bgRoute) await renderTicketsList(bgRoute);
+  if (currentMainRoute !== bgRoute) await renderBackgroundForRoute(bgRoute);
   history.pushState(null, '', `#/tickets/${ticketId}`);
   await paintTicketDrawer(ticket);
 }
@@ -1816,10 +2139,10 @@ function render() {
     renderTicketsList('#/tickets');
   } else if (path === '#/service') {
     hideDrawer();
-    renderTicketsList('#/service');
+    renderServiceReturnList('#/service', 'service');
   } else if (path === '#/retur') {
     hideDrawer();
-    renderTicketsList('#/retur');
+    renderServiceReturnList('#/retur', 'retur');
   } else if (path === '#/orders') {
     hideDrawer();
     renderOrdersList();
