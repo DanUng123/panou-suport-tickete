@@ -403,6 +403,9 @@ function computePeriodRange(period, customFrom, customTo) {
   if (period === 'today') {
     from = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
     to = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+  } else if (period === 'yesterday') {
+    from = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0);
+    to = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999);
   } else if (period === 'week') {
     const day = now.getDay();
     const diffToMonday = (day === 0 ? -6 : 1 - day);
@@ -421,7 +424,7 @@ function computePeriodRange(period, customFrom, customTo) {
 
 function detectActivePeriod(dateFrom, dateTo) {
   if (!dateFrom && !dateTo) return 'all';
-  for (const p of ['today', 'week', 'month']) {
+  for (const p of ['today', 'yesterday', 'week', 'month']) {
     const r = computePeriodRange(p);
     if (r.dateFrom === dateFrom && r.dateTo === dateTo) return p;
   }
@@ -434,6 +437,7 @@ function renderPeriodPicker(container, filters, applyFn) {
   const options = [
     { key: 'all', label: '↺ Toate' },
     { key: 'today', label: 'Azi' },
+    { key: 'yesterday', label: 'Ieri' },
     { key: 'week', label: 'Săptămâna aceasta' },
     { key: 'month', label: 'Luna aceasta' },
     { key: 'custom', label: 'Personalizat' },
