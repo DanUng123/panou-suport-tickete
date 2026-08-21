@@ -707,18 +707,29 @@ async function handleApi(req, res, pathname, query) {
       const ticket = db.getTicket(refreshStageMatch[1]);
       if (!ticket) return sendJSON(res, 404, { error: 'Tichet negăsit' });
 
-      // alegem care leg (ridicare sau retur) e activ, dupa etapa curenta
-      const isReturnLeg = ticket.stage === 'in_transit_to_client' || ticket.stage === 'delivered_to_client';
+      // alegem AWB-ul activ (ridicare sau retur) dupa etapa curenta
+      const isReturnLeg = ['return_awb_issued', 'in_transit_to_client', 'delivered_to_client'].includes(ticket.stage);
       const trackingNumber = isReturnLeg ? ticket.returnAwbNumber : ticket.pickupAwbNumber;
       if (!trackingNumber) return sendJSON(res, 400, { error: 'Tichetul nu are niciun AWB activ de urmărit.' });
 
       try {
         const statuses = await gls.getParcelStatus(trackingNumber);
         const delivered = statuses.some((s) => /livrat|delivered|predat destinatar|handed over/i.test(s.StatusDescription || ''));
+        const pickedUp = statuses.some((s) => /preluat|ridicat|colectat|picked ?up|pickup|a p[ăa]r[ăa]sit/i.test(s.StatusDescription || ''));
+
         let newStage = ticket.stage;
-        if (delivered) {
-          newStage = isReturnLeg ? 'delivered_to_client' : 'at_service';
+        if (ticket.stage === 'pickup_awb_issued') {
+          if (delivered) newStage = 'at_service'; // caz rar: ridicat si livrat intre doua verificari
+          else if (pickedUp) newStage = 'in_transit_to_service';
+        } else if (ticket.stage === 'in_transit_to_service') {
+          if (delivered) newStage = 'at_service';
+        } else if (ticket.stage === 'return_awb_issued') {
+          if (delivered) newStage = 'delivered_to_client';
+          else if (pickedUp) newStage = 'in_transit_to_client';
+        } else if (ticket.stage === 'in_transit_to_client') {
+          if (delivered) newStage = 'delivered_to_client';
         }
+
         const updated = db.updateTicketStage(ticket.id, newStage, currentAgent);
         return sendJSON(res, 200, { ...updated, trackingEventsCount: statuses.length });
       } catch (e) {

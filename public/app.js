@@ -76,22 +76,41 @@ function fmtShortDate(date) {
 }
 
 /** Etichete pentru "Unde e marfa" — text simplu, contextual pe secțiune (service/retur). */
-function stageLabel(stage, section) {
+/** Eticheta pentru coloana STATUS (badge) — poate diferi de "unde e marfa" (ex: AWB emis, dar marfa tot la client). */
+function stageStatusLabel(stage, section) {
   const isRetur = section === 'retur';
   const map = {
+    pickup_awb_issued: 'AWB de ridicare emis',
     in_transit_to_service: isRetur ? 'În drum spre depozit' : 'În drum spre service',
     at_service: isRetur ? 'La depozit' : 'La service',
+    return_awb_issued: 'AWB de retur emis',
     in_transit_to_client: 'În drum spre client',
     delivered_to_client: 'Livrat la client',
   };
   return map[stage] || 'Neridicat încă';
 }
 
+/** Eticheta pentru coloana "Unde e marfa" — locația fizică reală, nu statusul AWB-ului. */
+function stageLocationLabel(stage, section) {
+  const isRetur = section === 'retur';
+  const map = {
+    pickup_awb_issued: 'La client',
+    in_transit_to_service: isRetur ? 'În drum spre depozit' : 'În drum spre service',
+    at_service: isRetur ? 'La depozit' : 'La service',
+    return_awb_issued: 'La service',
+    in_transit_to_client: 'În drum spre client',
+    delivered_to_client: 'La client',
+  };
+  return map[stage] || 'Neridicat încă';
+}
+
 function stageDotColor(stage) {
   const map = {
+    pickup_awb_issued: 'var(--status-open)',
     in_transit_to_service: 'var(--status-in_progress)',
-    at_service: 'var(--status-open)',
-    in_transit_to_client: 'var(--status-waiting)',
+    at_service: 'var(--status-waiting)',
+    return_awb_issued: 'var(--status-open)',
+    in_transit_to_client: 'var(--status-in_progress)',
     delivered_to_client: 'var(--status-resolved)',
   };
   return map[stage] || 'var(--text-dim)';
@@ -635,8 +654,8 @@ async function renderServiceReturnList(route, section) {
       <div class="service-row" data-id="${t.id}">
         <div class="service-cod">${escapeHtml(t.sectionCode || t.id)}</div>
         <div class="order-platform"><span class="platform-dot"></span>${escapeHtml(platformLabel)}</div>
-        <div><span class="status-pill" style="cursor:default;padding:5px 11px;"><span class="status-pill-dot" style="background:${stageDotColor(t.stage)};"></span>${stageLabel(t.stage, t.section)}</span></div>
-        <div style="color:var(--text-secondary);font-size:12.5px;">${stageLabel(t.stage, t.section)}</div>
+        <div><span class="status-pill" style="cursor:default;padding:5px 11px;"><span class="status-pill-dot" style="background:${stageDotColor(t.stage)};"></span>${stageStatusLabel(t.stage, t.section)}</span></div>
+        <div style="color:var(--text-secondary);font-size:12.5px;">${stageLocationLabel(t.stage, t.section)}</div>
         <div class="order-id">${order ? `#${order.mpId}` : '—'}</div>
         <div class="t-title" style="font-size:13px;">${escapeHtml(t.requesterName)}</div>
         <div class="t-requester" style="font-size:12.5px;color:var(--text-secondary);">${product}</div>
@@ -894,7 +913,7 @@ async function paintTicketDrawer(ticket) {
               <span class="badge badge-priority-${ticket.priority}">${PRIORITY_LABELS[ticket.priority]}</span>
               ${ticket.section === 'service' ? '<span class="badge badge-status-in_progress">🔧 Service</span>' : ''}
               ${ticket.section === 'retur' ? '<span class="badge badge-priority-urgent">↩ Retur</span>' : ''}
-              ${ticket.stage ? `<span class="badge" style="background:rgba(255,255,255,0.06);"><span class="status-pill-dot" style="background:${stageDotColor(ticket.stage)};"></span>${stageLabel(ticket.stage, ticket.section)}</span>` : ''}
+              ${ticket.stage ? `<span class="badge" style="background:rgba(255,255,255,0.06);"><span class="status-pill-dot" style="background:${stageDotColor(ticket.stage)};"></span>${stageStatusLabel(ticket.stage, ticket.section)}</span>` : ''}
               ${computeDeadline(ticket) ? `<span class="badge" style="background:rgba(255,255,255,0.06);color:${isPastDeadline(ticket) ? 'var(--priority-urgent)' : 'var(--text-secondary)'};">⏱ ${fmtShortDate(computeDeadline(ticket))}</span>` : ''}
               ${relatedOrder ? `<span class="badge badge-status-waiting" id="relatedOrderLink" style="cursor:pointer;">📦 Comandă #${relatedOrder.mpId}</span>` : ''}
             </div>
@@ -960,7 +979,7 @@ async function paintTicketDrawer(ticket) {
                 <div class="side-field">
                   <label>Unde e marfa</label>
                   <div style="display:flex;align-items:center;gap:7px;padding:8px 0;font-size:13px;">
-                    <span class="status-pill-dot" style="background:${stageDotColor(ticket.stage)};"></span>${stageLabel(ticket.stage, ticket.section)}
+                    <span class="status-pill-dot" style="background:${stageDotColor(ticket.stage)};"></span>${stageLocationLabel(ticket.stage, ticket.section)}
                   </div>
                 </div>
               </div>
@@ -1021,7 +1040,7 @@ async function paintTicketDrawer(ticket) {
                   <div class="side-field">
                     <label>Unde e marfa</label>
                     <div style="display:flex;align-items:center;gap:7px;padding:8px 0;font-size:13px;">
-                      <span class="status-pill-dot" style="background:${stageDotColor(ticket.stage)};"></span>${stageLabel(ticket.stage, ticket.section)}
+                      <span class="status-pill-dot" style="background:${stageDotColor(ticket.stage)};"></span>${stageLocationLabel(ticket.stage, ticket.section)}
                     </div>
                   </div>
                 </div>
