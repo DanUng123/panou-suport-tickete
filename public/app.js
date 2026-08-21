@@ -987,9 +987,9 @@ async function paintTicketDrawer(ticket) {
                   </div>
                 </div>
               </div>
-              <div style="display:flex;gap:8px;margin-bottom:8px;">
-                <button class="btn" id="refreshPickupStatusBtn" style="flex:1;">↻ Actualizează status</button>
-                <button class="btn" id="viewPickupTrackingBtn" style="flex:1;">Vezi drumul complet</button>
+              <div class="btn-row">
+                <button class="btn" id="refreshPickupStatusBtn">↻ Actualizează status</button>
+                <button class="btn" id="viewPickupTrackingBtn">Vezi drumul complet</button>
               </div>
               <div id="pickupTrackingBox" style="display:none;margin-bottom:10px;"></div>
               <button class="btn btn-block btn-primary" id="downloadPickupLabelBtn" style="margin-bottom:8px;">↓ Descarcă eticheta PDF</button>
@@ -1048,9 +1048,9 @@ async function paintTicketDrawer(ticket) {
                     </div>
                   </div>
                 </div>
-                <div style="display:flex;gap:8px;margin-bottom:8px;">
-                  <button class="btn" id="refreshReturnStatusBtn" style="flex:1;">↻ Actualizează status</button>
-                  <button class="btn" id="viewReturnTrackingBtn" style="flex:1;">Vezi drumul complet</button>
+                <div class="btn-row">
+                  <button class="btn" id="refreshReturnStatusBtn">↻ Actualizează status</button>
+                  <button class="btn" id="viewReturnTrackingBtn">Vezi drumul complet</button>
                 </div>
                 <div id="returnTrackingBox" style="display:none;margin-bottom:10px;"></div>
                 <button class="btn btn-block btn-primary" id="downloadReturnLabelBtn" style="margin-bottom:8px;">↓ Descarcă eticheta PDF</button>
