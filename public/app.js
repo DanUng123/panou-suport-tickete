@@ -266,8 +266,8 @@ function renderShell(activeRoute, contentNode) {
       </div>
       <nav class="nav">
         <div class="nav-item" data-route="#/dashboard">${NAV_ICONS.dashboard}Dashboard</div>
-        <div class="nav-item" data-route="#/tickets">${NAV_ICONS.tickets}Tichete</div>
         <div class="nav-item" data-route="#/orders">${NAV_ICONS.orders}Comenzi</div>
+        <div class="nav-item" data-route="#/tickets">${NAV_ICONS.tickets}Tichete</div>
         <div class="nav-item" data-route="#/service">${NAV_ICONS.service}Service</div>
         <div class="nav-item" data-route="#/retur">${NAV_ICONS.retur}Retur</div>
         ${currentAgent.role === 'manager' ? `<div class="nav-item" data-route="#/admin">${NAV_ICONS.admin}Administrare</div>` : ''}
