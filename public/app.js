@@ -460,10 +460,10 @@ function renderPeriodPicker(container, filters, applyFn) {
         return; // asteptam butonul Aplica
       }
       if (period === 'all') {
-        applyFn({ dateFrom: '', dateTo: '' });
+        applyFn({ dateFrom: '', dateTo: '', period: 'all' });
         return;
       }
-      applyFn(computePeriodRange(period));
+      applyFn({ ...computePeriodRange(period), period: '' });
     });
   });
 
@@ -1059,6 +1059,14 @@ function paymentMethodLabel(order) {
 async function renderOrdersList() {
   const filters = parseListRoute(window.location.hash);
 
+  // implicit: "Azi" -- daca nu exista niciun filtru de data si nici alegerea explicita "Toate"
+  if (!filters.dateFrom && !filters.dateTo && filters.period !== 'all') {
+    const today = computePeriodRange('today');
+    const params = new URLSearchParams({ ...filters, dateFrom: today.dateFrom, dateTo: today.dateTo });
+    navigate(`#/orders?${params.toString()}`);
+    return;
+  }
+
   const content = el(`
     <div>
       <div class="page-header">
@@ -1130,6 +1138,7 @@ async function renderOrdersList() {
       needsAwb: filters.needsAwb || '',
       dateFrom: filters.dateFrom || '',
       dateTo: filters.dateTo || '',
+      period: filters.period || '',
       ...overrides,
     };
     if (q) params.set('q', q);
@@ -1140,6 +1149,7 @@ async function renderOrdersList() {
     if (merged.needsAwb) params.set('needsAwb', merged.needsAwb);
     if (merged.dateFrom) params.set('dateFrom', merged.dateFrom);
     if (merged.dateTo) params.set('dateTo', merged.dateTo);
+    if (merged.period) params.set('period', merged.period);
     navigate(`#/orders?${params.toString()}`);
   }
 
@@ -1164,11 +1174,16 @@ async function renderOrdersList() {
   }
 
   try {
-    const stats = await api('/api/orders/stats');
+    const statsQuery = new URLSearchParams();
+    if (filters.dateFrom) statsQuery.set('dateFrom', filters.dateFrom);
+    if (filters.dateTo) statsQuery.set('dateTo', filters.dateTo);
+    const stats = await api(`/api/orders/stats?${statsQuery.toString()}`);
+    const PERIOD_SUBLABEL = { all: 'toate perioadele', today: 'azi', week: 'săptămâna aceasta', month: 'luna aceasta', custom: 'perioadă personalizată' };
+    const activePeriodLabel = PERIOD_SUBLABEL[detectActivePeriod(filters.dateFrom, filters.dateTo)];
     content.querySelector('#order-stats').innerHTML = `
-      <div class="stat-tile accented"><span class="corner-dot" style="background:var(--accent);"></span><div class="label">Total comenzi</div><div class="value">${stats.total}</div><div class="sub-line">sincronizate din MerchantPro</div></div>
-      <div class="stat-tile"><span class="corner-dot" style="background:var(--priority-high);"></span><div class="label">Fără AWB</div><div class="value">${stats.needsAwb}</div></div>
-      <div class="stat-tile"><span class="corner-dot" style="background:var(--status-resolved);"></span><div class="label">Cu AWB</div><div class="value">${stats.withAwb}</div></div>
+      <div class="stat-tile accented"><span class="corner-dot" style="background:var(--accent);"></span><div class="label">Total comenzi</div><div class="value">${stats.total}</div><div class="sub-line">${activePeriodLabel}</div></div>
+      <div class="stat-tile"><span class="corner-dot" style="background:var(--status-in_progress);"></span><div class="label">Expediate</div><div class="value">${stats.shipped}</div><div class="sub-line">${activePeriodLabel}</div></div>
+      <div class="stat-tile"><span class="corner-dot" style="background:var(--priority-urgent);"></span><div class="label">Anulate</div><div class="value">${stats.cancelled}</div><div class="sub-line">${activePeriodLabel}</div></div>
     `;
 
     const shippingDotVar = {

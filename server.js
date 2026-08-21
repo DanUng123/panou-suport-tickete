@@ -353,7 +353,7 @@ async function handleApi(req, res, pathname, query) {
     }
 
     if (pathname === '/api/orders/stats' && req.method === 'GET') {
-      return sendJSON(res, 200, db.getOrderStats());
+      return sendJSON(res, 200, db.getOrderStats({ dateFrom: query.dateFrom || undefined, dateTo: query.dateTo || undefined }));
     }
 
     if (pathname === '/api/orders' && req.method === 'GET') {
