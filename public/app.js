@@ -930,6 +930,7 @@ async function paintTicketDrawer(ticket) {
             </div>
           </div>
 
+          ${ticket.section === 'support' ? `
           <div class="side-panel" style="margin-bottom:16px;">
             <h2>Gestionare tichet</h2>
             <div class="form-row">
@@ -971,6 +972,7 @@ async function paintTicketDrawer(ticket) {
               <div class="hint" style="margin-top:6px;">Se schimbă automat la generarea unui AWB de ridicare — sau poți muta manual tichetul de aici.</div>
             </div>
           </div>
+          ` : ''}
 
           <div class="side-panel" style="margin-bottom:16px;">
             <h2>${ticket.section === 'retur' ? 'Ridicare de la client (GLS)' : 'AWB ridicare (client → service)'}</h2>
@@ -1088,11 +1090,12 @@ async function paintTicketDrawer(ticket) {
       }
     }
 
-    content.querySelector('#sel-status').addEventListener('change', (e) => patchField('status', e.target.value));
-    content.querySelector('#sel-priority').addEventListener('change', (e) => patchField('priority', e.target.value));
-    content.querySelector('#sel-category').addEventListener('change', (e) => patchField('category', e.target.value));
-    content.querySelector('#sel-assigned').addEventListener('change', (e) => patchField('assignedTo', e.target.value));
-    content.querySelector('#sel-section').addEventListener('change', (e) => patchField('section', e.target.value));
+    ['#sel-status', '#sel-priority', '#sel-category', '#sel-assigned', '#sel-section'].forEach((sel) => {
+      const fieldEl = content.querySelector(sel);
+      if (!fieldEl) return; // panoul "Gestionare tichet" nu exista pentru Service/Retur
+      const field = { '#sel-status': 'status', '#sel-priority': 'priority', '#sel-category': 'category', '#sel-assigned': 'assignedTo', '#sel-section': 'section' }[sel];
+      fieldEl.addEventListener('change', (e) => patchField(field, e.target.value));
+    });
 
     const pickupForm = content.querySelector('#pickupAwbForm');
     if (pickupForm) {
@@ -1727,59 +1730,9 @@ async function openOrderDrawer(orderId) {
             ` : ''}
           </div>
 
-          <div class="side-panel" style="margin-bottom:16px;">
-            <h2>Gestionare comandă</h2>
-            <div class="form-row">
-              <div class="side-field">
-                <label>Status intern</label>
-                <select id="sel-internal">
-                  ${Object.entries(INTERNAL_ORDER_STATUS_LABELS).map(([v, l]) => `<option value="${v}" ${order.internalStatus === v ? 'selected' : ''}>${l}</option>`).join('')}
-                </select>
-              </div>
-              <div class="side-field">
-                <label>Agent responsabil</label>
-                <select id="sel-assigned">
-                  <option value="">Neasignat</option>
-                  ${agentsCache.map((a) => `<option value="${a.id}" ${order.assignedTo === a.id ? 'selected' : ''}>${escapeHtml(a.name)}</option>`).join('')}
-                </select>
-              </div>
-            </div>
-          </div>
-
-          <div class="side-panel" style="margin-bottom:16px;">
-            <h2>Livrare / AWB</h2>
-            ${order.awbNumber ? `
-              <div class="form-row">
-                <div class="side-field">
-                  <label>Curier</label>
-                  <div style="font-size:13px;color:var(--text);padding:8px 0;">${escapeHtml(order.awbCourier || 'GLS')}</div>
-                </div>
-                <div class="side-field">
-                  <label>Număr AWB</label>
-                  <div style="font-family:var(--font-mono);font-size:14px;color:var(--accent);font-weight:600;padding:8px 0;">${escapeHtml(order.awbNumber)}</div>
-                </div>
-              </div>
-              <button class="btn btn-block btn-primary" id="downloadLabelBtn" style="margin-bottom:8px;">↓ Descarcă eticheta PDF</button>
-              <button class="btn btn-block" id="cancelAwbBtn" style="color:var(--priority-urgent);">Anulează AWB</button>
-            ` : `
-              <div class="form-row">
-                <div class="side-field">
-                  <label>Curier</label>
-                  <select disabled title="Doar GLS momentan">
-                    <option>GLS</option>
-                  </select>
-                </div>
-                <div class="side-field">
-                  <label>Număr AWB</label>
-                  <input type="text" disabled placeholder="Nu a fost generat încă" style="width:100%;background:var(--surface-raised);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text-dim);" />
-                </div>
-              </div>
-              <button class="btn btn-block ${glsConfigured ? 'btn-primary' : ''}" id="generateAwbBtn" ${glsConfigured ? '' : 'disabled style="opacity:0.5;cursor:not-allowed;" title="Configurează integrarea GLS pentru a activa"'}>Generează AWB</button>
-              ${glsConfigured
-                ? '<div class="hint" style="margin-top:10px;">Prima generare de AWB pentru firma ta — verifică cu atenție rezultatul.</div>'
-                : '<div class="hint" style="margin-top:10px;">Emiterea AWB prin GLS va fi activă după configurarea credențialelor API GLS pe server.</div>'}
-            `}
-            ${order.shippingAwb && !order.awbNumber ? `<div class="hint" style="margin-top:8px;">AWB existent în MerchantPro: <strong style="color:var(--text);">${escapeHtml(order.shippingAwb)}</strong></div>` : ''}
+          <div class="comments-panel" style="margin-bottom:16px;">
+            <h2 style="font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary);margin:0 0 14px;">Produse comandate</h2>
+            <div class="line-items-list">${items}</div>
           </div>
 
           <div class="side-panel" style="margin-bottom:16px;">
@@ -1805,11 +1758,6 @@ async function openOrderDrawer(orderId) {
             ${order.proformaUrl ? `<a href="${escapeHtml(order.proformaUrl)}" target="_blank" rel="noopener" class="hint" style="display:block;margin-top:8px;color:var(--accent);">↗ Vezi proforma</a>` : ''}
           </div>
 
-          <div class="comments-panel" style="margin-bottom:16px;">
-            <h2 style="font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary);margin:0 0 14px;">Produse comandate</h2>
-            <div class="line-items-list">${items}</div>
-          </div>
-
           <div class="comments-panel">
             <h2 style="font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary);margin:0 0 14px;">Notițe interne (${order.notes.length})</h2>
             ${notes}
@@ -1828,58 +1776,6 @@ async function openOrderDrawer(orderId) {
     content.querySelectorAll('.queue-item[data-tid]').forEach((item) => {
       item.addEventListener('click', () => openTicketDrawerCrossLink(item.dataset.tid));
     });
-
-    async function patchOrder(field, value) {
-      try {
-        order = await api(`/api/orders/${order.id}`, { method: 'PATCH', body: JSON.stringify({ [field]: value }) });
-        showToast('Comandă actualizată');
-        paint();
-      } catch (e) {
-        showToast('Eroare: ' + e.message);
-      }
-    }
-    content.querySelector('#sel-internal').addEventListener('change', (e) => patchOrder('internalStatus', e.target.value));
-    content.querySelector('#sel-assigned').addEventListener('change', (e) => patchOrder('assignedTo', e.target.value));
-
-    const generateBtn = content.querySelector('#generateAwbBtn');
-    if (generateBtn && glsConfigured) {
-      generateBtn.addEventListener('click', async () => {
-        generateBtn.disabled = true;
-        generateBtn.textContent = 'Se generează…';
-        try {
-          order = await api(`/api/orders/${order.id}/generate-awb`, { method: 'POST' });
-          showToast('AWB generat cu succes');
-          paint();
-        } catch (err) {
-          showToast('Eroare la generarea AWB: ' + err.message);
-          generateBtn.disabled = false;
-          generateBtn.textContent = 'Generează AWB';
-        }
-      });
-    }
-
-    const downloadBtn = content.querySelector('#downloadLabelBtn');
-    if (downloadBtn) {
-      downloadBtn.addEventListener('click', () => {
-        window.open(`/api/orders/${order.id}/awb-label`, '_blank');
-      });
-    }
-
-    const cancelBtn = content.querySelector('#cancelAwbBtn');
-    if (cancelBtn) {
-      cancelBtn.addEventListener('click', async () => {
-        if (!confirm(`Anulezi AWB-ul ${order.awbNumber}? Această acțiune îl șterge și la GLS.`)) return;
-        cancelBtn.disabled = true;
-        try {
-          order = await api(`/api/orders/${order.id}/cancel-awb`, { method: 'POST' });
-          showToast('AWB anulat');
-          paint();
-        } catch (err) {
-          showToast('Eroare la anularea AWB: ' + err.message);
-          cancelBtn.disabled = false;
-        }
-      });
-    }
 
     const issueInvoiceBtn = content.querySelector('#issueInvoiceBtn');
     if (issueInvoiceBtn) {
