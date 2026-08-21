@@ -202,9 +202,13 @@ function openDrawer(contentNode) {
   const overlay = ensureDrawerEl();
   const panel = overlay.querySelector('#drawerPanel');
   panel.innerHTML = '';
-  const closeBtn = el('<button class="drawer-close-btn" title="Închide">✕</button>');
-  closeBtn.addEventListener('click', closeDrawer);
-  panel.appendChild(closeBtn);
+  const closeBar = el(`
+    <div class="drawer-close-bar">
+      <button class="drawer-close-btn" title="Închide">✕</button>
+    </div>
+  `);
+  closeBar.querySelector('.drawer-close-btn').addEventListener('click', closeDrawer);
+  panel.appendChild(closeBar);
   panel.appendChild(contentNode);
   requestAnimationFrame(() => overlay.classList.add('open'));
 }
