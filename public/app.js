@@ -242,6 +242,15 @@ async function logout() {
 
 // ---------------- shell (sidebar + main) ----------------
 
+const NAV_ICONS = {
+  dashboard: '<svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="1.5" width="6" height="6" rx="1.2"/><rect x="8.5" y="1.5" width="6" height="4" rx="1.2"/><rect x="8.5" y="7.5" width="6" height="7" rx="1.2"/><rect x="1.5" y="9.5" width="6" height="5" rx="1.2"/></svg>',
+  tickets: '<svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1.5 5.5a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v1.2a1.3 1.3 0 0 0 0 2.6v1.2a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1V9.3a1.3 1.3 0 0 0 0-2.6V5.5Z"/><path d="M6 4.5v7" stroke-dasharray="1.6 1.6"/></svg>',
+  orders: '<svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4.8 8 2l6 2.8v6.4L8 14 2 11.2V4.8Z"/><path d="M2 4.8 8 7.6l6-2.8M8 7.6V14"/></svg>',
+  service: '<svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9.8 3.2a3 3 0 0 0-4 3.6L2 10.6l1.4 1.4 3.8-3.8a3 3 0 0 0 3.6-4L9 6l-1-1 1.8-1.8Z"/></svg>',
+  retur: '<svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8a5 5 0 1 0 1.6-3.7"/><path d="M1.5 2.5v2.6h2.6"/></svg>',
+  admin: '<svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1.5 13 3.5v3.8c0 3.4-2.2 5.7-5 6.7-2.8-1-5-3.3-5-6.7V3.5L8 1.5Z"/><path d="M5.8 8 7.3 9.5l3-3.2"/></svg>',
+};
+
 function renderShell(activeRoute, contentNode) {
   app.innerHTML = '';
   currentMainRoute = activeRoute;
@@ -252,16 +261,16 @@ function renderShell(activeRoute, contentNode) {
   const sidebar = el(`
     <div class="sidebar" id="sidebar">
       <div class="brand">
-        <div class="mark">S</div>
+        <div class="eyebrow">Suport clienți</div>
         <div class="name">Panou Suport</div>
       </div>
       <nav class="nav">
-        <div class="nav-item" data-route="#/dashboard"><span class="dot"></span>Dashboard</div>
-        <div class="nav-item" data-route="#/tickets"><span class="dot"></span>Tichete</div>
-        <div class="nav-item" data-route="#/orders"><span class="dot"></span>Comenzi</div>
-        <div class="nav-item" data-route="#/service"><span class="dot"></span>Service</div>
-        <div class="nav-item" data-route="#/retur"><span class="dot"></span>Retur</div>
-        ${currentAgent.role === 'manager' ? '<div class="nav-item" data-route="#/admin"><span class="dot"></span>Administrare</div>' : ''}
+        <div class="nav-item" data-route="#/dashboard">${NAV_ICONS.dashboard}Dashboard</div>
+        <div class="nav-item" data-route="#/tickets">${NAV_ICONS.tickets}Tichete</div>
+        <div class="nav-item" data-route="#/orders">${NAV_ICONS.orders}Comenzi</div>
+        <div class="nav-item" data-route="#/service">${NAV_ICONS.service}Service</div>
+        <div class="nav-item" data-route="#/retur">${NAV_ICONS.retur}Retur</div>
+        ${currentAgent.role === 'manager' ? `<div class="nav-item" data-route="#/admin">${NAV_ICONS.admin}Administrare</div>` : ''}
       </nav>
       <div class="sidebar-spacer"></div>
       <div class="agent-card">
@@ -346,10 +355,10 @@ async function renderDashboard() {
 
   body.innerHTML = `
     <div class="stat-grid">
-      <div class="stat-tile accented"><div class="label">Deschise</div><div class="value">${stats.byStatus.open}</div></div>
-      <div class="stat-tile"><div class="label">În lucru</div><div class="value">${stats.byStatus.in_progress}</div></div>
-      <div class="stat-tile"><div class="label">În așteptare</div><div class="value">${stats.byStatus.waiting}</div></div>
-      <div class="stat-tile"><div class="label">Rezolvate azi</div><div class="value">${stats.resolvedToday}</div></div>
+      <div class="stat-tile accented"><span class="corner-dot" style="background:var(--status-open);"></span><div class="label">Deschise</div><div class="value">${stats.byStatus.open}</div><div class="sub-line">tichete active</div></div>
+      <div class="stat-tile"><span class="corner-dot" style="background:var(--status-in_progress);"></span><div class="label">În lucru</div><div class="value">${stats.byStatus.in_progress}</div></div>
+      <div class="stat-tile"><span class="corner-dot" style="background:var(--status-waiting);"></span><div class="label">În așteptare</div><div class="value">${stats.byStatus.waiting}</div></div>
+      <div class="stat-tile"><span class="corner-dot" style="background:var(--status-resolved);"></span><div class="label">Rezolvate azi</div><div class="value">${stats.resolvedToday}</div></div>
       <div class="stat-tile"><div class="label">Neasignate</div><div class="value">${stats.unassigned}</div></div>
       <div class="stat-tile"><div class="label">Timp mediu rezolvare</div><div class="value">${stats.avgResolutionHours ? stats.avgResolutionHours.toFixed(1) + 'h' : '—'}</div></div>
     </div>
@@ -430,10 +439,10 @@ function renderPeriodPicker(container, filters, applyFn) {
     { key: 'custom', label: 'Personalizat' },
   ];
   container.innerHTML = `
-    <div class="status-pills" id="periodPillsRow">
+    <div class="status-pills segmented-group" id="periodPillsRow" style="margin-bottom:0;">
       ${options.map((o) => `<button class="status-pill ${active === o.key ? 'active' : ''}" data-period="${o.key}">${o.label}</button>`).join('')}
     </div>
-    <div class="period-custom-inputs" id="periodCustomInputs" style="${active === 'custom' ? 'display:flex;' : 'display:none;'}">
+    <div class="period-custom-inputs" id="periodCustomInputs" style="${active === 'custom' ? 'display:flex;' : 'display:none;'}margin-top:10px;">
       <input type="date" id="periodFromInput" value="${filters.dateFrom ? filters.dateFrom.slice(0, 10) : ''}" />
       <span class="period-arrow">→</span>
       <input type="date" id="periodToInput" value="${filters.dateTo ? filters.dateTo.slice(0, 10) : ''}" />
@@ -1157,8 +1166,9 @@ async function renderOrdersList() {
   try {
     const stats = await api('/api/orders/stats');
     content.querySelector('#order-stats').innerHTML = `
-      <div class="stat-tile accented"><div class="label">Total comenzi</div><div class="value">${stats.total}</div></div>
-      <div class="stat-tile"><div class="label">Fără AWB</div><div class="value">${stats.needsAwb}</div></div>
+      <div class="stat-tile accented"><span class="corner-dot" style="background:var(--accent);"></span><div class="label">Total comenzi</div><div class="value">${stats.total}</div><div class="sub-line">sincronizate din MerchantPro</div></div>
+      <div class="stat-tile"><span class="corner-dot" style="background:var(--priority-high);"></span><div class="label">Fără AWB</div><div class="value">${stats.needsAwb}</div></div>
+      <div class="stat-tile"><span class="corner-dot" style="background:var(--status-resolved);"></span><div class="label">Cu AWB</div><div class="value">${stats.withAwb}</div></div>
     `;
 
     const shippingDotVar = {
