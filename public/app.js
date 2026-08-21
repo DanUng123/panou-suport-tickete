@@ -1057,6 +1057,7 @@ function paymentMethodLabel(order) {
   if (order.paymentMethodCode === 'cash_delivery') return 'Ramburs';
   const name = order.paymentMethodName || '';
   if (/ramburs|cash.*delivery|cash.*curier/i.test(name)) return 'Ramburs';
+  if (/card/i.test(name)) return 'CARD';
   return name || '—';
 }
 
@@ -1186,7 +1187,7 @@ async function renderOrdersList() {
     const activePeriodLabel = PERIOD_SUBLABEL[detectActivePeriod(filters.dateFrom, filters.dateTo)];
     content.querySelector('#order-stats').innerHTML = `
       <div class="stat-tile accented"><span class="corner-dot" style="background:var(--accent);"></span><div class="label">Total comenzi</div><div class="value">${stats.total}</div><div class="sub-line">${activePeriodLabel}</div></div>
-      <div class="stat-tile"><span class="corner-dot" style="background:var(--status-in_progress);"></span><div class="label">Expediate</div><div class="value">${stats.shipped}</div><div class="sub-line">${activePeriodLabel}</div></div>
+      <div class="stat-tile"><span class="corner-dot glow-dot" style="background:var(--status-resolved);"></span><div class="label">Expediate</div><div class="value">${stats.shipped}</div><div class="sub-line">${activePeriodLabel}</div></div>
       <div class="stat-tile"><span class="corner-dot" style="background:var(--priority-urgent);"></span><div class="label">Anulate</div><div class="value">${stats.cancelled}</div><div class="sub-line">${activePeriodLabel}</div></div>
     `;
 
@@ -1261,7 +1262,10 @@ async function renderOrdersList() {
       </div>
       <div class="order-thumbs">${thumbs}${extraCount > 0 ? `<div class="order-thumb order-thumb-more">+${extraCount}</div>` : ''}</div>
       <div class="order-total">${fmtMoney(o.totalAmount, o.currency)}</div>
-      <div style="min-width:0;overflow:hidden;"><span class="badge badge-status-closed" style="max-width:100%;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(paymentMethodLabel(o))}</span></div>
+      <div style="min-width:0;overflow:hidden;display:flex;align-items:center;gap:6px;">
+        ${o.paymentStatus === 'paid' ? '<span class="glow-dot" title="Plată finalizată"></span>' : ''}
+        <span class="badge badge-status-closed" style="max-width:100%;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(paymentMethodLabel(o))}</span>
+      </div>
       <div class="order-awb-status">
         <div class="awb-status-line"><span class="awb-status-dot ${o.awbNumber || o.shippingAwb ? 'has-awb' : ''}"></span>${o.awbNumber || o.shippingAwb ? 'AWB emis' : 'Fără AWB'}</div>
         <div class="awb-status-sub">site: ${escapeHtml(SHIPPING_STATUS_LABELS_MP[o.shippingStatus] || o.shippingStatus || '—')}</div>
