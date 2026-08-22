@@ -530,7 +530,7 @@ async function handleApi(req, res, pathname, query) {
       if (!ticket) return sendJSON(res, 404, { error: 'Tichet negăsit' });
 
       const body = await readBody(req);
-      const reason = body.reason === 'retur' ? 'retur' : 'service';
+      const reason = ['retur', 'schimb'].includes(body.reason) ? body.reason : 'service';
 
       // adresa: folosim ce vine explicit in cerere; daca lipseste cate un
       // camp, completam din comanda asociata tichetului (daca exista)

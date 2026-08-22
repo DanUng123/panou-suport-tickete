@@ -78,6 +78,14 @@ function fmtShortDate(date) {
 /** Etichete pentru "Unde e marfa" — text simplu, contextual pe secțiune (service/retur). */
 /** Eticheta pentru coloana STATUS (badge) — poate diferi de "unde e marfa" (ex: AWB emis, dar marfa tot la client). */
 function stageStatusLabel(stage, section) {
+  if (section === 'schimb') {
+    const map = {
+      pickup_awb_issued: 'AWB colet la schimb emis',
+      in_transit_to_service: 'În curs de schimb',
+      at_service: 'Schimb finalizat',
+    };
+    return map[stage] || 'Neridicat încă';
+  }
   const isRetur = section === 'retur';
   const map = {
     pickup_awb_issued: 'AWB de ridicare emis',
@@ -92,6 +100,14 @@ function stageStatusLabel(stage, section) {
 
 /** Eticheta pentru coloana "Unde e marfa" — locația fizică reală, nu statusul AWB-ului. */
 function stageLocationLabel(stage, section) {
+  if (section === 'schimb') {
+    const map = {
+      pickup_awb_issued: 'La client',
+      in_transit_to_service: 'Curier în drum (schimb)',
+      at_service: 'Schimb efectuat',
+    };
+    return map[stage] || 'Neridicat încă';
+  }
   const isRetur = section === 'retur';
   const map = {
     pickup_awb_issued: 'La client',
@@ -313,6 +329,7 @@ const NAV_ICONS = {
   orders: '<svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4.8 8 2l6 2.8v6.4L8 14 2 11.2V4.8Z"/><path d="M2 4.8 8 7.6l6-2.8M8 7.6V14"/></svg>',
   service: '<svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9.8 3.2a3 3 0 0 0-4 3.6L2 10.6l1.4 1.4 3.8-3.8a3 3 0 0 0 3.6-4L9 6l-1-1 1.8-1.8Z"/></svg>',
   retur: '<svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8a5 5 0 1 0 1.6-3.7"/><path d="M1.5 2.5v2.6h2.6"/></svg>',
+  schimb: '<svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 5h9.5M11.5 5 9 2.5M11.5 5 9 7.5"/><path d="M14 11H4.5M4.5 11 7 8.5M4.5 11 7 13.5"/></svg>',
   admin: '<svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1.5 13 3.5v3.8c0 3.4-2.2 5.7-5 6.7-2.8-1-5-3.3-5-6.7V3.5L8 1.5Z"/><path d="M5.8 8 7.3 9.5l3-3.2"/></svg>',
 };
 
@@ -335,6 +352,7 @@ function renderShell(activeRoute, contentNode) {
         <div class="nav-item" data-route="#/tickets">${NAV_ICONS.tickets}Tichete</div>
         <div class="nav-item" data-route="#/service">${NAV_ICONS.service}Service</div>
         <div class="nav-item" data-route="#/retur">${NAV_ICONS.retur}Retur</div>
+        <div class="nav-item" data-route="#/schimb">${NAV_ICONS.schimb}Colet la Schimb</div>
         ${currentAgent.role === 'manager' ? `<div class="nav-item" data-route="#/admin">${NAV_ICONS.admin}Administrare</div>` : ''}
       </nav>
       <div class="sidebar-spacer"></div>
@@ -550,22 +568,26 @@ const SECTION_CONFIG = {
   '#/tickets': { section: 'support', title: 'Tichete', sub: 'Toate solicitările clienților' },
   '#/service': { section: 'service', title: 'Service', sub: 'Tichete cu ridicare pentru reparație/service' },
   '#/retur': { section: 'retur', title: 'Retur', sub: 'Tichete cu ridicare pentru returnare produs' },
+  '#/schimb': { section: 'schimb', title: 'Colet la Schimb', sub: 'Tichete cu AWB de colet la schimb' },
 };
 
 /** Randeaza fundalul corect pentru o ruta de lista de tichete (generica sau Service/Retur). */
 async function renderBackgroundForRoute(route) {
   if (route === '#/service') return renderServiceReturnList('#/service', 'service');
   if (route === '#/retur') return renderServiceReturnList('#/retur', 'retur');
+  if (route === '#/schimb') return renderServiceReturnList('#/schimb', 'schimb');
   return renderTicketsList(route);
 }
 
-/** Lista specializata pentru Service/Retur — coloane si tab-uri dedicate. */
+/** Lista specializata pentru Service/Retur/Schimb — coloane si tab-uri dedicate. */
 async function renderServiceReturnList(route, section) {
   const isRetur = section === 'retur';
-  const title = isRetur ? 'Retur' : 'Service / Garanție';
-  const subtitle = isRetur
-    ? 'Retur produse: ridicare de la client → depozit → procesare rambursare.'
-    : 'Reparații în garanție: ridicare de la client → atelier → livrare înapoi.';
+  const title = SECTION_CONFIG[route]?.title || 'Service';
+  const subtitle = {
+    service: 'Reparații în garanție: ridicare de la client → atelier → livrare înapoi.',
+    retur: 'Retur produse: ridicare de la client → depozit → procesare rambursare.',
+    schimb: 'Colet la schimb: ridicare produs vechi + livrare produs nou, într-o singură vizită a curierului.',
+  }[section];
   const filters = parseListRoute(window.location.hash);
   const activeTab = filters.tab || 'open';
 
@@ -615,7 +637,7 @@ async function renderServiceReturnList(route, section) {
 
   const tabs = [
     { key: 'open', label: 'Deschise' },
-    { key: 'atelier', label: isRetur ? 'La depozit' : 'La atelier' },
+    { key: 'atelier', label: { service: 'La atelier', retur: 'La depozit', schimb: 'Finalizate' }[section] },
     { key: 'overdue', label: 'Peste 7 zile' },
     { key: 'closed', label: 'Închise' },
     { key: 'all', label: 'Toate' },
@@ -828,7 +850,7 @@ async function renderTicketDetail(ticketId) {
     openDrawer(el('<div class="panel">Tichetul nu a fost găsit.</div>'));
     return;
   }
-  const bgRoute = ticket.section === 'service' ? '#/service' : ticket.section === 'retur' ? '#/retur' : '#/tickets';
+  const bgRoute = { service: '#/service', retur: '#/retur', schimb: '#/schimb' }[ticket.section] || '#/tickets';
   if (currentMainRoute !== bgRoute) await renderBackgroundForRoute(bgRoute);
   await paintTicketDrawer(ticket);
 }
@@ -968,6 +990,7 @@ async function paintTicketDrawer(ticket) {
                 <option value="support" ${ticket.section === 'support' ? 'selected' : ''}>Tichete (suport general)</option>
                 <option value="service" ${ticket.section === 'service' ? 'selected' : ''}>Service</option>
                 <option value="retur" ${ticket.section === 'retur' ? 'selected' : ''}>Retur</option>
+                <option value="schimb" ${ticket.section === 'schimb' ? 'selected' : ''}>Colet la Schimb</option>
               </select>
               <div class="hint" style="margin-top:6px;">Se schimbă automat la generarea unui AWB de ridicare — sau poți muta manual tichetul de aici.</div>
             </div>
@@ -975,7 +998,7 @@ async function paintTicketDrawer(ticket) {
           ` : ''}
 
           <div class="side-panel" style="margin-bottom:16px;">
-            <h2>${ticket.section === 'retur' ? 'Ridicare de la client (GLS)' : 'AWB ridicare (client → service)'}</h2>
+            <h2>${{ service: 'AWB ridicare (client → service)', retur: 'Ridicare de la client (GLS)', schimb: 'AWB colet la schimb (GLS)' }[ticket.section] || 'AWB ridicare (GLS)'}</h2>
             ${ticket.pickupAwbNumber ? `
               <div class="form-row">
                 <div class="side-field">
@@ -1003,6 +1026,7 @@ async function paintTicketDrawer(ticket) {
                   <select id="pu-reason" required>
                     <option value="service">Service / reparație</option>
                     <option value="retur">Retur produs</option>
+                    <option value="schimb">Colet la schimb</option>
                   </select>
                 </div>
                 <div class="field">
@@ -1815,7 +1839,7 @@ async function openOrderDrawer(orderId) {
 async function openTicketDrawerCrossLink(ticketId) {
   let ticket;
   try { ticket = await api(`/api/tickets/${ticketId}`); } catch (e) { showToast('Tichet negăsit'); return; }
-  const bgRoute = ticket.section === 'service' ? '#/service' : ticket.section === 'retur' ? '#/retur' : '#/tickets';
+  const bgRoute = { service: '#/service', retur: '#/retur', schimb: '#/schimb' }[ticket.section] || '#/tickets';
   if (currentMainRoute !== bgRoute) await renderBackgroundForRoute(bgRoute);
   history.pushState(null, '', `#/tickets/${ticketId}`);
   await paintTicketDrawer(ticket);
@@ -2062,6 +2086,9 @@ function render() {
   } else if (path === '#/retur') {
     hideDrawer();
     renderServiceReturnList('#/retur', 'retur');
+  } else if (path === '#/schimb') {
+    hideDrawer();
+    renderServiceReturnList('#/schimb', 'schimb');
   } else if (path === '#/orders') {
     hideDrawer();
     renderOrdersList();
