@@ -234,6 +234,7 @@ a { color: inherit; text-decoration: none; }
 }
 .nav-item .nav-icon { width: 16px; height: 16px; flex-shrink: 0; opacity: 0.85; }
 .nav-item.active .nav-icon { opacity: 1; }
+.page-header .nav-icon { width: 26px; height: 26px; flex-shrink: 0; }
 .nav-item .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-dim); }
 .nav-item.active .dot { background: var(--accent-text); }
 
@@ -472,6 +473,12 @@ a { color: inherit; text-decoration: none; }
   background: var(--accent-dim);
   border-color: var(--accent);
   color: var(--text);
+}
+.status-pill-filled-green {
+  background: rgba(76,175,125,0.16) !important;
+  border-color: rgba(76,175,125,0.4) !important;
+  color: var(--status-resolved) !important;
+  font-weight: 600;
 }
 .status-pill-dot {
   width: 7px;

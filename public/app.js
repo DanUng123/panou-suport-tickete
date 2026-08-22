@@ -641,15 +641,19 @@ async function renderServiceReturnList(route, section) {
     retur: 'Retur produse: ridicare de la client → depozit → procesare rambursare.',
     schimb: 'Colet la schimb: ridicare produs vechi + livrare produs nou, într-o singură vizită a curierului.',
   }[section];
+  const titleIconColor = { service: 'var(--status-open)', retur: 'var(--status-in_progress)', schimb: 'var(--status-waiting)' }[section];
   const filters = parseListRoute(window.location.hash);
   const activeTab = filters.tab || 'open';
 
   const content = el(`
     <div>
       <div class="page-header">
-        <div>
-          <h1>${title}</h1>
-          <div class="sub">${subtitle}</div>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <span style="color:${titleIconColor};">${NAV_ICONS[section]}</span>
+          <div>
+            <h1>${title}</h1>
+            <div class="sub">${subtitle}</div>
+          </div>
         </div>
       </div>
       <div class="status-pills segmented-group" id="tabRow" style="margin-bottom:18px;"></div>
@@ -733,7 +737,7 @@ async function renderServiceReturnList(route, section) {
       <div class="service-row" data-id="${t.id}">
         <div class="service-cod">${escapeHtml(t.sectionCode || t.id)}</div>
         <div class="order-platform"><span class="platform-dot"></span>${escapeHtml(platformLabel)}</div>
-        <div><span class="status-pill" style="cursor:default;padding:5px 11px;"><span class="status-pill-dot" style="background:${stageDotColor(t.stage)};"></span>${stageStatusLabel(t.stage, t.section)}</span></div>
+        <div><span class="status-pill ${['at_service', 'delivered_to_client'].includes(t.stage) && (t.section === 'schimb' || t.stage === 'delivered_to_client') ? 'status-pill-filled-green' : ''}" style="cursor:default;padding:5px 11px;"><span class="status-pill-dot" style="background:${stageDotColor(t.stage)};"></span>${stageStatusLabel(t.stage, t.section)}</span></div>
         <div style="color:var(--text-secondary);font-size:12.5px;">${stageLocationLabel(t.stage, t.section)}</div>
         <div class="order-id">${order ? `#${order.mpId}` : '—'}</div>
         <div class="t-title" style="font-size:13px;">${escapeHtml(t.requesterName)}</div>
@@ -1888,7 +1892,7 @@ async function openOrderDrawer(orderId) {
               <div class="side-field"><label>Telefon</label><div style="padding:8px 0;font-size:14px;">${escapeHtml(order.shippingPhone || '—')}</div></div>
             </div>
             <div class="side-field"><label>Email</label><div style="padding:8px 0;font-size:14px;">${escapeHtml(order.customerEmail || '—')}</div></div>
-            <button class="btn btn-outline-green" id="clientProfileBtn" style="margin-top:4px;">👤 Profil client</button>
+            <button class="btn" id="clientProfileBtn" style="margin-top:4px;">👤 Profil client</button>
           </div>
 
           <div class="side-panel" style="margin-bottom:16px;">
@@ -1934,7 +1938,7 @@ async function openOrderDrawer(orderId) {
             <h2>Activitate</h2>
             <div class="btn-row" style="margin-bottom:14px;">
               <button class="btn btn-sm btn-outline-blue" id="quickNoteBtn">+ Notă</button>
-              <button class="btn btn-sm btn-outline-red" id="openTicketBtn">+ Tichet nou</button>
+              <button class="btn btn-sm btn-solid-green" id="openTicketBtn">+ Tichet nou</button>
             </div>
 
             <form class="comment-form" id="noteForm" style="display:none;margin-bottom:16px;">
