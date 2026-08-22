@@ -643,7 +643,7 @@ async function renderServiceReturnList(route, section) {
   }[section];
   const titleIconColor = { service: 'var(--status-open)', retur: 'var(--status-in_progress)', schimb: 'var(--status-waiting)' }[section];
   const filters = parseListRoute(window.location.hash);
-  const activeTab = filters.tab || 'open';
+  const activeTab = filters.tab || 'all';
 
   const content = el(`
     <div>
@@ -1712,7 +1712,11 @@ async function renderOrdersList() {
     const container = content.querySelector(containerId);
     container.innerHTML = html;
     container.querySelectorAll('.status-pill').forEach((pill) => {
-      pill.addEventListener('click', () => applyFiltersFromForm({ [filterKey]: pill.dataset.value }));
+      pill.addEventListener('click', () => {
+        const clickedValue = pill.dataset.value;
+        const newValue = clickedValue && clickedValue === activeValue ? '' : clickedValue;
+        applyFiltersFromForm({ [filterKey]: newValue });
+      });
     });
   }
 
