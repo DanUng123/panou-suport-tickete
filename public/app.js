@@ -1193,6 +1193,39 @@ async function paintTicketDrawer(ticket) {
             </div>
           ` : ''}
 
+          ${ticket.section === 'retur' && ticket.stage === 'at_service' ? `
+            <div class="side-panel" style="margin-bottom:16px;">
+              <h2>Rambursare — date bancare client</h2>
+              <div class="form-row">
+                <div class="field">
+                  <label>IBAN *</label>
+                  <input type="text" id="rf-iban" placeholder="RO49AAAA1B31007593840000" value="${escapeHtml(ticket.refundIban || '')}" style="font-family:var(--font-mono);" />
+                </div>
+                <div class="field">
+                  <label>Titular cont</label>
+                  <input type="text" id="rf-holder" placeholder="Implicit: numele clientului" value="${escapeHtml(ticket.refundAccountHolder || '')}" />
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="field">
+                  <label>Sumă de returnat (RON) *</label>
+                  <input type="number" id="rf-amount" step="0.01" min="0" placeholder="0.00" value="${ticket.refundAmount != null ? ticket.refundAmount : (relatedOrder ? relatedOrder.totalAmount : '')}" />
+                </div>
+              </div>
+              <div class="field">
+                <label>Motiv retur</label>
+                <textarea id="rf-reason" placeholder="Ex: Produs cu defect de fabricație…" style="min-height:60px;">${escapeHtml(ticket.refundReason || '')}</textarea>
+              </div>
+              <button class="btn btn-block btn-primary" id="saveRefundInfoBtn" style="margin-bottom:10px;">Salvează datele bancare</button>
+              ${ticket.refundIban && ticket.refundAmount != null ? `
+                <div class="btn-row">
+                  <button class="btn" id="downloadRefundPdfBtn">↓ Etichetă PDF</button>
+                  <button class="btn" id="downloadRefundCsvBtn">↓ Exportă CSV (Excel)</button>
+                </div>
+              ` : '<div class="hint">Completează IBAN și suma, apoi salvează, ca să poți genera eticheta.</div>'}
+            </div>
+          ` : ''}
+
           <div class="comments-panel">
             <h2 style="font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary);margin:0 0 14px;">Activitate (${ticket.comments.length} comentarii)</h2>
             ${comments}
@@ -1397,6 +1430,41 @@ async function paintTicketDrawer(ticket) {
           cancelReturnBtn.disabled = false;
         }
       });
+    }
+
+    const saveRefundInfoBtn = content.querySelector('#saveRefundInfoBtn');
+    if (saveRefundInfoBtn) {
+      saveRefundInfoBtn.addEventListener('click', async () => {
+        const iban = content.querySelector('#rf-iban').value.trim();
+        const holder = content.querySelector('#rf-holder').value.trim();
+        const amount = content.querySelector('#rf-amount').value;
+        const reason = content.querySelector('#rf-reason').value.trim();
+        if (!iban) { showToast('Completează IBAN-ul.'); return; }
+        if (!amount || Number(amount) <= 0) { showToast('Completează o sumă validă.'); return; }
+        saveRefundInfoBtn.disabled = true;
+        saveRefundInfoBtn.textContent = 'Se salvează…';
+        try {
+          ticket = await api(`/api/tickets/${ticket.id}/refund-info`, {
+            method: 'PATCH',
+            body: JSON.stringify({ iban, accountHolder: holder, amount: Number(amount), reason }),
+          });
+          showToast('Date bancare salvate');
+          paint();
+        } catch (err) {
+          showToast('Eroare: ' + err.message);
+          saveRefundInfoBtn.disabled = false;
+          saveRefundInfoBtn.textContent = 'Salvează datele bancare';
+        }
+      });
+    }
+
+    const downloadRefundPdfBtn = content.querySelector('#downloadRefundPdfBtn');
+    if (downloadRefundPdfBtn) {
+      downloadRefundPdfBtn.addEventListener('click', () => window.open(`/api/tickets/${ticket.id}/refund-label.pdf`, '_blank'));
+    }
+    const downloadRefundCsvBtn = content.querySelector('#downloadRefundCsvBtn');
+    if (downloadRefundCsvBtn) {
+      downloadRefundCsvBtn.addEventListener('click', () => window.open(`/api/tickets/${ticket.id}/refund-label.csv`, '_blank'));
     }
 
     content.querySelector('#commentForm').addEventListener('submit', async (e) => {

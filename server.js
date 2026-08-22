@@ -12,6 +12,7 @@ const db = require('./lib/db');
 const orderSync = require('./lib/order-sync');
 const gls = require('./lib/gls');
 const mp = require('./lib/merchantpro');
+const pdf = require('./lib/pdf');
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -791,6 +792,75 @@ async function handleApi(req, res, pathname, query) {
       const ok = db.deleteTicketPhoto(photoServeMatch[1]);
       if (!ok) return sendJSON(res, 404, { error: 'Fotografie negăsită' });
       return sendJSON(res, 200, { ok: true });
+    }
+
+    // ---- date bancare rambursare (Retur) + eticheta rambursare (PDF / CSV) ----
+
+    const refundInfoMatch = pathname.match(/^\/api\/tickets\/([^/]+)\/refund-info$/);
+    if (refundInfoMatch && req.method === 'PATCH') {
+      const ticket = db.getTicket(refundInfoMatch[1]);
+      if (!ticket) return sendJSON(res, 404, { error: 'Tichet negăsit' });
+      const body = await readBody(req);
+      if (!body.iban || !String(body.iban).trim()) return sendJSON(res, 400, { error: 'IBAN-ul este obligatoriu.' });
+      if (body.amount == null || Number.isNaN(Number(body.amount)) || Number(body.amount) <= 0) {
+        return sendJSON(res, 400, { error: 'Suma de returnat trebuie să fie un număr pozitiv.' });
+      }
+      const updated = db.setTicketRefundInfo(ticket.id, {
+        iban: String(body.iban).trim().toUpperCase().replace(/\s+/g, ''),
+        accountHolder: body.accountHolder || null,
+        amount: body.amount,
+        reason: body.reason || null,
+      }, currentAgent);
+      return sendJSON(res, 200, updated);
+    }
+
+    const refundLabelMatch = pathname.match(/^\/api\/tickets\/([^/]+)\/refund-label\.(pdf|csv)$/);
+    if (refundLabelMatch && req.method === 'GET') {
+      const ticket = db.getTicket(refundLabelMatch[1]);
+      if (!ticket) return sendJSON(res, 404, { error: 'Tichet negăsit' });
+      if (!ticket.refundIban || ticket.refundAmount == null) {
+        return sendJSON(res, 400, { error: 'Completează mai întâi datele bancare și suma de returnat.' });
+      }
+      let linkedOrder = null;
+      if (ticket.relatedOrderId) linkedOrder = db.getOrder(ticket.relatedOrderId);
+      const fileFormat = refundLabelMatch[2];
+
+      const fields = [
+        ['Cod tichet', ticket.sectionCode || ticket.id],
+        ['Comandă asociată', linkedOrder ? `#${linkedOrder.mpId}` : '—'],
+        ['Client', ticket.requesterName],
+        ['Telefon', ticket.requesterPhone || ticket.pickupPhone || '—'],
+        ['IBAN', ticket.refundIban],
+        ['Titular cont', ticket.refundAccountHolder || ticket.requesterName],
+        ['Sumă de returnat', `${Number(ticket.refundAmount).toFixed(2)} RON`],
+        ['Motiv retur', ticket.refundReason || ticket.description || '—'],
+        ['Data generare', new Date().toLocaleString('ro-RO')],
+      ];
+
+      if (fileFormat === 'pdf') {
+        const buffer = pdf.generateSimplePdf({
+          title: `Etichetă rambursare — ${ticket.sectionCode || ticket.id}`,
+          subtitle: `Generat la ${new Date().toLocaleString('ro-RO')}`,
+          lines: fields.map(([k, v]) => `${k}: ${v}`),
+        });
+        res.writeHead(200, {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `inline; filename="rambursare-${ticket.sectionCode || ticket.id}.pdf"`,
+          'Content-Length': buffer.length,
+        });
+        return res.end(buffer);
+      }
+
+      // CSV -- se deschide direct in Excel; BOM pentru diacritice corecte
+      const esc = (v) => `"${String(v).replace(/"/g, '""')}"`;
+      const csv = '\uFEFF' + fields.map(([k, v]) => `${esc(k)},${esc(v)}`).join('\r\n');
+      const buffer = Buffer.from(csv, 'utf8');
+      res.writeHead(200, {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="rambursare-${ticket.sectionCode || ticket.id}.csv"`,
+        'Content-Length': buffer.length,
+      });
+      return res.end(buffer);
     }
 
     return sendJSON(res, 404, { error: 'Rută necunoscută' });
