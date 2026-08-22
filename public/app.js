@@ -47,6 +47,7 @@ let currentAgent = null;
 let agentsCache = [];
 let categoriesCache = [];
 let glsConfigured = false;
+let samedayConfigured = false;
 let platformLabel = 'MERCHANTPRO';
 
 // ---------------- utilitare ----------------
@@ -305,14 +306,16 @@ async function boot() {
 }
 
 async function loadReferenceData() {
-  const [agents, categories, glsStatus] = await Promise.all([
+  const [agents, categories, glsStatus, samedayStatus] = await Promise.all([
     api('/api/agents'),
     api('/api/categories'),
     api('/api/gls/status').catch(() => ({ configured: false })),
+    api('/api/sameday/status').catch(() => ({ configured: false })),
   ]);
   agentsCache = agents;
   categoriesCache = categories;
   glsConfigured = glsStatus.configured;
+  samedayConfigured = samedayStatus.configured;
 }
 
 // ---------------- ecran login ----------------
@@ -1138,6 +1141,13 @@ async function paintTicketDrawer(ticket) {
                   </select>
                 </div>
                 <div class="field">
+                  <label>Curier *</label>
+                  <select id="pu-courier" required>
+                    <option value="gls" ${glsConfigured ? '' : 'disabled'}>GLS${glsConfigured ? '' : ' (neconfigurat)'}</option>
+                    <option value="sameday" ${samedayConfigured ? '' : 'disabled'}>Sameday${samedayConfigured ? '' : ' (neconfigurat)'}</option>
+                  </select>
+                </div>
+                <div class="field">
                   <label>Adresă ridicare *</label>
                   <input type="text" id="pu-address" required placeholder="Stradă, număr" value="${escapeHtml(relatedOrder?.shippingAddress || '')}" />
                 </div>
@@ -1155,8 +1165,8 @@ async function paintTicketDrawer(ticket) {
                   <label>Telefon client *</label>
                   <input type="text" id="pu-phone" required value="${escapeHtml(relatedOrder?.shippingPhone || '')}" />
                 </div>
-                ${!glsConfigured ? '<div class="hint" style="margin-bottom:10px;">Integrarea GLS nu este configurată pe server.</div>' : ''}
-                <button class="btn btn-block btn-primary" type="submit" ${glsConfigured ? '' : 'disabled style="opacity:0.5;cursor:not-allowed;"'}>Generează AWB ridicare</button>
+                ${!glsConfigured && !samedayConfigured ? '<div class="hint" style="margin-bottom:10px;">Niciun curier nu este configurat pe server.</div>' : ''}
+                <button class="btn btn-block btn-primary" type="submit" ${glsConfigured || samedayConfigured ? '' : 'disabled style="opacity:0.5;cursor:not-allowed;"'}>Generează AWB ridicare</button>
                 ${relatedOrder ? '<div class="hint" style="margin-top:8px;">Adresa a fost preluată automat din comanda asociată — o poți edita mai sus.</div>' : ''}
               </form>
             `}
@@ -1288,6 +1298,8 @@ async function paintTicketDrawer(ticket) {
 
     const pickupForm = content.querySelector('#pickupAwbForm');
     if (pickupForm) {
+      const courierSelect = content.querySelector('#pu-courier');
+
       pickupForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const submitBtn = pickupForm.querySelector('button[type="submit"]');
@@ -1295,6 +1307,7 @@ async function paintTicketDrawer(ticket) {
         submitBtn.textContent = 'Se generează…';
         const payload = {
           reason: content.querySelector('#pu-reason').value,
+          courier: courierSelect.value,
           address: content.querySelector('#pu-address').value.trim(),
           city: content.querySelector('#pu-city').value.trim(),
           postalCode: content.querySelector('#pu-postal').value.trim(),
