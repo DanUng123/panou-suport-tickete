@@ -1193,7 +1193,7 @@ async function paintTicketDrawer(ticket) {
             </div>
           ` : ''}
 
-          ${ticket.section === 'retur' && ticket.stage === 'at_service' ? `
+          ${ticket.section === 'retur' ? `
             <div class="side-panel" style="margin-bottom:16px;">
               <h2>Rambursare — date bancare client</h2>
               <div class="form-row">
