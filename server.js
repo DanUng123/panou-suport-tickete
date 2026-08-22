@@ -87,12 +87,12 @@ function sendJSON(res, status, data) {
   res.end(body);
 }
 
-function readBody(req) {
+function readBody(req, maxBytes = 2_000_000) {
   return new Promise((resolve, reject) => {
     let chunks = '';
     req.on('data', (c) => {
       chunks += c;
-      if (chunks.length > 2_000_000) {
+      if (chunks.length > maxBytes) {
         reject(new Error('Payload prea mare'));
         req.destroy();
       }
@@ -750,6 +750,47 @@ async function handleApi(req, res, pathname, query) {
       } catch (e) {
         return sendJSON(res, 502, { error: e.message });
       }
+    }
+
+    // ---- profil client (agregat din comenzi + tichete cu acelasi telefon/email) ----
+
+    if (pathname === '/api/clients/lookup' && req.method === 'GET') {
+      const profile = db.getClientProfile({ phone: query.phone || undefined, email: query.email || undefined });
+      return sendJSON(res, 200, profile);
+    }
+
+    // ---- fotografii tichet (max 6, incarcate ca base64 in JSON) ----
+
+    const photosListMatch = pathname.match(/^\/api\/tickets\/([^/]+)\/photos$/);
+    if (photosListMatch && req.method === 'GET') {
+      return sendJSON(res, 200, db.listTicketPhotos(photosListMatch[1]));
+    }
+    if (photosListMatch && req.method === 'POST') {
+      const ticket = db.getTicket(photosListMatch[1]);
+      if (!ticket) return sendJSON(res, 404, { error: 'Tichet negăsit' });
+      const body = await readBody(req, 30_000_000); // pana la ~30MB (fotografii comprimate pe client)
+      if (!body.dataBase64 || !body.mimeType) return sendJSON(res, 400, { error: 'Lipsesc dataBase64 sau mimeType.' });
+      if (!/^image\/(jpeg|png|webp)$/.test(body.mimeType)) return sendJSON(res, 400, { error: 'Tip de fișier neacceptat — doar JPEG, PNG sau WEBP.' });
+      try {
+        const photo = db.addTicketPhoto(ticket.id, { dataBase64: body.dataBase64, mimeType: body.mimeType });
+        return sendJSON(res, 200, photo);
+      } catch (e) {
+        return sendJSON(res, 400, { error: e.message });
+      }
+    }
+
+    const photoServeMatch = pathname.match(/^\/api\/tickets\/photos\/([^/]+)$/);
+    if (photoServeMatch && req.method === 'GET') {
+      const photo = db.getTicketPhoto(photoServeMatch[1]);
+      if (!photo) return sendJSON(res, 404, { error: 'Fotografie negăsită' });
+      const buffer = Buffer.from(photo.dataBase64, 'base64');
+      res.writeHead(200, { 'Content-Type': photo.mimeType, 'Content-Length': buffer.length, 'Cache-Control': 'private, max-age=86400' });
+      return res.end(buffer);
+    }
+    if (photoServeMatch && req.method === 'DELETE') {
+      const ok = db.deleteTicketPhoto(photoServeMatch[1]);
+      if (!ok) return sendJSON(res, 404, { error: 'Fotografie negăsită' });
+      return sendJSON(res, 200, { ok: true });
     }
 
     return sendJSON(res, 404, { error: 'Rută necunoscută' });

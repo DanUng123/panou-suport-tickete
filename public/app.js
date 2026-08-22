@@ -241,6 +241,59 @@ function closeDrawer() {
   }
 }
 
+// ---------------- Fereastra modala (centrata, distincta de panoul lateral) ----------------
+
+function ensureModalEl() {
+  let overlay = document.querySelector('.modal-overlay');
+  if (overlay) return overlay;
+
+  overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  const box = document.createElement('div');
+  box.className = 'modal-box';
+  box.id = 'modalBox';
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) closeModal();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && overlay.classList.contains('open')) closeModal();
+  });
+
+  return overlay;
+}
+
+function openModal(contentNode, { title, onClose, restoreHistory = true } = {}) {
+  const overlay = ensureModalEl();
+  const box = overlay.querySelector('#modalBox');
+  box.innerHTML = '';
+  box._onClose = onClose || null;
+  box._restoreHistory = restoreHistory;
+  const header = el(`
+    <div class="modal-header">
+      <h2>${escapeHtml(title || '')}</h2>
+      <button class="modal-close-btn" title="Închide">✕</button>
+    </div>
+  `);
+  header.querySelector('.modal-close-btn').addEventListener('click', closeModal);
+  box.appendChild(header);
+  box.appendChild(contentNode);
+  requestAnimationFrame(() => overlay.classList.add('open'));
+}
+
+function closeModal() {
+  const overlay = document.querySelector('.modal-overlay');
+  if (!overlay) return;
+  overlay.classList.remove('open');
+  const box = overlay.querySelector('#modalBox');
+  if (box && box._onClose) box._onClose();
+  if (box && box._restoreHistory !== false && currentMainRoute) {
+    history.pushState(null, '', currentMainRoute);
+  }
+}
+
 async function boot() {
   try {
     currentAgent = await api('/api/session');
@@ -876,6 +929,9 @@ async function paintTicketDrawer(ticket) {
     try { relatedOrder = await api(`/api/orders/${ticket.relatedOrderId}`); } catch (e) { /* comanda poate a fost stearsa */ }
   }
 
+  let ticketPhotos = [];
+  try { ticketPhotos = await api(`/api/tickets/${ticket.id}/photos`); } catch (e) { /* n-o blocam afisarea */ }
+
   function paint() {
     const FIELD_LABELS_RO = {
       status: 'statusul', priority: 'prioritatea', category: 'categoria', assignedTo: 'agentul asignat',
@@ -944,8 +1000,18 @@ async function paintTicketDrawer(ticket) {
               ${relatedOrder ? `<span class="badge badge-status-waiting" id="relatedOrderLink" style="cursor:pointer;">📦 Comandă #${relatedOrder.mpId}</span>` : ''}
             </div>
             <div class="description">${escapeHtml(ticket.description)}</div>
+            ${ticketPhotos.length ? `
+              <div class="photo-thumbs" id="ticketPhotoGallery" style="margin-top:12px;">
+                ${ticketPhotos.map((p) => `
+                  <div class="photo-thumb-wrap" style="width:80px;height:80px;cursor:pointer;" data-photo-id="${p.id}">
+                    <img src="/api/tickets/photos/${p.id}" alt="" loading="lazy" />
+                  </div>
+                `).join('')}
+              </div>
+            ` : ''}
             <div class="meta-row">
               <div class="meta-item"><div class="meta-label">Solicitant</div><div class="meta-value">${escapeHtml(ticket.requesterName)}</div></div>
+              <div class="meta-item"><div class="meta-label">Telefon</div><div class="meta-value">${escapeHtml(ticket.requesterPhone || '—')}</div></div>
               <div class="meta-item"><div class="meta-label">Email</div><div class="meta-value">${escapeHtml(ticket.requesterEmail || '—')}</div></div>
               <div class="meta-item"><div class="meta-label">Creat</div><div class="meta-value">${fmtDate(ticket.createdAt)}</div></div>
               <div class="meta-item"><div class="meta-label">Actualizat</div><div class="meta-value">${fmtDate(ticket.updatedAt)}</div></div>
@@ -1103,6 +1169,30 @@ async function paintTicketDrawer(ticket) {
     if (relatedOrder) {
       content.querySelector('#relatedOrderLink').addEventListener('click', () => openOrderDrawerCrossLink(relatedOrder.id));
     }
+
+    content.querySelectorAll('#ticketPhotoGallery .photo-thumb-wrap[data-photo-id]').forEach((thumb) => {
+      thumb.addEventListener('click', () => {
+        const photoId = thumb.dataset.photoId;
+        const box = el(`
+          <div style="text-align:center;">
+            <img src="/api/tickets/photos/${photoId}" alt="" style="max-width:100%;max-height:70vh;border-radius:8px;" />
+            <button class="btn" id="deletePhotoBtn" style="margin-top:14px;color:var(--priority-urgent);">Șterge fotografia</button>
+          </div>
+        `);
+        openModal(box, { title: 'Fotografie tichet', restoreHistory: false });
+        box.querySelector('#deletePhotoBtn').addEventListener('click', async () => {
+          if (!confirm('Ștergi această fotografie?')) return;
+          try {
+            await api(`/api/tickets/photos/${photoId}`, { method: 'DELETE' });
+            closeModal();
+            ticketPhotos = ticketPhotos.filter((p) => p.id !== photoId);
+            paint();
+          } catch (err) {
+            showToast('Eroare la ștergere: ' + err.message);
+          }
+        });
+      });
+    });
 
     async function patchField(field, value) {
       try {
@@ -1300,6 +1390,41 @@ async function openNewTicketDrawer(fromOrderId) {
   await paintNewTicketDrawer(fromOrderId || null);
 }
 
+/** Comprimă o poză pe partea de client (redimensionare + JPEG) înainte de trimitere la server. */
+function compressImageFile(file, maxDim = 1600, quality = 0.82) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Nu am putut citi fișierul.'));
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Fișier imagine invalid.'));
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          const scale = maxDim / Math.max(width, height);
+          width = Math.round(width * scale);
+          height = Math.round(height * scale);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        canvas.toBlob((blob) => {
+          if (!blob) return reject(new Error('Comprimare eșuată.'));
+          const reader2 = new FileReader();
+          reader2.onload = () => resolve({ dataUrl: reader2.result, mimeType: 'image/jpeg' });
+          reader2.onerror = () => reject(new Error('Comprimare eșuată.'));
+          reader2.readAsDataURL(blob);
+        }, 'image/jpeg', quality);
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+const MAX_NEW_TICKET_PHOTOS = 6;
+
 async function paintNewTicketDrawer(fromOrderId) {
   let prefill = null;
   if (fromOrderId) {
@@ -1310,20 +1435,10 @@ async function paintNewTicketDrawer(fromOrderId) {
         .join('\n');
       prefill = {
         subject: `Comandă #${order.mpId} — `,
-        description:
-`Comandă MerchantPro #${order.mpId}
-Status livrare: ${SHIPPING_STATUS_LABELS_MP[order.shippingStatus] || order.shippingStatus || '—'} | Status plată: ${PAYMENT_STATUS_LABELS_MP[order.paymentStatus] || order.paymentStatus || '—'}
-
-Produse:
-${itemsList || '(niciun produs listat)'}
-
-Adresă livrare: ${order.shippingAddress || '—'}, ${order.shippingCity || ''}, ${order.shippingState || ''} ${order.shippingPostalCode || ''}, ${order.shippingCountryName || ''}
-Telefon: ${order.shippingPhone || '—'}
-
-—
-`,
+        description: itemsList ? `Produse:\n${itemsList}` : '',
         requesterName: order.shippingName || order.billingName || '',
         requesterEmail: order.customerEmail || '',
+        requesterPhone: order.shippingPhone || '',
         orderId: order.id,
         orderMpId: order.mpId,
       };
@@ -1332,91 +1447,137 @@ Telefon: ${order.shippingPhone || '—'}
     }
   }
 
+  const pendingPhotos = []; // { dataUrl, mimeType, base64 }
+
   const content = el(`
-    <div>
-      <div class="page-header">
-        <div>
-          <h1>Tichet nou</h1>
-          <div class="sub">${prefill ? `Creat din comanda #${prefill.orderMpId}` : 'Înregistrează o solicitare de suport'}</div>
+    <div class="modal-body">
+      ${prefill ? `<div class="hint" style="margin-bottom:14px;">Comandă: <strong style="color:var(--text);">#${prefill.orderMpId}</strong></div>` : ''}
+      <form id="newForm">
+        <div class="field">
+          <label>Temă *</label>
+          <input type="text" id="f-subject" required placeholder="Ex: Nu pot accesa contul" value="${prefill ? escapeHtml(prefill.subject) : ''}" autofocus />
         </div>
-      </div>
-      ${prefill ? `<div class="hint" style="margin-bottom:16px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 14px;">📦 Informațiile clientului și ale comenzii au fost preluate automat mai jos — poți edita orice câmp înainte de a salva.</div>` : ''}
-      <div class="form-card" style="max-width:100%;">
-        <form id="newForm">
+        <div class="field">
+          <label>Descriere *</label>
+          <textarea id="f-description" required placeholder="Detaliază problema semnalată de client…">${prefill ? escapeHtml(prefill.description) : ''}</textarea>
+        </div>
+        <div class="field">
+          <label>Nume solicitant *</label>
+          <input type="text" id="f-reqname" required placeholder="Ex: Vlad Marinescu" value="${prefill ? escapeHtml(prefill.requesterName) : ''}" />
+        </div>
+        <div class="form-row">
           <div class="field">
-            <label>Subiect *</label>
-            <input type="text" id="f-subject" required placeholder="Ex: Nu pot accesa contul" value="${prefill ? escapeHtml(prefill.subject) : ''}" />
-          </div>
-          <div class="field">
-            <label>Descriere *</label>
-            <textarea id="f-description" required placeholder="Detaliază problema semnalată de client…">${prefill ? escapeHtml(prefill.description) : ''}</textarea>
-          </div>
-          <div class="form-row">
-            <div class="field">
-              <label>Nume solicitant *</label>
-              <input type="text" id="f-reqname" required placeholder="Ex: Vlad Marinescu" value="${prefill ? escapeHtml(prefill.requesterName) : ''}" />
-            </div>
-            <div class="field">
-              <label>Email solicitant</label>
-              <input type="email" id="f-reqemail" placeholder="client@exemplu.ro" value="${prefill ? escapeHtml(prefill.requesterEmail) : ''}" />
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="field">
-              <label>Categorie *</label>
-              <select id="f-category" required>
-                ${categoriesCache.map((c) => `<option value="${escapeHtml(c)}" ${prefill && c === 'Livrare' ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}
-              </select>
-            </div>
-            <div class="field">
-              <label>Prioritate</label>
-              <select id="f-priority">
-                ${Object.entries(PRIORITY_LABELS).map(([v, l]) => `<option value="${v}" ${v === 'medium' ? 'selected' : ''}>${l}</option>`).join('')}
-              </select>
-            </div>
+            <label>Telefon client</label>
+            <input type="text" id="f-reqphone" placeholder="07xxxxxxxx" value="${prefill ? escapeHtml(prefill.requesterPhone) : ''}" />
           </div>
           <div class="field">
-            <label>Asignează agentului</label>
-            <select id="f-assigned">
-              <option value="">Neasignat</option>
-              ${agentsCache.map((a) => `<option value="${a.id}">${escapeHtml(a.name)}</option>`).join('')}
-            </select>
+            <label>Email client</label>
+            <input type="email" id="f-reqemail" placeholder="client@exemplu.ro" value="${prefill ? escapeHtml(prefill.requesterEmail) : ''}" />
           </div>
-          <div class="form-actions">
-            <button class="btn btn-primary" type="submit">Creează tichet</button>
-            <button class="btn btn-ghost" type="button" id="cancelBtn">Anulează</button>
+        </div>
+        <div class="field">
+          <label>Categorie *</label>
+          <select id="f-category" required>
+            ${categoriesCache.map((c) => `<option value="${escapeHtml(c)}" ${prefill && c === 'Livrare' ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field">
+          <label>Până la ${MAX_NEW_TICKET_PHOTOS} fotografii (opțional)</label>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <input type="file" id="f-photos-input" accept="image/*" multiple style="display:none;" />
+            <button type="button" class="btn btn-sm" id="addPhotoBtn">📷+ Adaugă foto</button>
+            <span class="hint" id="photoCount">0/${MAX_NEW_TICKET_PHOTOS}</span>
           </div>
-        </form>
-      </div>
+          <div class="photo-thumbs" id="photoThumbs"></div>
+        </div>
+        <label class="checkbox-label" style="margin-bottom:16px;">
+          <input type="checkbox" id="f-urgent" /> Urgent
+        </label>
+        <div class="form-actions">
+          <button class="btn btn-ghost" type="button" id="cancelBtn">Anulează</button>
+          <button class="btn btn-primary" type="submit">Salvează</button>
+        </div>
+      </form>
     </div>
   `);
-  openDrawer(content);
+  openModal(content, { title: 'Tichet nou' });
 
-  content.querySelector('#cancelBtn').addEventListener('click', () => closeDrawer());
+  const photoInput = content.querySelector('#f-photos-input');
+  const photoThumbs = content.querySelector('#photoThumbs');
+  const photoCount = content.querySelector('#photoCount');
+  const addPhotoBtn = content.querySelector('#addPhotoBtn');
+
+  function renderThumbs() {
+    photoCount.textContent = `${pendingPhotos.length}/${MAX_NEW_TICKET_PHOTOS}`;
+    addPhotoBtn.disabled = pendingPhotos.length >= MAX_NEW_TICKET_PHOTOS;
+    photoThumbs.innerHTML = pendingPhotos.map((p, idx) => `
+      <div class="photo-thumb-wrap" data-idx="${idx}">
+        <img src="${p.dataUrl}" alt="" />
+        <button type="button" class="photo-thumb-remove" data-idx="${idx}" title="Elimină">✕</button>
+      </div>
+    `).join('');
+    photoThumbs.querySelectorAll('.photo-thumb-remove').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        pendingPhotos.splice(Number(btn.dataset.idx), 1);
+        renderThumbs();
+      });
+    });
+  }
+
+  addPhotoBtn.addEventListener('click', () => photoInput.click());
+  photoInput.addEventListener('change', async () => {
+    const files = Array.from(photoInput.files || []).slice(0, MAX_NEW_TICKET_PHOTOS - pendingPhotos.length);
+    for (const file of files) {
+      try {
+        const { dataUrl, mimeType } = await compressImageFile(file);
+        pendingPhotos.push({ dataUrl, mimeType, base64: dataUrl.split(',')[1] });
+      } catch (e) {
+        showToast('Eroare la procesarea unei fotografii: ' + e.message);
+      }
+    }
+    photoInput.value = '';
+    renderThumbs();
+  });
+
+  content.querySelector('#cancelBtn').addEventListener('click', () => closeModal());
 
   content.querySelector('#newForm').addEventListener('submit', async (e) => {
     e.preventDefault();
+    const submitBtn = content.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Se salvează…';
     const payload = {
       subject: content.querySelector('#f-subject').value.trim(),
       description: content.querySelector('#f-description').value.trim(),
       requesterName: content.querySelector('#f-reqname').value.trim(),
       requesterEmail: content.querySelector('#f-reqemail').value.trim(),
+      requesterPhone: content.querySelector('#f-reqphone').value.trim(),
       category: content.querySelector('#f-category').value,
-      priority: content.querySelector('#f-priority').value,
-      assignedTo: content.querySelector('#f-assigned').value || null,
+      priority: content.querySelector('#f-urgent').checked ? 'urgent' : 'medium',
       relatedOrderId: prefill ? prefill.orderId : null,
     };
     try {
       const ticket = await api('/api/tickets', { method: 'POST', body: JSON.stringify(payload) });
+      for (const p of pendingPhotos) {
+        try {
+          await api(`/api/tickets/${ticket.id}/photos`, { method: 'POST', body: JSON.stringify({ dataBase64: p.base64, mimeType: p.mimeType }) });
+        } catch (err) {
+          showToast('O fotografie nu a putut fi încărcată: ' + err.message);
+        }
+      }
       showToast('Tichet creat cu succes');
-      if (currentMainRoute !== '#/tickets') await renderTicketsList('#/tickets');
+      closeModal();
+      if (currentMainRoute !== '#/tickets') await renderBackgroundForRoute('#/tickets');
       history.pushState(null, '', `#/tickets/${ticket.id}`);
       await paintTicketDrawer(await api(`/api/tickets/${ticket.id}`));
     } catch (err) {
       showToast('Eroare: ' + err.message);
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Salvează';
     }
   });
 }
+
 
 // ---------------- Comenzi (MerchantPro) ----------------
 
@@ -1701,65 +1862,50 @@ async function openOrderDrawer(orderId) {
       </div>
     `).join('') || '<div style="color:var(--text-dim);font-size:13px;">Niciun produs listat.</div>';
 
-    const notes = order.notes.map((n) => `
-      <div class="comment">
-        <div class="comment-head">
-          <span class="c-author">${escapeHtml(n.agentName)}</span>
-          <span class="c-time">${fmtDate(n.createdAt)}</span>
-        </div>
-        <div class="comment-body">${escapeHtml(n.body)}</div>
-      </div>
-    `).join('') || '<div style="color:var(--text-dim);font-size:13px;">Nicio notiță încă.</div>';
-
-    const linkedTicketsHtml = linkedTickets.map((t) => `
-      <div class="queue-item" data-tid="${t.id}">
-        <span class="badge badge-priority-${t.priority}">${PRIORITY_LABELS[t.priority]}</span>
-        <span class="qid">${t.id.replace('TCK_', '#')}</span>
-        <span class="qsubject">${escapeHtml(t.subject)}</span>
-        <span class="badge badge-status-${t.status}">${STATUS_LABELS[t.status]}</span>
-      </div>
-    `).join('');
-
     content.innerHTML = `
-      <div class="ticket-detail-grid" style="grid-template-columns: 1fr;">
+      <div class="order-header-v2">
         <div>
-          <div class="ticket-header-card">
-            <div class="t-id" style="display:flex;align-items:center;justify-content:space-between;">
-              <span>Comandă MerchantPro #${order.mpId}</span>
-              <button class="btn btn-sm btn-primary" id="openTicketBtn">+ Deschide tichet</button>
-            </div>
-            <h1>${escapeHtml(order.shippingName || order.billingName || '—')}</h1>
-            <div class="badges-row">
-              <span class="badge ${paymentBadgeClass(order.paymentStatus)}">${PAYMENT_STATUS_LABELS_MP[order.paymentStatus] || order.paymentStatus || '—'}</span>
-              <span class="badge ${shippingBadgeClass(order.shippingStatus)}">${SHIPPING_STATUS_LABELS_MP[order.shippingStatus] || order.shippingStatus || '—'}</span>
-              <span class="badge ${internalOrderBadgeClass(order.internalStatus)}">${INTERNAL_ORDER_STATUS_LABELS[order.internalStatus] || order.internalStatus}</span>
-            </div>
-            <div class="meta-row" style="margin-top:2px;padding-top:0;border-top:none;">
-              <div class="meta-item"><div class="meta-label">Email</div><div class="meta-value">${escapeHtml(order.customerEmail || '—')}</div></div>
-              <div class="meta-item"><div class="meta-label">Telefon</div><div class="meta-value">${escapeHtml(order.shippingPhone || '—')}</div></div>
-              <div class="meta-item"><div class="meta-label">Total</div><div class="meta-value">${fmtMoney(order.totalAmount, order.currency)}</div></div>
-              <div class="meta-item"><div class="meta-label">Creată</div><div class="meta-value">${fmtDate(order.dateCreated)}</div></div>
-            </div>
-            <div class="meta-row">
-              <div class="meta-item" style="flex:1;">
-                <div class="meta-label">Adresă livrare</div>
-                <div class="meta-value">${escapeHtml(order.shippingAddress || '—')}, ${escapeHtml(order.shippingCity || '')}, ${escapeHtml(order.shippingState || '')} ${escapeHtml(order.shippingPostalCode || '')}, ${escapeHtml(order.shippingCountryName || '')}</div>
-              </div>
-            </div>
-            ${linkedTickets.length ? `
-              <div class="meta-row" style="flex-direction:column;align-items:stretch;">
-                <div class="meta-label" style="margin-bottom:8px;">Tichete asociate (${linkedTickets.length})</div>
-                ${linkedTicketsHtml}
-              </div>
-            ` : ''}
-          </div>
+          <div class="t-id">Detalii comandă</div>
+          <h1>#${order.mpId}</h1>
+        </div>
+      </div>
 
-          <div class="comments-panel" style="margin-bottom:16px;">
-            <h2 style="font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary);margin:0 0 14px;">Produse comandate</h2>
-            <div class="line-items-list">${items}</div>
+      <div class="badges-row" style="align-items:center;margin-bottom:22px;">
+        <span class="badge"><span class="platform-dot"></span>${escapeHtml(platformLabel)}</span>
+        <span class="badge badge-status-closed">${escapeHtml(paymentMethodLabel(order))}</span>
+        <span class="badge ${paymentBadgeClass(order.paymentStatus)}">${PAYMENT_STATUS_LABELS_MP[order.paymentStatus] || order.paymentStatus || '—'}</span>
+        <span class="badge ${shippingBadgeClass(order.shippingStatus)}">${SHIPPING_STATUS_LABELS_MP[order.shippingStatus] || order.shippingStatus || '—'}</span>
+        <div style="flex:1;"></div>
+        <div style="font-size:22px;font-weight:700;">${fmtMoney(order.totalAmount, order.currency)}</div>
+      </div>
+
+      <div class="order-two-col">
+        <div class="order-col-left">
+          <div class="side-panel" style="margin-bottom:16px;">
+            <h2>Client</h2>
+            <div class="form-row">
+              <div class="side-field"><label>Nume</label><div style="padding:8px 0;font-size:14px;">${escapeHtml(order.shippingName || order.billingName || '—')}</div></div>
+              <div class="side-field"><label>Telefon</label><div style="padding:8px 0;font-size:14px;">${escapeHtml(order.shippingPhone || '—')}</div></div>
+            </div>
+            <div class="side-field"><label>Email</label><div style="padding:8px 0;font-size:14px;">${escapeHtml(order.customerEmail || '—')}</div></div>
+            <button class="btn" id="clientProfileBtn" style="margin-top:4px;">👤 Profil client</button>
           </div>
 
           <div class="side-panel" style="margin-bottom:16px;">
+            <h2>Livrare</h2>
+            <div class="form-row">
+              <div class="side-field"><label>Metodă</label><div style="padding:8px 0;font-size:14px;">${escapeHtml(order.shippingMethodName || '—')}</div></div>
+              <div class="side-field"><label>Creat</label><div style="padding:8px 0;font-size:14px;">${fmtDate(order.dateCreated)}</div></div>
+            </div>
+            <div class="side-field"><label>Adresă</label><div style="padding:8px 0;font-size:14px;">${escapeHtml(order.shippingAddress || '—')}</div></div>
+            <div class="form-row">
+              <div class="side-field"><label>Localitate</label><div style="padding:8px 0;font-size:14px;">${escapeHtml(order.shippingCity || '—')}</div></div>
+              <div class="side-field"><label>Județ</label><div style="padding:8px 0;font-size:14px;">${escapeHtml(order.shippingState || '—')}</div></div>
+            </div>
+            <div class="side-field"><label>Cod poștal</label><div style="padding:8px 0;font-size:14px;">${escapeHtml(order.shippingPostalCode || '—')}</div></div>
+          </div>
+
+          <div class="side-panel">
             <h2>MerchantPro — AWB &amp; Factură</h2>
             <div class="form-row">
               <div class="side-field">
@@ -1781,24 +1927,57 @@ async function openOrderDrawer(orderId) {
             `}
             ${order.proformaUrl ? `<a href="${escapeHtml(order.proformaUrl)}" target="_blank" rel="noopener" class="hint" style="display:block;margin-top:8px;color:var(--accent);">↗ Vezi proforma</a>` : ''}
           </div>
+        </div>
 
-          <div class="comments-panel">
-            <h2 style="font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary);margin:0 0 14px;">Notițe interne (${order.notes.length})</h2>
-            ${notes}
-            <form class="comment-form" id="noteForm">
+        <div class="order-col-right">
+          <div class="side-panel">
+            <h2>Activitate</h2>
+            <div class="btn-row" style="margin-bottom:14px;">
+              <button class="btn btn-sm" id="quickNoteBtn">+ Notă</button>
+              <button class="btn btn-sm" id="openTicketBtn">+ Tichet nou</button>
+            </div>
+
+            <form class="comment-form" id="noteForm" style="display:none;margin-bottom:16px;">
               <textarea id="noteBody" placeholder="Adaugă o notiță pentru echipă…" required></textarea>
               <div class="comment-form-actions" style="justify-content:flex-end;">
+                <button class="btn btn-sm" type="button" id="cancelNoteBtn">Anulează</button>
                 <button class="btn btn-primary btn-sm" type="submit">Adaugă notiță</button>
               </div>
             </form>
+
+            <div class="activity-feed">
+              ${buildOrderActivityFeed(order, linkedTickets)}
+            </div>
           </div>
         </div>
+      </div>
+
+      <div class="comments-panel" style="margin-top:16px;">
+        <h2 style="font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary);margin:0 0 14px;">Produse comandate</h2>
+        <div class="line-items-list">${items}</div>
       </div>
     `;
 
     content.querySelector('#openTicketBtn').addEventListener('click', () => openNewTicketDrawer(order.id));
-    content.querySelectorAll('.queue-item[data-tid]').forEach((item) => {
+    content.querySelectorAll('.activity-ticket-link[data-tid]').forEach((item) => {
       item.addEventListener('click', () => openTicketDrawerCrossLink(item.dataset.tid));
+    });
+
+    content.querySelector('#clientProfileBtn').addEventListener('click', () => {
+      openClientProfileDrawer({ phone: order.shippingPhone, email: order.customerEmail, name: order.shippingName || order.billingName });
+    });
+
+    const quickNoteBtn = content.querySelector('#quickNoteBtn');
+    const noteForm = content.querySelector('#noteForm');
+    quickNoteBtn.addEventListener('click', () => {
+      noteForm.style.display = 'block';
+      quickNoteBtn.style.display = 'none';
+      content.querySelector('#noteBody').focus();
+    });
+    content.querySelector('#cancelNoteBtn').addEventListener('click', () => {
+      noteForm.style.display = 'none';
+      quickNoteBtn.style.display = '';
+      content.querySelector('#noteBody').value = '';
     });
 
     const issueInvoiceBtn = content.querySelector('#issueInvoiceBtn');
@@ -1835,6 +2014,45 @@ async function openOrderDrawer(orderId) {
   paint();
 }
 
+/** Construieste feed-ul unificat de activitate pentru o comanda: creare + notite, grupate pe zi. */
+function buildOrderActivityFeed(order, linkedTickets) {
+  const events = [
+    { type: 'created', at: order.dateCreated, label: 'Comandă creată', by: 'system' },
+    ...order.notes.map((n) => ({ type: 'note', at: n.createdAt, label: n.body, by: n.agentName })),
+    ...linkedTickets.map((t) => ({ type: 'ticket', at: t.createdAt, label: `Tichet deschis: ${t.subject}`, by: t.requesterName, tid: t.id })),
+  ].sort((a, b) => new Date(b.at) - new Date(a.at));
+
+  let lastDateKey = null;
+  const rows = events.map((e) => {
+    const d = new Date(e.at);
+    const dateKey = d.toDateString();
+    const dateHeader = dateKey !== lastDateKey ? `<div class="activity-date-sep">${fmtActivityDate(d)}</div>` : '';
+    lastDateKey = dateKey;
+    const icon = { created: '＋', note: '📝', ticket: '🎫' }[e.type] || '•';
+    const clickable = e.type === 'ticket' ? `class="activity-ticket-link" data-tid="${e.tid}" style="cursor:pointer;"` : '';
+    return `
+      ${dateHeader}
+      <div class="activity-row" ${clickable}>
+        <span class="activity-icon">${icon}</span>
+        <div class="activity-body">
+          <div class="activity-label">${escapeHtml(e.label)}</div>
+          <div class="activity-by">${escapeHtml(e.by)}</div>
+        </div>
+        <div class="activity-time">${d.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' })}</div>
+      </div>
+    `;
+  }).join('');
+
+  return rows || '<div class="hint">Nicio activitate încă.</div>';
+}
+
+function fmtActivityDate(d) {
+  const today = new Date();
+  const isToday = d.toDateString() === today.toDateString();
+  const label = d.toLocaleDateString('ro-RO', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+  return isToday ? `Azi · ${label}` : label;
+}
+
 /** Deschide tichetul asociat unei comenzi, comutând fundalul la lista de tichete corectă. */
 async function openTicketDrawerCrossLink(ticketId) {
   let ticket;
@@ -1850,6 +2068,66 @@ async function openOrderDrawerCrossLink(orderId) {
   if (currentMainRoute !== '#/orders') await renderOrdersList();
   history.pushState(null, '', `#/orders/${orderId}`);
   await openOrderDrawer(orderId);
+}
+
+/** Profil client "virtual" — agregă toate comenzile și tichetele cu același telefon/email. */
+async function openClientProfileDrawer({ phone, email, name }) {
+  const content = el(`<div><div class="hint">Se încarcă profilul clientului…</div></div>`);
+  openDrawer(content);
+
+  const params = new URLSearchParams();
+  if (phone) params.set('phone', phone);
+  if (email) params.set('email', email);
+
+  let profile;
+  try {
+    profile = await api(`/api/clients/lookup?${params.toString()}`);
+  } catch (e) {
+    content.innerHTML = `<div class="panel">Eroare la încărcarea profilului: ${escapeHtml(e.message)}</div>`;
+    return;
+  }
+
+  const displayName = profile.name || name || 'Client necunoscut';
+  content.innerHTML = `
+    <div class="ticket-header-card" style="margin-bottom:16px;">
+      <div class="t-id">PROFIL CLIENT</div>
+      <h1>${escapeHtml(displayName)}</h1>
+      <div class="description" style="color:var(--text-secondary);">
+        ${profile.phone ? `📞 ${escapeHtml(profile.phone)}` : ''}${profile.phone && profile.email ? '  ·  ' : ''}${profile.email ? `✉ ${escapeHtml(profile.email)}` : ''}
+        ${!profile.phone && !profile.email ? 'Fără date de contact suficiente pentru căutare.' : ''}
+      </div>
+    </div>
+
+    <div class="side-panel" style="margin-bottom:16px;">
+      <h2>Comenzi (${profile.orders.length})</h2>
+      ${profile.orders.length ? profile.orders.map((o) => `
+        <div class="queue-item" data-oid="${o.id}" style="cursor:pointer;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <strong>#${o.mpId}</strong>
+            <span style="font-family:var(--font-mono);">${fmtMoney(o.totalAmount, o.currency)}</span>
+          </div>
+          <div class="hint">${SHIPPING_STATUS_LABELS_MP[o.shippingStatus] || o.shippingStatus || '—'} · ${fmtDate(o.dateCreated)}</div>
+        </div>
+      `).join('') : '<div class="hint">Nicio comandă găsită pentru acest client.</div>'}
+    </div>
+
+    <div class="side-panel">
+      <h2>Tichete (${profile.tickets.length})</h2>
+      ${profile.tickets.length ? profile.tickets.map((t) => `
+        <div class="queue-item" data-tid="${t.id}" style="cursor:pointer;">
+          <strong>${escapeHtml(t.sectionCode || t.id)}</strong> — ${escapeHtml(t.subject)}
+          <div class="hint">${STATUS_LABELS[t.status]} · ${fmtDate(t.createdAt)}</div>
+        </div>
+      `).join('') : '<div class="hint">Niciun tichet găsit pentru acest client.</div>'}
+    </div>
+  `;
+
+  content.querySelectorAll('.queue-item[data-oid]').forEach((item) => {
+    item.addEventListener('click', () => openOrderDrawerCrossLink(item.dataset.oid));
+  });
+  content.querySelectorAll('.queue-item[data-tid]').forEach((item) => {
+    item.addEventListener('click', () => openTicketDrawerCrossLink(item.dataset.tid));
+  });
 }
 
 // ---------------- Administrare (doar manageri) ----------------
