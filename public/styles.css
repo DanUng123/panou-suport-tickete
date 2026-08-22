@@ -159,8 +159,8 @@ a { color: inherit; text-decoration: none; }
 .btn-outline-blue:hover { background: rgba(76,143,232,0.12); border-color: var(--status-in_progress); }
 .btn-outline-amber { background: transparent; border-color: rgba(232,163,61,0.45); color: var(--status-open); }
 .btn-outline-amber:hover { background: rgba(232,163,61,0.12); border-color: var(--status-open); }
-.btn-solid-green { background: var(--status-resolved); border-color: var(--status-resolved); color: #fff; }
-.btn-solid-green:hover { background: #3d9468; border-color: #3d9468; }
+.btn-solid-green { background: rgba(76,175,125,0.16); border-color: rgba(76,175,125,0.4); color: var(--status-resolved); font-weight: 600; }
+.btn-solid-green:hover { background: rgba(76,175,125,0.26); }
 .btn-primary {
   background: var(--accent);
   border-color: var(--accent);
@@ -956,6 +956,9 @@ a { color: inherit; text-decoration: none; }
 }
 .order-row > * {
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .order-row:last-child { border-bottom: none; }
 .order-row:hover { background: var(--surface-hover); }
