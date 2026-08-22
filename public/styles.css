@@ -150,6 +150,17 @@ a { color: inherit; text-decoration: none; }
   transition: background 0.12s ease, border-color 0.12s ease;
 }
 .btn:hover { background: var(--surface-hover); border-color: var(--border-light); }
+
+.btn-outline-green { background: transparent; border-color: rgba(76,175,125,0.45); color: var(--status-resolved); }
+.btn-outline-green:hover { background: rgba(76,175,125,0.12); border-color: var(--status-resolved); }
+.btn-outline-red { background: transparent; border-color: rgba(232,92,76,0.45); color: var(--priority-urgent); }
+.btn-outline-red:hover { background: rgba(232,92,76,0.12); border-color: var(--priority-urgent); }
+.btn-outline-blue { background: transparent; border-color: rgba(76,143,232,0.45); color: var(--status-in_progress); }
+.btn-outline-blue:hover { background: rgba(76,143,232,0.12); border-color: var(--status-in_progress); }
+.btn-outline-amber { background: transparent; border-color: rgba(232,163,61,0.45); color: var(--status-open); }
+.btn-outline-amber:hover { background: rgba(232,163,61,0.12); border-color: var(--status-open); }
+.btn-solid-green { background: var(--status-resolved); border-color: var(--status-resolved); color: #fff; }
+.btn-solid-green:hover { background: #3d9468; border-color: #3d9468; }
 .btn-primary {
   background: var(--accent);
   border-color: var(--accent);

@@ -1888,7 +1888,7 @@ async function openOrderDrawer(orderId) {
               <div class="side-field"><label>Telefon</label><div style="padding:8px 0;font-size:14px;">${escapeHtml(order.shippingPhone || '—')}</div></div>
             </div>
             <div class="side-field"><label>Email</label><div style="padding:8px 0;font-size:14px;">${escapeHtml(order.customerEmail || '—')}</div></div>
-            <button class="btn" id="clientProfileBtn" style="margin-top:4px;">👤 Profil client</button>
+            <button class="btn btn-outline-green" id="clientProfileBtn" style="margin-top:4px;">👤 Profil client</button>
           </div>
 
           <div class="side-panel" style="margin-bottom:16px;">
@@ -1933,8 +1933,8 @@ async function openOrderDrawer(orderId) {
           <div class="side-panel">
             <h2>Activitate</h2>
             <div class="btn-row" style="margin-bottom:14px;">
-              <button class="btn btn-sm" id="quickNoteBtn">+ Notă</button>
-              <button class="btn btn-sm" id="openTicketBtn">+ Tichet nou</button>
+              <button class="btn btn-sm btn-outline-blue" id="quickNoteBtn">+ Notă</button>
+              <button class="btn btn-sm btn-outline-red" id="openTicketBtn">+ Tichet nou</button>
             </div>
 
             <form class="comment-form" id="noteForm" style="display:none;margin-bottom:16px;">
