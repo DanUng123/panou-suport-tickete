@@ -400,7 +400,7 @@ function renderShell(activeRoute, contentNode) {
         <div class="name">Panou Suport</div>
       </div>
       <nav class="nav">
-        <div class="nav-item" data-route="#/dashboard">${NAV_ICONS.dashboard}Dashboard</div>
+        <div class="nav-item" data-route="#/dashboard">${NAV_ICONS.dashboard}Panou Control</div>
         <div class="nav-item" data-route="#/orders">${NAV_ICONS.orders}Comenzi</div>
         <div class="nav-item" data-route="#/tickets">${NAV_ICONS.tickets}Tichete</div>
         <div class="nav-item" data-route="#/service">${NAV_ICONS.service}Service</div>
@@ -444,8 +444,8 @@ async function renderDashboard() {
     <div>
       <div class="page-header">
         <div>
-          <h1>Dashboard</h1>
-          <div class="sub">Situația curentă a tichetelor de suport</div>
+          <h1>Panou Control</h1>
+          <div class="sub">Vedere de ansamblu — Tichete, Comenzi, Service, Retur, Colet la Schimb</div>
         </div>
       </div>
       <div id="dash-body">Se încarcă…</div>
@@ -453,10 +453,25 @@ async function renderDashboard() {
   `);
   renderShell('#/dashboard', content);
 
-  const [stats, tickets] = await Promise.all([api('/api/stats'), api('/api/tickets?sort=priority')]);
+  const [stats, orderStats, serviceTickets, returTickets, schimbTickets, allTickets] = await Promise.all([
+    api('/api/stats'),
+    api('/api/orders/stats').catch(() => null),
+    api('/api/tickets?section=service').catch(() => []),
+    api('/api/tickets?section=retur').catch(() => []),
+    api('/api/tickets?section=schimb').catch(() => []),
+    api('/api/tickets?sort=priority'),
+  ]);
+
   const body = content.querySelector('#dash-body');
 
-  const openish = tickets.filter((t) => ['open', 'in_progress', 'waiting'].includes(t.status)).slice(0, 6);
+  const isActive = (t) => t.status !== 'resolved' && t.status !== 'closed';
+  const serviceActive = serviceTickets.filter(isActive);
+  const returActive = returTickets.filter(isActive);
+  const schimbActive = schimbTickets.filter(isActive);
+  const overdueAll = [...serviceTickets, ...returTickets, ...schimbTickets].filter((t) => isPastDeadline(t));
+
+  const openish = allTickets.filter((t) => t.section === 'support' && ['open', 'in_progress', 'waiting'].includes(t.status)).slice(0, 6);
+  const unassignedOpen = allTickets.filter((t) => !t.assignedTo && ['open', 'in_progress', 'waiting'].includes(t.status));
 
   const maxCat = Math.max(1, ...Object.values(stats.byCategory));
   const catBars = Object.entries(stats.byCategory)
@@ -469,8 +484,7 @@ async function renderDashboard() {
       </div>
     `).join('') || '<div class="empty">Niciun tichet încă.</div>';
 
-  const workload = Object.entries(stats.byAgentOpenCount)
-    .sort((a, b) => b[1] - a[1]);
+  const workload = Object.entries(stats.byAgentOpenCount).sort((a, b) => b[1] - a[1]);
   const maxWork = Math.max(1, ...workload.map((w) => w[1]));
   const workloadBars = workload.map(([agentId, count]) => `
       <div class="bar-row">
@@ -489,18 +503,45 @@ async function renderDashboard() {
     </div>
   `).join('') || '<div class="empty">Coada e goală — bravo echipei!</div>';
 
+  // ---- feed unificat "Necesita atentie azi" ----
+  const attentionRows = [
+    ...overdueAll.map((t) => `
+      <div class="queue-item" data-id="${t.id}">
+        <span class="badge badge-priority-urgent">Peste 7 zile</span>
+        <span class="qid">${escapeHtml(t.sectionCode || t.id)}</span>
+        <span class="qsubject">${escapeHtml(t.subject)} — ${escapeHtml(t.requesterName)}</span>
+        <span class="badge" style="background:rgba(255,255,255,0.06);">${stageStatusLabel(t.stage, t.section)}</span>
+      </div>
+    `),
+    ...unassignedOpen.slice(0, 5).map((t) => `
+      <div class="queue-item" data-id="${t.id}">
+        <span class="badge badge-status-closed">Neasignat</span>
+        <span class="qid">${escapeHtml(t.sectionCode || t.id)}</span>
+        <span class="qsubject">${escapeHtml(t.subject)}</span>
+        <span class="badge badge-status-${t.status}">${STATUS_LABELS[t.status]}</span>
+      </div>
+    `),
+  ].join('');
+  const attentionHtml = attentionRows || '<div class="empty">Nimic urgent — totul e sub control.</div>';
+
   body.innerHTML = `
-    <div class="stat-grid">
-      <div class="stat-tile accented"><span class="corner-dot" style="background:var(--status-open);"></span><div class="label">Deschise</div><div class="value">${stats.byStatus.open}</div><div class="sub-line">tichete active</div></div>
-      <div class="stat-tile"><span class="corner-dot" style="background:var(--status-in_progress);"></span><div class="label">În lucru</div><div class="value">${stats.byStatus.in_progress}</div></div>
-      <div class="stat-tile"><span class="corner-dot" style="background:var(--status-waiting);"></span><div class="label">În așteptare</div><div class="value">${stats.byStatus.waiting}</div></div>
-      <div class="stat-tile"><span class="corner-dot" style="background:var(--status-resolved);"></span><div class="label">Rezolvate azi</div><div class="value">${stats.resolvedToday}</div></div>
-      <div class="stat-tile"><div class="label">Neasignate</div><div class="value">${stats.unassigned}</div></div>
-      <div class="stat-tile"><div class="label">Timp mediu rezolvare</div><div class="value">${stats.avgResolutionHours ? stats.avgResolutionHours.toFixed(1) + 'h' : '—'}</div></div>
+    <div class="stat-grid" style="grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));">
+      <div class="stat-tile accented"><span class="corner-dot glow-dot" style="background:var(--accent);"></span><div class="label">Comenzi azi</div><div class="value">${orderStats ? orderStats.total : '—'}</div></div>
+      <div class="stat-tile"><span class="corner-dot" style="background:var(--status-open);"></span><div class="label">Tichete deschise</div><div class="value">${stats.byStatus.open}</div></div>
+      <div class="stat-tile"><span class="corner-dot" style="background:var(--status-waiting);"></span><div class="label">Service activ</div><div class="value">${serviceActive.length}</div></div>
+      <div class="stat-tile"><span class="corner-dot" style="background:var(--status-in_progress);"></span><div class="label">Retur activ</div><div class="value">${returActive.length}</div></div>
+      <div class="stat-tile"><span class="corner-dot" style="background:var(--status-waiting);"></span><div class="label">Colet la Schimb</div><div class="value">${schimbActive.length}</div></div>
+      <div class="stat-tile"><span class="corner-dot glow-dot" style="background:var(--priority-urgent);"></span><div class="label">Peste 7 zile</div><div class="value" style="color:${overdueAll.length ? 'var(--priority-urgent)' : 'var(--text)'};">${overdueAll.length}</div></div>
     </div>
+
+    <div class="panel" style="margin-bottom:16px;">
+      <h2>Necesită atenție azi</h2>
+      <div>${attentionHtml}</div>
+    </div>
+
     <div class="dash-grid">
       <div class="panel">
-        <h2>Coadă prioritară — tichete active</h2>
+        <h2>Coadă prioritară — tichete suport</h2>
         <div>${queueItems}</div>
       </div>
       <div>
@@ -517,10 +558,7 @@ async function renderDashboard() {
   `;
 
   body.querySelectorAll('.queue-item').forEach((item) => {
-    item.addEventListener('click', () => {
-      history.pushState(null, '', `#/tickets/${item.dataset.id}`);
-      openTicketDrawer(item.dataset.id);
-    });
+    item.addEventListener('click', () => openTicketDrawerCrossLink(item.dataset.id));
   });
 }
 
