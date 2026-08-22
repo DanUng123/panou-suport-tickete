@@ -1173,7 +1173,16 @@ async function paintTicketDrawer(ticket) {
           </div>
 
           ${ticket.section === 'service' && ticket.stage === 'at_service' && !ticket.returnAwbNumber ? `
-            <button class="btn btn-block" id="readyToShipBtn" style="margin-bottom:16px;background:var(--status-resolved);color:#fff;border-color:var(--status-resolved);font-weight:600;">✓ Gata de expediere</button>
+            <div class="side-panel" style="margin-bottom:16px;">
+              <div class="field" style="margin-bottom:12px;">
+                <label>Curier pentru AWB retur</label>
+                <select id="return-courier">
+                  <option value="gls" ${glsConfigured ? '' : 'disabled'}>GLS${glsConfigured ? '' : ' (neconfigurat)'}</option>
+                  <option value="sameday" ${samedayConfigured ? '' : 'disabled'}>Sameday${samedayConfigured ? '' : ' (neconfigurat)'}</option>
+                </select>
+              </div>
+              <button class="btn btn-block" id="readyToShipBtn" style="background:var(--status-resolved);color:#fff;border-color:var(--status-resolved);font-weight:600;">✓ Gata de expediere</button>
+            </div>
           ` : ''}
 
           ${ticket.section === 'service' && (ticket.returnAwbNumber || ticket.stage === 'at_service') ? `
@@ -1335,7 +1344,8 @@ async function paintTicketDrawer(ticket) {
     const cancelPickupBtn = content.querySelector('#cancelPickupAwbBtn');
     if (cancelPickupBtn) {
       cancelPickupBtn.addEventListener('click', async () => {
-        if (!confirm(`Anulezi AWB-ul de ridicare ${ticket.pickupAwbNumber}? Această acțiune îl șterge și la GLS.`)) return;
+        const courierLabel = ticket.pickupAwbCourier === 'sameday' ? 'Sameday' : 'GLS';
+        if (!confirm(`Anulezi AWB-ul de ridicare ${ticket.pickupAwbNumber}? Această acțiune îl șterge și la ${courierLabel}.`)) return;
         cancelPickupBtn.disabled = true;
         try {
           ticket = await api(`/api/tickets/${ticket.id}/cancel-pickup-awb`, { method: 'POST' });
@@ -1400,10 +1410,11 @@ async function paintTicketDrawer(ticket) {
     const readyToShipBtn = content.querySelector('#readyToShipBtn');
     if (readyToShipBtn) {
       readyToShipBtn.addEventListener('click', async () => {
+        const courier = content.querySelector('#return-courier').value;
         readyToShipBtn.disabled = true;
         readyToShipBtn.textContent = 'Se generează AWB retur…';
         try {
-          ticket = await api(`/api/tickets/${ticket.id}/generate-return-awb`, { method: 'POST' });
+          ticket = await api(`/api/tickets/${ticket.id}/generate-return-awb`, { method: 'POST', body: JSON.stringify({ courier }) });
           showToast('AWB de retur generat — coletul e pe drum către client');
           paint();
         } catch (err) {
@@ -1432,7 +1443,8 @@ async function paintTicketDrawer(ticket) {
     const cancelReturnBtn = content.querySelector('#cancelReturnAwbBtn');
     if (cancelReturnBtn) {
       cancelReturnBtn.addEventListener('click', async () => {
-        if (!confirm(`Anulezi AWB-ul de retur ${ticket.returnAwbNumber}? Această acțiune îl șterge și la GLS.`)) return;
+        const returnCourierLabel = ticket.returnAwbCourier === 'sameday' ? 'Sameday' : 'GLS';
+        if (!confirm(`Anulezi AWB-ul de retur ${ticket.returnAwbNumber}? Această acțiune îl șterge și la ${returnCourierLabel}.`)) return;
         cancelReturnBtn.disabled = true;
         try {
           ticket = await api(`/api/tickets/${ticket.id}/cancel-return-awb`, { method: 'POST' });
