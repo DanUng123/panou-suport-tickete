@@ -573,6 +573,7 @@ async function handleApi(req, res, pathname, query) {
           pickupPostalCode: postalCode,
           pickupPhone: phone,
           courier,
+          secondaryAwbNumber: result.secondaryAwbNumber,
         }, currentAgent);
         return sendJSON(res, 200, { ...updated, labelAvailable: Boolean(result.labelPdf) });
       } catch (e) {

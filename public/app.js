@@ -1123,6 +1123,11 @@ async function paintTicketDrawer(ticket) {
                   </div>
                 </div>
               </div>
+              ${ticket.pickupAwbSecondaryNumber ? `
+                <div class="hint" style="background:rgba(232,163,61,0.1);border:1px solid rgba(232,163,61,0.3);border-radius:8px;padding:10px 12px;margin-bottom:12px;color:var(--status-open);">
+                  ⚠ Colet la schimb: Sameday a generat automat și un AWB secundar legat — <strong style="font-family:var(--font-mono);">${escapeHtml(ticket.pickupAwbSecondaryNumber)}</strong>. Dacă anulezi, trebuie anulat manual și acesta, din panoul Sameday.
+                </div>
+              ` : ''}
               <div class="btn-row">
                 <button class="btn" id="refreshPickupStatusBtn">↻ Actualizează status</button>
                 <button class="btn" id="viewPickupTrackingBtn">Vezi drumul complet</button>
