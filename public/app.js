@@ -1570,17 +1570,14 @@ async function paintNewTicketDrawer(fromOrderId) {
   if (fromOrderId) {
     try {
       const order = await api(`/api/orders/${fromOrderId}`);
-      const itemsList = (order.lineItems || [])
-        .map((it) => `- ${it.product_name || '—'} × ${it.quantity ?? 1}${it.product_sku ? ` (${it.product_sku})` : ''}`)
-        .join('\n');
+      const productNames = (order.lineItems || []).map((it) => it.product_name).filter(Boolean).join(', ');
       prefill = {
-        subject: `Comandă #${order.mpId} — `,
-        description: itemsList ? `Produse:\n${itemsList}` : '',
         requesterName: order.shippingName || order.billingName || '',
         requesterEmail: order.customerEmail || '',
         requesterPhone: order.shippingPhone || '',
         orderId: order.id,
         orderMpId: order.mpId,
+        productNames,
       };
     } catch (e) {
       showToast('Nu am putut încărca datele comenzii: ' + e.message);
@@ -1588,18 +1585,19 @@ async function paintNewTicketDrawer(fromOrderId) {
   }
 
   const pendingPhotos = []; // { dataUrl, mimeType, base64 }
+  const defaultCategory = categoriesCache.includes('Altele') ? 'Altele' : (categoriesCache[0] || '');
 
   const content = el(`
     <div class="modal-body">
-      ${prefill ? `<div class="hint" style="margin-bottom:14px;">Comandă: <strong style="color:var(--text);">#${prefill.orderMpId}</strong></div>` : ''}
+      ${prefill ? `<div class="hint" style="margin-bottom:14px;">Comandă: <strong style="color:var(--text);">#${prefill.orderMpId}</strong>${prefill.productNames ? ` · Produs: <strong style="color:var(--text);">${escapeHtml(prefill.productNames)}</strong>` : ''}</div>` : ''}
       <form id="newForm">
         <div class="field">
           <label>Temă *</label>
-          <input type="text" id="f-subject" required placeholder="Ex: Nu pot accesa contul" value="${prefill ? escapeHtml(prefill.subject) : ''}" autofocus />
+          <input type="text" id="f-subject" required placeholder="Ex: Nu pot accesa contul" autofocus />
         </div>
         <div class="field">
           <label>Descriere *</label>
-          <textarea id="f-description" required placeholder="Detaliază problema semnalată de client…">${prefill ? escapeHtml(prefill.description) : ''}</textarea>
+          <textarea id="f-description" required placeholder="Detaliază problema semnalată de client…"></textarea>
         </div>
         <div class="field">
           <label>Nume solicitant *</label>
@@ -1614,12 +1612,6 @@ async function paintNewTicketDrawer(fromOrderId) {
             <label>Email client</label>
             <input type="email" id="f-reqemail" placeholder="client@exemplu.ro" value="${prefill ? escapeHtml(prefill.requesterEmail) : ''}" />
           </div>
-        </div>
-        <div class="field">
-          <label>Categorie *</label>
-          <select id="f-category" required>
-            ${categoriesCache.map((c) => `<option value="${escapeHtml(c)}" ${prefill && c === 'Livrare' ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}
-          </select>
         </div>
         <div class="field">
           <label>Până la ${MAX_NEW_TICKET_PHOTOS} fotografii (opțional)</label>
@@ -1640,6 +1632,7 @@ async function paintNewTicketDrawer(fromOrderId) {
       </form>
     </div>
   `);
+  content.querySelector('#newForm').dataset.defaultCategory = defaultCategory;
   openModal(content, { title: 'Tichet nou' });
 
   const photoInput = content.querySelector('#f-photos-input');
@@ -1692,7 +1685,7 @@ async function paintNewTicketDrawer(fromOrderId) {
       requesterName: content.querySelector('#f-reqname').value.trim(),
       requesterEmail: content.querySelector('#f-reqemail').value.trim(),
       requesterPhone: content.querySelector('#f-reqphone').value.trim(),
-      category: content.querySelector('#f-category').value,
+      category: content.querySelector('#newForm').dataset.defaultCategory,
       priority: content.querySelector('#f-urgent').checked ? 'urgent' : 'medium',
       relatedOrderId: prefill ? prefill.orderId : null,
     };
