@@ -2733,6 +2733,14 @@ async function renderSettings() {
     };
     try {
       await api('/api/company/settings', { method: 'PATCH', body: JSON.stringify(payload) });
+      // reimprospatam starea "configurat/neconfigurat" a curierilor, altfel
+      // ar ramane invechita pana la urmatoarea logare
+      const [glsStatus, samedayStatus] = await Promise.all([
+        api('/api/gls/status').catch(() => ({ configured: false })),
+        api('/api/sameday/status').catch(() => ({ configured: false })),
+      ]);
+      glsConfigured = glsStatus.configured;
+      samedayConfigured = samedayStatus.configured;
       showToast('Setări salvate');
       renderSettings();
     } catch (err) {
