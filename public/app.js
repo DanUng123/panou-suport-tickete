@@ -329,43 +329,111 @@ function renderLogin(errorMsg) {
           <div class="mark">S</div>
           <div class="name">Panou Suport</div>
         </div>
-        <h1>Autentificare agent</h1>
-        <p class="sub">Selectează-ți numele și introdu parola pentru a continua.</p>
+        <h1>Autentificare</h1>
+        <p class="sub">Introdu emailul și parola contului tău.</p>
         ${errorMsg ? `<div class="error-msg">${escapeHtml(errorMsg)}</div>` : ''}
         <form id="login-form">
           <div class="field">
-            <label for="agentSelect">Agent</label>
-            <select id="agentSelect" required></select>
+            <label for="loginEmail">Email</label>
+            <input type="email" id="loginEmail" placeholder="tu@firma.ro" required autofocus />
           </div>
           <div class="field">
             <label for="pw">Parolă</label>
             <input type="password" id="pw" placeholder="••••••••" required />
-            <div class="hint">Demo: parola123 pentru toți agenții</div>
           </div>
           <button class="btn btn-primary btn-block" type="submit">Autentificare</button>
         </form>
+        <div class="hint" style="text-align:center;margin-top:16px;">
+          Nu ai cont? <a href="#" id="goSignup" style="color:var(--accent);">Creează unul pentru compania ta</a>
+        </div>
       </div>
     </div>
   `);
   app.appendChild(card);
 
-  api('/api/agents').then((agents) => {
-    agentsCache = agents;
-    const sel = card.querySelector('#agentSelect');
-    sel.innerHTML = agents.map((a) => `<option value="${a.id}">${escapeHtml(a.name)} — ${escapeHtml(a.role)}</option>`).join('');
+  card.querySelector('#goSignup').addEventListener('click', (e) => {
+    e.preventDefault();
+    renderSignup();
   });
 
   card.querySelector('#login-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const agentId = card.querySelector('#agentSelect').value;
+    const email = card.querySelector('#loginEmail').value.trim();
     const password = card.querySelector('#pw').value;
     try {
-      currentAgent = await api('/api/login', { method: 'POST', body: JSON.stringify({ agentId, password }) });
+      currentAgent = await api('/api/login', { method: 'POST', body: JSON.stringify({ email, password }) });
       await loadReferenceData();
       navigate('#/dashboard');
       render();
     } catch (err) {
       renderLogin(err.message);
+    }
+  });
+}
+
+function renderSignup(errorMsg) {
+  app.innerHTML = '';
+  const card = el(`
+    <div class="auth-screen">
+      <div class="auth-card">
+        <div class="auth-brand">
+          <div class="mark">S</div>
+          <div class="name">Panou Suport</div>
+        </div>
+        <h1>Creează cont nou</h1>
+        <p class="sub">Pornește contul companiei tale — devii automat manager.</p>
+        ${errorMsg ? `<div class="error-msg">${escapeHtml(errorMsg)}</div>` : ''}
+        <form id="signup-form">
+          <div class="field">
+            <label for="suCompany">Numele companiei</label>
+            <input type="text" id="suCompany" placeholder="Firma Ta SRL" required autofocus />
+          </div>
+          <div class="field">
+            <label for="suName">Numele tău</label>
+            <input type="text" id="suName" placeholder="Ion Popescu" required />
+          </div>
+          <div class="field">
+            <label for="suEmail">Email</label>
+            <input type="email" id="suEmail" placeholder="tu@firma.ro" required />
+          </div>
+          <div class="field">
+            <label for="suPassword">Parolă</label>
+            <input type="password" id="suPassword" placeholder="minimum 8 caractere" required minlength="8" />
+          </div>
+          <button class="btn btn-primary btn-block" type="submit">Creează cont</button>
+        </form>
+        <div class="hint" style="text-align:center;margin-top:16px;">
+          Ai deja cont? <a href="#" id="goLogin" style="color:var(--accent);">Autentifică-te</a>
+        </div>
+      </div>
+    </div>
+  `);
+  app.appendChild(card);
+
+  card.querySelector('#goLogin').addEventListener('click', (e) => {
+    e.preventDefault();
+    renderLogin();
+  });
+
+  card.querySelector('#signup-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const payload = {
+      companyName: card.querySelector('#suCompany').value.trim(),
+      agentName: card.querySelector('#suName').value.trim(),
+      email: card.querySelector('#suEmail').value.trim(),
+      password: card.querySelector('#suPassword').value,
+    };
+    const submitBtn = card.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Se creează…';
+    try {
+      const result = await api('/api/signup', { method: 'POST', body: JSON.stringify(payload) });
+      currentAgent = result.agent;
+      await loadReferenceData();
+      navigate('#/dashboard');
+      render();
+    } catch (err) {
+      renderSignup(err.message);
     }
   });
 }
@@ -2325,7 +2393,7 @@ async function renderAdmin() {
       try {
         await api('/api/admin/agents', { method: 'POST', body: JSON.stringify(payload) });
         showToast('Agent adăugat');
-        agentsCache = await api('/api/agents');
+        agentsCache = await api('/api/admin/agents');
         paintAgents();
       } catch (err) {
         showToast('Eroare: ' + err.message);
@@ -2367,7 +2435,7 @@ async function renderAdmin() {
           try {
             await api(`/api/admin/agents/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
             showToast('Agent actualizat');
-            agentsCache = await api('/api/agents');
+            agentsCache = await api('/api/admin/agents');
             paintAgents();
           } catch (err) {
             showToast('Eroare: ' + err.message);

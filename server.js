@@ -253,6 +253,12 @@ async function handleApi(req, res, pathname, query) {
       return sendJSON(res, 200, db.removeCategory(currentAgent.companyId, decodeURIComponent(categoryMatch[1])));
     }
 
+    // ---- lista simpla de agenti (pt dropdown-uri de asignare, orice agent autentificat) ----
+
+    if (pathname === '/api/agents' && req.method === 'GET') {
+      return sendJSON(res, 200, db.listAgents(currentAgent.companyId));
+    }
+
     // ---- administrare agenti (doar manageri) ----
 
     if (pathname === '/api/admin/agents' && req.method === 'GET') {
