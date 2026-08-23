@@ -165,25 +165,48 @@ function serveStatic(req, res, pathname) {
 async function handleApi(req, res, pathname, query) {
   try {
     // ---- auth ----
-    if (pathname === '/api/agents' && req.method === 'GET') {
-      return sendJSON(res, 200, db.listAgents());
+
+    if (pathname === '/api/signup' && req.method === 'POST') {
+      const body = await readBody(req);
+      const companyName = (body.companyName || '').trim();
+      const agentName = (body.agentName || '').trim();
+      const email = (body.email || '').trim().toLowerCase();
+      const password = body.password || '';
+      if (!companyName || !agentName || !email || !password) {
+        return sendJSON(res, 400, { error: 'Toate câmpurile sunt obligatorii (nume companie, nume, email, parolă).' });
+      }
+      if (password.length < 8) {
+        return sendJSON(res, 400, { error: 'Parola trebuie să aibă cel puțin 8 caractere.' });
+      }
+      if (db.findAgentByEmail(email)) {
+        return sendJSON(res, 409, { error: 'Există deja un cont cu acest email.' });
+      }
+      try {
+        const { company, agent } = db.createCompany({ companyName, agentName, email, password });
+        const token = createSession(agent.id);
+        res.setHeader('Set-Cookie', `session=${token}; HttpOnly; Path=/; SameSite=Lax`);
+        return sendJSON(res, 201, { company, agent });
+      } catch (e) {
+        return sendJSON(res, 400, { error: e.message });
+      }
     }
 
     if (pathname === '/api/login' && req.method === 'POST') {
       const body = await readBody(req);
-      if (!body.agentId) return sendJSON(res, 400, { error: 'Agent lipsă' });
+      const email = (body.email || '').trim().toLowerCase();
+      if (!email) return sendJSON(res, 400, { error: 'Email lipsă' });
 
-      const lockout = checkLockout(body.agentId);
+      const lockout = checkLockout(email);
       if (lockout.locked) {
         return sendJSON(res, 429, { error: `Prea multe încercări eșuate. Încearcă din nou peste ${lockout.minutesLeft} minut(e).` });
       }
 
-      const agent = db.verifyAgent(body.agentId, body.password);
+      const agent = db.verifyAgentByEmail(email, body.password);
       if (!agent) {
-        registerFailedAttempt(body.agentId);
+        registerFailedAttempt(email);
         return sendJSON(res, 401, { error: 'Credențiale invalide' });
       }
-      clearFailedAttempts(body.agentId);
+      clearFailedAttempts(email);
       const token = createSession(agent.id);
       res.setHeader('Set-Cookie', `session=${token}; HttpOnly; Path=/; SameSite=Lax`);
       return sendJSON(res, 200, agent);
@@ -211,14 +234,14 @@ async function handleApi(req, res, pathname, query) {
     const requireManager = () => currentAgent.role === 'manager';
 
     if (pathname === '/api/categories' && req.method === 'GET') {
-      return sendJSON(res, 200, db.listCategories());
+      return sendJSON(res, 200, db.listCategories(currentAgent.companyId));
     }
 
     if (pathname === '/api/categories' && req.method === 'POST') {
       if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot gestiona categoriile' });
       const body = await readBody(req);
       try {
-        return sendJSON(res, 201, db.addCategory(body.name));
+        return sendJSON(res, 201, db.addCategory(currentAgent.companyId, body.name));
       } catch (e) {
         return sendJSON(res, 400, { error: e.message });
       }
@@ -227,14 +250,14 @@ async function handleApi(req, res, pathname, query) {
     const categoryMatch = pathname.match(/^\/api\/categories\/([^/]+)$/);
     if (categoryMatch && req.method === 'DELETE') {
       if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot gestiona categoriile' });
-      return sendJSON(res, 200, db.removeCategory(decodeURIComponent(categoryMatch[1])));
+      return sendJSON(res, 200, db.removeCategory(currentAgent.companyId, decodeURIComponent(categoryMatch[1])));
     }
 
     // ---- administrare agenti (doar manageri) ----
 
     if (pathname === '/api/admin/agents' && req.method === 'GET') {
       if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot accesa administrarea' });
-      return sendJSON(res, 200, db.listAgents({ includeInactive: true }));
+      return sendJSON(res, 200, db.listAgents(currentAgent.companyId, { includeInactive: true }));
     }
 
     if (pathname === '/api/admin/agents' && req.method === 'POST') {
@@ -247,7 +270,7 @@ async function handleApi(req, res, pathname, query) {
         return sendJSON(res, 400, { error: 'Parola trebuie să aibă minimum 6 caractere' });
       }
       try {
-        const agent = db.createAgent(body);
+        const agent = db.createAgent(currentAgent.companyId, body);
         return sendJSON(res, 201, agent);
       } catch (e) {
         return sendJSON(res, 400, { error: e.message });
@@ -262,7 +285,7 @@ async function handleApi(req, res, pathname, query) {
         return sendJSON(res, 400, { error: 'Parola trebuie să aibă minimum 6 caractere' });
       }
       try {
-        const agent = db.updateAgent(adminAgentMatch[1], body);
+        const agent = db.updateAgent(currentAgent.companyId, adminAgentMatch[1], body);
         if (!agent) return sendJSON(res, 404, { error: 'Agent negăsit' });
         return sendJSON(res, 200, agent);
       } catch (e) {
@@ -271,7 +294,7 @@ async function handleApi(req, res, pathname, query) {
     }
 
     if (pathname === '/api/stats' && req.method === 'GET') {
-      return sendJSON(res, 200, db.getStats());
+      return sendJSON(res, 200, db.getStats(currentAgent.companyId));
     }
 
     if (pathname === '/api/tickets' && req.method === 'GET') {
@@ -286,7 +309,7 @@ async function handleApi(req, res, pathname, query) {
         q: query.q || undefined,
         sort: query.sort || undefined,
       };
-      return sendJSON(res, 200, db.listTickets(filters));
+      return sendJSON(res, 200, db.listTickets(currentAgent.companyId, filters));
     }
 
     if (pathname === '/api/tickets' && req.method === 'POST') {
@@ -294,13 +317,13 @@ async function handleApi(req, res, pathname, query) {
       if (!body.subject || !body.description || !body.requesterName || !body.category) {
         return sendJSON(res, 400, { error: 'Câmpuri obligatorii lipsă (subiect, descriere, solicitant, categorie)' });
       }
-      const ticket = db.createTicket(body);
+      const ticket = db.createTicket(currentAgent.companyId, body);
       return sendJSON(res, 201, ticket);
     }
 
     const ticketMatch = pathname.match(/^\/api\/tickets\/([^/]+)$/);
     if (ticketMatch && req.method === 'GET') {
-      const ticket = db.getTicket(ticketMatch[1]);
+      const ticket = db.getTicket(currentAgent.companyId, ticketMatch[1]);
       if (!ticket) return sendJSON(res, 404, { error: 'Tichet negăsit' });
       return sendJSON(res, 200, ticket);
     }
@@ -308,7 +331,7 @@ async function handleApi(req, res, pathname, query) {
     if (ticketMatch && req.method === 'PATCH') {
       const body = await readBody(req);
       try {
-        const ticket = db.updateTicket(ticketMatch[1], body, currentAgent);
+        const ticket = db.updateTicket(currentAgent.companyId, ticketMatch[1], body, currentAgent);
         if (!ticket) return sendJSON(res, 404, { error: 'Tichet negăsit' });
         return sendJSON(res, 200, ticket);
       } catch (e) {
@@ -322,7 +345,7 @@ async function handleApi(req, res, pathname, query) {
       if (!body.body || !body.body.trim()) {
         return sendJSON(res, 400, { error: 'Comentariul nu poate fi gol' });
       }
-      const comment = db.addComment(commentMatch[1], {
+      const comment = db.addComment(currentAgent.companyId, commentMatch[1], {
         authorId: currentAgent.id,
         authorName: currentAgent.name,
         body: body.body,
@@ -355,7 +378,7 @@ async function handleApi(req, res, pathname, query) {
     }
 
     if (pathname === '/api/orders/stats' && req.method === 'GET') {
-      return sendJSON(res, 200, db.getOrderStats({ dateFrom: query.dateFrom || undefined, dateTo: query.dateTo || undefined }));
+      return sendJSON(res, 200, db.getOrderStats(currentAgent.companyId, { dateFrom: query.dateFrom || undefined, dateTo: query.dateTo || undefined }));
     }
 
     if (pathname === '/api/orders' && req.method === 'GET') {
@@ -370,12 +393,12 @@ async function handleApi(req, res, pathname, query) {
         dateTo: query.dateTo || undefined,
         q: query.q || undefined,
       };
-      return sendJSON(res, 200, db.listOrders(filters));
+      return sendJSON(res, 200, db.listOrders(currentAgent.companyId, filters));
     }
 
     const orderMatch = pathname.match(/^\/api\/orders\/([^/]+)$/);
     if (orderMatch && req.method === 'GET') {
-      const order = db.getOrder(orderMatch[1]);
+      const order = db.getOrder(currentAgent.companyId, orderMatch[1]);
       if (!order) return sendJSON(res, 404, { error: 'Comandă negăsită' });
       return sendJSON(res, 200, order);
     }
@@ -383,7 +406,7 @@ async function handleApi(req, res, pathname, query) {
     if (orderMatch && req.method === 'PATCH') {
       const body = await readBody(req);
       try {
-        const order = db.updateOrderInternal(orderMatch[1], body, currentAgent);
+        const order = db.updateOrderInternal(currentAgent.companyId, orderMatch[1], body, currentAgent);
         if (!order) return sendJSON(res, 404, { error: 'Comandă negăsită' });
         return sendJSON(res, 200, order);
       } catch (e) {
@@ -395,27 +418,27 @@ async function handleApi(req, res, pathname, query) {
     if (orderNoteMatch && req.method === 'POST') {
       const body = await readBody(req);
       if (!body.body || !body.body.trim()) return sendJSON(res, 400, { error: 'Notița nu poate fi goală' });
-      const note = db.addOrderNote(orderNoteMatch[1], { agentId: currentAgent.id, agentName: currentAgent.name, body: body.body });
+      const note = db.addOrderNote(currentAgent.companyId, orderNoteMatch[1], { agentId: currentAgent.id, agentName: currentAgent.name, body: body.body });
       if (!note) return sendJSON(res, 404, { error: 'Comandă negăsită' });
       return sendJSON(res, 201, note);
     }
 
     const orderTicketsMatch = pathname.match(/^\/api\/orders\/([^/]+)\/tickets$/);
     if (orderTicketsMatch && req.method === 'GET') {
-      return sendJSON(res, 200, db.getTicketsForOrder(orderTicketsMatch[1]));
+      return sendJSON(res, 200, db.getTicketsForOrder(currentAgent.companyId, orderTicketsMatch[1]));
     }
 
     const issueInvoiceMatch = pathname.match(/^\/api\/orders\/([^/]+)\/issue-invoice$/);
     if (issueInvoiceMatch && req.method === 'POST') {
       if (!mp.isConfigured()) return sendJSON(res, 400, { error: 'Integrarea MerchantPro nu este configurată pe server.' });
-      const order = db.getOrder(issueInvoiceMatch[1]);
+      const order = db.getOrder(currentAgent.companyId, issueInvoiceMatch[1]);
       if (!order) return sendJSON(res, 404, { error: 'Comandă negăsită' });
       try {
         await mp.issueInvoice(order.mpId);
         // factura nu vine in raspunsul de mai sus -- resincronizam comanda ca sa o preluam
         const fresh = await mp.getOrder(order.mpId);
-        db.upsertOrderFromMerchantPro(fresh);
-        return sendJSON(res, 200, db.getOrder(order.id));
+        db.upsertOrderFromMerchantPro(currentAgent.companyId, fresh);
+        return sendJSON(res, 200, db.getOrder(currentAgent.companyId, order.id));
       } catch (e) {
         return sendJSON(res, 502, { error: e.message });
       }
@@ -434,7 +457,7 @@ async function handleApi(req, res, pathname, query) {
     const generateAwbMatch = pathname.match(/^\/api\/orders\/([^/]+)\/generate-awb$/);
     if (generateAwbMatch && req.method === 'POST') {
       if (!gls.isConfigured()) return sendJSON(res, 400, { error: 'Integrarea GLS nu este configurată pe server.' });
-      const order = db.getOrder(generateAwbMatch[1]);
+      const order = db.getOrder(currentAgent.companyId, generateAwbMatch[1]);
       if (!order) return sendJSON(res, 404, { error: 'Comandă negăsită' });
       if (!order.shippingAddress || !order.shippingCity || !order.shippingPostalCode || !order.shippingPhone) {
         return sendJSON(res, 400, { error: 'Comanda nu are adresă/telefon complete — verifică datele înainte de a genera AWB.' });
@@ -452,7 +475,7 @@ async function handleApi(req, res, pathname, query) {
           shippingPhone: order.shippingPhone,
           customerEmail: order.customerEmail,
         });
-        const updated = db.updateOrderInternal(order.id, {
+        const updated = db.updateOrderInternal(currentAgent.companyId, order.id, {
           awbCourier: 'GLS',
           awbNumber: result.trackingNumber,
           awbParcelId: result.parcelId,
@@ -475,12 +498,12 @@ async function handleApi(req, res, pathname, query) {
 
     const cancelAwbMatch = pathname.match(/^\/api\/orders\/([^/]+)\/cancel-awb$/);
     if (cancelAwbMatch && req.method === 'POST') {
-      const order = db.getOrder(cancelAwbMatch[1]);
+      const order = db.getOrder(currentAgent.companyId, cancelAwbMatch[1]);
       if (!order) return sendJSON(res, 404, { error: 'Comandă negăsită' });
       if (!order.awbParcelId) return sendJSON(res, 400, { error: 'Comanda nu are AWB generat.' });
       try {
         await gls.deleteParcel(order.awbParcelId);
-        const updated = db.updateOrderInternal(order.id, {
+        const updated = db.updateOrderInternal(currentAgent.companyId, order.id, {
           awbNumber: null,
           awbParcelId: null,
           awbLabelPdf: null,
@@ -495,7 +518,7 @@ async function handleApi(req, res, pathname, query) {
 
     const labelMatch = pathname.match(/^\/api\/orders\/([^/]+)\/awb-label$/);
     if (labelMatch && req.method === 'GET') {
-      const order = db.getOrder(labelMatch[1]);
+      const order = db.getOrder(currentAgent.companyId, labelMatch[1]);
       if (!order || !order.awbParcelId) return sendJSON(res, 404, { error: 'Nu există AWB pentru această comandă.' });
 
       // servim eticheta salvata local, daca exista -- e mult mai fiabil decat
@@ -513,7 +536,7 @@ async function handleApi(req, res, pathname, query) {
 
       try {
         const pdfBuffer = await gls.getLabelPdf(order.awbParcelId);
-        db.updateOrderInternal(order.id, { awbLabelPdf: pdfBuffer.toString('base64') }, currentAgent);
+        db.updateOrderInternal(currentAgent.companyId, order.id, { awbLabelPdf: pdfBuffer.toString('base64') }, currentAgent);
         res.writeHead(200, {
           'Content-Type': 'application/pdf',
           'Content-Disposition': `inline; filename="awb-${order.awbNumber}.pdf"`,
@@ -531,7 +554,7 @@ async function handleApi(req, res, pathname, query) {
 
     const generatePickupMatch = pathname.match(/^\/api\/tickets\/([^/]+)\/generate-pickup-awb$/);
     if (generatePickupMatch && req.method === 'POST') {
-      const ticket = db.getTicket(generatePickupMatch[1]);
+      const ticket = db.getTicket(currentAgent.companyId, generatePickupMatch[1]);
       if (!ticket) return sendJSON(res, 404, { error: 'Tichet negăsit' });
 
       const body = await readBody(req);
@@ -546,7 +569,7 @@ async function handleApi(req, res, pathname, query) {
       // adresa: folosim ce vine explicit in cerere; daca lipseste cate un
       // camp, completam din comanda asociata tichetului (daca exista)
       let linkedOrder = null;
-      if (ticket.relatedOrderId) linkedOrder = db.getOrder(ticket.relatedOrderId);
+      if (ticket.relatedOrderId) linkedOrder = db.getOrder(currentAgent.companyId, ticket.relatedOrderId);
 
       const address = body.address || linkedOrder?.shippingAddress || '';
       const city = body.city || linkedOrder?.shippingCity || '';
@@ -563,7 +586,7 @@ async function handleApi(req, res, pathname, query) {
         const result = await courierClient.createPickupAwb({
           ticketId: ticket.id, reason, customerName, address, city, postalCode, phone, email,
         });
-        const updated = db.setTicketPickupAwb(ticket.id, {
+        const updated = db.setTicketPickupAwb(currentAgent.companyId, ticket.id, {
           awbNumber: result.trackingNumber,
           parcelId: result.parcelId,
           labelPdf: result.labelPdf ? result.labelPdf.toString('base64') : null,
@@ -583,7 +606,7 @@ async function handleApi(req, res, pathname, query) {
 
     const cancelPickupMatch = pathname.match(/^\/api\/tickets\/([^/]+)\/cancel-pickup-awb$/);
     if (cancelPickupMatch && req.method === 'POST') {
-      const ticket = db.getTicket(cancelPickupMatch[1]);
+      const ticket = db.getTicket(currentAgent.companyId, cancelPickupMatch[1]);
       if (!ticket) return sendJSON(res, 404, { error: 'Tichet negăsit' });
       if (!ticket.pickupAwbParcelId) return sendJSON(res, 400, { error: 'Tichetul nu are AWB de ridicare generat.' });
       try {
@@ -592,7 +615,7 @@ async function handleApi(req, res, pathname, query) {
         } else {
           await gls.deleteParcel(ticket.pickupAwbParcelId);
         }
-        const updated = db.clearTicketPickupAwb(ticket.id, currentAgent);
+        const updated = db.clearTicketPickupAwb(currentAgent.companyId, ticket.id, currentAgent);
         return sendJSON(res, 200, updated);
       } catch (e) {
         return sendJSON(res, 502, { error: e.message });
@@ -601,7 +624,7 @@ async function handleApi(req, res, pathname, query) {
 
     const pickupLabelMatch = pathname.match(/^\/api\/tickets\/([^/]+)\/pickup-awb-label$/);
     if (pickupLabelMatch && req.method === 'GET') {
-      const ticket = db.getTicket(pickupLabelMatch[1]);
+      const ticket = db.getTicket(currentAgent.companyId, pickupLabelMatch[1]);
       if (!ticket || !ticket.pickupAwbParcelId) return sendJSON(res, 404, { error: 'Nu există AWB de ridicare pentru acest tichet.' });
 
       if (ticket.pickupAwbLabelPdf) {
@@ -619,7 +642,7 @@ async function handleApi(req, res, pathname, query) {
         const pdfBuffer = activeCourier === sameday
           ? await sameday.getAwbPdf(ticket.pickupAwbParcelId)
           : await gls.getLabelPdf(ticket.pickupAwbParcelId);
-        db.setTicketPickupAwb(ticket.id, {
+        db.setTicketPickupAwb(currentAgent.companyId, ticket.id, {
           awbNumber: ticket.pickupAwbNumber,
           parcelId: ticket.pickupAwbParcelId,
           labelPdf: pdfBuffer.toString('base64'),
@@ -643,7 +666,7 @@ async function handleApi(req, res, pathname, query) {
 
     const generateReturnMatch = pathname.match(/^\/api\/tickets\/([^/]+)\/generate-return-awb$/);
     if (generateReturnMatch && req.method === 'POST') {
-      const ticket = db.getTicket(generateReturnMatch[1]);
+      const ticket = db.getTicket(currentAgent.companyId, generateReturnMatch[1]);
       if (!ticket) return sendJSON(res, 404, { error: 'Tichet negăsit' });
       if (ticket.section !== 'service') return sendJSON(res, 400, { error: 'AWB-ul de retur e disponibil doar pentru tichetele de Service.' });
       if (!ticket.pickupAddress || !ticket.pickupCity || !ticket.pickupPostalCode || !ticket.pickupPhone) {
@@ -681,7 +704,7 @@ async function handleApi(req, res, pathname, query) {
               shippingPhone: ticket.pickupPhone,
               customerEmail: ticket.requesterEmail,
             });
-        const updated = db.setTicketReturnAwb(ticket.id, {
+        const updated = db.setTicketReturnAwb(currentAgent.companyId, ticket.id, {
           awbNumber: result.trackingNumber,
           parcelId: result.parcelId,
           labelPdf: result.labelPdf ? result.labelPdf.toString('base64') : null,
@@ -695,7 +718,7 @@ async function handleApi(req, res, pathname, query) {
 
     const cancelReturnMatch = pathname.match(/^\/api\/tickets\/([^/]+)\/cancel-return-awb$/);
     if (cancelReturnMatch && req.method === 'POST') {
-      const ticket = db.getTicket(cancelReturnMatch[1]);
+      const ticket = db.getTicket(currentAgent.companyId, cancelReturnMatch[1]);
       if (!ticket) return sendJSON(res, 404, { error: 'Tichet negăsit' });
       if (!ticket.returnAwbParcelId) return sendJSON(res, 400, { error: 'Tichetul nu are AWB de retur generat.' });
       try {
@@ -704,7 +727,7 @@ async function handleApi(req, res, pathname, query) {
         } else {
           await gls.deleteParcel(ticket.returnAwbParcelId);
         }
-        const updated = db.clearTicketReturnAwb(ticket.id, currentAgent);
+        const updated = db.clearTicketReturnAwb(currentAgent.companyId, ticket.id, currentAgent);
         return sendJSON(res, 200, updated);
       } catch (e) {
         return sendJSON(res, 502, { error: e.message });
@@ -713,7 +736,7 @@ async function handleApi(req, res, pathname, query) {
 
     const returnLabelMatch = pathname.match(/^\/api\/tickets\/([^/]+)\/return-awb-label$/);
     if (returnLabelMatch && req.method === 'GET') {
-      const ticket = db.getTicket(returnLabelMatch[1]);
+      const ticket = db.getTicket(currentAgent.companyId, returnLabelMatch[1]);
       if (!ticket || !ticket.returnAwbParcelId) return sendJSON(res, 404, { error: 'Nu există AWB de retur pentru acest tichet.' });
 
       if (ticket.returnAwbLabelPdf) {
@@ -730,7 +753,7 @@ async function handleApi(req, res, pathname, query) {
         const pdfBuffer = activeCourier === sameday
           ? await sameday.getAwbPdf(ticket.returnAwbParcelId)
           : await gls.getLabelPdf(ticket.returnAwbParcelId);
-        db.setTicketReturnAwb(ticket.id, {
+        db.setTicketReturnAwb(currentAgent.companyId, ticket.id, {
           awbNumber: ticket.returnAwbNumber,
           parcelId: ticket.returnAwbParcelId,
           labelPdf: pdfBuffer.toString('base64'),
@@ -753,7 +776,7 @@ async function handleApi(req, res, pathname, query) {
 
     const refreshStageMatch = pathname.match(/^\/api\/tickets\/([^/]+)\/refresh-awb-status$/);
     if (refreshStageMatch && req.method === 'POST') {
-      const ticket = db.getTicket(refreshStageMatch[1]);
+      const ticket = db.getTicket(currentAgent.companyId, refreshStageMatch[1]);
       if (!ticket) return sendJSON(res, 404, { error: 'Tichet negăsit' });
 
       // alegem AWB-ul activ (ridicare sau retur) dupa etapa curenta
@@ -780,7 +803,7 @@ async function handleApi(req, res, pathname, query) {
           if (delivered) newStage = 'delivered_to_client';
         }
 
-        const updated = db.updateTicketStage(ticket.id, newStage, currentAgent);
+        const updated = db.updateTicketStage(currentAgent.companyId, ticket.id, newStage, currentAgent);
         return sendJSON(res, 200, { ...updated, trackingEventsCount: statuses.length });
       } catch (e) {
         return sendJSON(res, 502, { error: e.message });
@@ -789,7 +812,7 @@ async function handleApi(req, res, pathname, query) {
 
     const trackingMatch = pathname.match(/^\/api\/tickets\/([^/]+)\/awb-tracking$/);
     if (trackingMatch && req.method === 'GET') {
-      const ticket = db.getTicket(trackingMatch[1]);
+      const ticket = db.getTicket(currentAgent.companyId, trackingMatch[1]);
       if (!ticket) return sendJSON(res, 404, { error: 'Tichet negăsit' });
       const leg = query.leg === 'return' ? 'return' : 'pickup';
       const trackingNumber = leg === 'return' ? ticket.returnAwbNumber : ticket.pickupAwbNumber;
@@ -806,7 +829,7 @@ async function handleApi(req, res, pathname, query) {
     // ---- profil client (agregat din comenzi + tichete cu acelasi telefon/email) ----
 
     if (pathname === '/api/clients/lookup' && req.method === 'GET') {
-      const profile = db.getClientProfile({ phone: query.phone || undefined, email: query.email || undefined });
+      const profile = db.getClientProfile(currentAgent.companyId, { phone: query.phone || undefined, email: query.email || undefined });
       return sendJSON(res, 200, profile);
     }
 
@@ -814,16 +837,16 @@ async function handleApi(req, res, pathname, query) {
 
     const photosListMatch = pathname.match(/^\/api\/tickets\/([^/]+)\/photos$/);
     if (photosListMatch && req.method === 'GET') {
-      return sendJSON(res, 200, db.listTicketPhotos(photosListMatch[1]));
+      return sendJSON(res, 200, db.listTicketPhotos(currentAgent.companyId, photosListMatch[1]));
     }
     if (photosListMatch && req.method === 'POST') {
-      const ticket = db.getTicket(photosListMatch[1]);
+      const ticket = db.getTicket(currentAgent.companyId, photosListMatch[1]);
       if (!ticket) return sendJSON(res, 404, { error: 'Tichet negăsit' });
       const body = await readBody(req, 30_000_000); // pana la ~30MB (fotografii comprimate pe client)
       if (!body.dataBase64 || !body.mimeType) return sendJSON(res, 400, { error: 'Lipsesc dataBase64 sau mimeType.' });
       if (!/^image\/(jpeg|png|webp)$/.test(body.mimeType)) return sendJSON(res, 400, { error: 'Tip de fișier neacceptat — doar JPEG, PNG sau WEBP.' });
       try {
-        const photo = db.addTicketPhoto(ticket.id, { dataBase64: body.dataBase64, mimeType: body.mimeType });
+        const photo = db.addTicketPhoto(currentAgent.companyId, ticket.id, { dataBase64: body.dataBase64, mimeType: body.mimeType });
         return sendJSON(res, 200, photo);
       } catch (e) {
         return sendJSON(res, 400, { error: e.message });
@@ -832,14 +855,14 @@ async function handleApi(req, res, pathname, query) {
 
     const photoServeMatch = pathname.match(/^\/api\/tickets\/photos\/([^/]+)$/);
     if (photoServeMatch && req.method === 'GET') {
-      const photo = db.getTicketPhoto(photoServeMatch[1]);
+      const photo = db.getTicketPhoto(currentAgent.companyId, photoServeMatch[1]);
       if (!photo) return sendJSON(res, 404, { error: 'Fotografie negăsită' });
       const buffer = Buffer.from(photo.dataBase64, 'base64');
       res.writeHead(200, { 'Content-Type': photo.mimeType, 'Content-Length': buffer.length, 'Cache-Control': 'private, max-age=86400' });
       return res.end(buffer);
     }
     if (photoServeMatch && req.method === 'DELETE') {
-      const ok = db.deleteTicketPhoto(photoServeMatch[1]);
+      const ok = db.deleteTicketPhoto(currentAgent.companyId, photoServeMatch[1]);
       if (!ok) return sendJSON(res, 404, { error: 'Fotografie negăsită' });
       return sendJSON(res, 200, { ok: true });
     }
@@ -848,14 +871,14 @@ async function handleApi(req, res, pathname, query) {
 
     const refundInfoMatch = pathname.match(/^\/api\/tickets\/([^/]+)\/refund-info$/);
     if (refundInfoMatch && req.method === 'PATCH') {
-      const ticket = db.getTicket(refundInfoMatch[1]);
+      const ticket = db.getTicket(currentAgent.companyId, refundInfoMatch[1]);
       if (!ticket) return sendJSON(res, 404, { error: 'Tichet negăsit' });
       const body = await readBody(req);
       if (!body.iban || !String(body.iban).trim()) return sendJSON(res, 400, { error: 'IBAN-ul este obligatoriu.' });
       if (body.amount == null || Number.isNaN(Number(body.amount)) || Number(body.amount) <= 0) {
         return sendJSON(res, 400, { error: 'Suma de returnat trebuie să fie un număr pozitiv.' });
       }
-      const updated = db.setTicketRefundInfo(ticket.id, {
+      const updated = db.setTicketRefundInfo(currentAgent.companyId, ticket.id, {
         iban: String(body.iban).trim().toUpperCase().replace(/\s+/g, ''),
         accountHolder: body.accountHolder || null,
         amount: body.amount,
@@ -866,13 +889,13 @@ async function handleApi(req, res, pathname, query) {
 
     const refundLabelMatch = pathname.match(/^\/api\/tickets\/([^/]+)\/refund-label\.(pdf|csv)$/);
     if (refundLabelMatch && req.method === 'GET') {
-      const ticket = db.getTicket(refundLabelMatch[1]);
+      const ticket = db.getTicket(currentAgent.companyId, refundLabelMatch[1]);
       if (!ticket) return sendJSON(res, 404, { error: 'Tichet negăsit' });
       if (!ticket.refundIban || ticket.refundAmount == null) {
         return sendJSON(res, 400, { error: 'Completează mai întâi datele bancare și suma de returnat.' });
       }
       let linkedOrder = null;
-      if (ticket.relatedOrderId) linkedOrder = db.getOrder(ticket.relatedOrderId);
+      if (ticket.relatedOrderId) linkedOrder = db.getOrder(currentAgent.companyId, ticket.relatedOrderId);
       const fileFormat = refundLabelMatch[2];
 
       const fields = [
@@ -919,7 +942,7 @@ async function handleApi(req, res, pathname, query) {
       if (body.confirm !== 'STERGE TOATE TICHETELE') {
         return sendJSON(res, 400, { error: 'Confirmare lipsă sau incorectă.' });
       }
-      const result = db.deleteAllTickets();
+      const result = db.deleteAllTickets(currentAgent.companyId);
       return sendJSON(res, 200, result);
     }
 
