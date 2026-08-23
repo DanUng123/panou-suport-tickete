@@ -337,6 +337,50 @@ async function handleApi(req, res, pathname, query) {
       });
     }
 
+    if (pathname === '/api/company/settings/sameday-autofill' && req.method === 'POST') {
+      if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot accesa setările companiei' });
+      const body = await readBody(req);
+      if (!body.samedayUsername || !body.samedayPassword) {
+        return sendJSON(res, 400, { error: 'Completează mai întâi utilizatorul și parola Sameday, apoi încearcă din nou.' });
+      }
+      // obiect temporar, testat direct la Sameday -- NU se salveaza in baza de
+      // date aici (asta se intampla doar la apasarea "Salveaza setarile").
+      // id unic, ca sa nu interfereze cu tokenul real, cacheat al companiei.
+      const draftCompany = {
+        id: `${currentAgent.companyId}:draft:${Date.now()}`,
+        samedayUsername: body.samedayUsername,
+        samedayPassword: body.samedayPassword,
+        samedayPickupPointId: body.samedayPickupPointId || '',
+        samedayPickupPointAddress: body.samedayPickupPointAddress || '',
+      };
+      try {
+        const points = await sameday.getPickupPoints(draftCompany);
+        let point;
+        if (draftCompany.samedayPickupPointId) {
+          point = points.find((p) => String(p.id) === String(draftCompany.samedayPickupPointId));
+          if (!point) {
+            return sendJSON(res, 400, { error: `Nu am găsit punctul de ridicare cu ID-ul ${draftCompany.samedayPickupPointId}. Puncte disponibile: ${points.map((p) => `${p.id} (${p.alias || p.address})`).join(', ')}` });
+          }
+        } else {
+          point = points.find((p) => p.defaultPickupPoint) || points[0];
+          if (!point) return sendJSON(res, 400, { error: 'Contul Sameday nu are niciun punct de ridicare configurat.' });
+        }
+        const contacts = point.pickupPointContactPerson || [];
+        const contact = contacts.find((c) => c.defaultContactPerson) || contacts[0];
+        return sendJSON(res, 200, {
+          samedayPickupPointId: String(point.id),
+          samedayPickupPointAddress: point.address || '',
+          samedaySenderName: contact?.name || point.alias || '',
+          samedaySenderPhone: contact?.phoneNumber || '',
+          samedaySenderPostalCode: point.postalCode || point.zipCode || '',
+          samedaySenderAddress: point.address || '',
+          samedayContactPersonId: contact?.id ? String(contact.id) : '',
+        });
+      } catch (e) {
+        return sendJSON(res, 502, { error: e.message });
+      }
+    }
+
     if (pathname === '/api/stats' && req.method === 'GET') {
       return sendJSON(res, 200, db.getStats(currentAgent.companyId));
     }

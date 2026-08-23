@@ -2642,6 +2642,10 @@ async function renderSettings() {
           <label>Adresă punct de ridicare</label>
           <input type="text" id="s-sd-pickupaddr" value="${v(s.samedayPickupPointAddress)}" />
         </div>
+        <div style="margin-bottom:12px;">
+          <button type="button" class="btn btn-sm" id="samedayAutofillBtn">↻ Preia automat din contul Sameday</button>
+          <span class="hint" style="display:block;margin-top:4px;">Completează utilizatorul, parola și (opțional) ID-ul punctului de ridicare mai sus, apoi apasă — restul câmpurilor de mai jos se completează automat.</span>
+        </div>
         <div class="sub" style="margin:16px 0 8px;">Date expeditor (folosite ca destinatar real la ridicările de la client)</div>
         <div class="form-row">
           <div class="field">
@@ -2668,6 +2672,37 @@ async function renderSettings() {
       <button class="btn btn-primary" type="submit">Salvează setările</button>
     </form>
   `));
+
+  content.querySelector('#samedayAutofillBtn').addEventListener('click', async () => {
+    const btn = content.querySelector('#samedayAutofillBtn');
+    const payload = {
+      samedayUsername: content.querySelector('#s-sd-user').value.trim(),
+      samedayPassword: content.querySelector('#s-sd-pass').value,
+      samedayPickupPointId: content.querySelector('#s-sd-pickupid').value.trim(),
+    };
+    if (!payload.samedayUsername || !payload.samedayPassword) {
+      showToast('Completează întâi utilizatorul și parola Sameday.');
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = 'Se preiau datele…';
+    try {
+      const data = await api('/api/company/settings/sameday-autofill', { method: 'POST', body: JSON.stringify(payload) });
+      content.querySelector('#s-sd-pickupid').value = data.samedayPickupPointId || '';
+      content.querySelector('#s-sd-pickupaddr').value = data.samedayPickupPointAddress || '';
+      content.querySelector('#s-sd-sname').value = data.samedaySenderName || '';
+      content.querySelector('#s-sd-sphone').value = data.samedaySenderPhone || '';
+      content.querySelector('#s-sd-szip').value = data.samedaySenderPostalCode || '';
+      content.querySelector('#s-sd-saddress').value = data.samedaySenderAddress || '';
+      content.querySelector('#s-sd-contactid').value = data.samedayContactPersonId || '';
+      showToast('Date preluate din Sameday — verifică-le și apasă „Salvează setările".');
+    } catch (err) {
+      showToast('Eroare: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '↻ Preia automat din contul Sameday';
+    }
+  });
 
   content.querySelector('#settingsForm').addEventListener('submit', async (e) => {
     e.preventDefault();
