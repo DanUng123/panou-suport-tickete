@@ -478,6 +478,7 @@ function renderShell(activeRoute, contentNode) {
         <div class="nav-item" data-route="#/retur">${NAV_ICONS.retur}Retur</div>
         <div class="nav-item" data-route="#/schimb">${NAV_ICONS.schimb}Colet la Schimb</div>
         ${currentAgent.role === 'manager' ? `<div class="nav-item" data-route="#/admin">${NAV_ICONS.admin}Administrare</div>` : ''}
+        ${currentAgent.role === 'manager' ? `<div class="nav-item" data-route="#/settings">⚙️ Setări</div>` : ''}
       </nav>
       <div class="sidebar-spacer"></div>
       <div class="agent-card">
@@ -2509,6 +2510,202 @@ async function renderAdmin() {
   paintTab();
 }
 
+// ---------------- Setari companie (credentiale curieri/MerchantPro, doar manageri) ----------------
+
+async function renderSettings() {
+  if (currentAgent.role !== 'manager') {
+    navigate('#/dashboard');
+    return;
+  }
+
+  const content = el(`
+    <div>
+      <div class="page-header">
+        <div>
+          <h1>Setări</h1>
+          <div class="sub">Credențialele MerchantPro, GLS și Sameday ale companiei tale</div>
+        </div>
+      </div>
+      <div id="settings-body">Se încarcă…</div>
+    </div>
+  `);
+  renderShell('#/settings', content);
+
+  const body = content.querySelector('#settings-body');
+  let s;
+  try {
+    s = await api('/api/company/settings');
+  } catch (e) {
+    body.innerHTML = `<div class="error-msg">${escapeHtml(e.message)}</div>`;
+    return;
+  }
+
+  const v = (x) => escapeHtml(x || '');
+
+  body.innerHTML = '';
+  body.appendChild(el(`
+    <form id="settingsForm">
+      <div class="panel" style="margin-bottom:20px;">
+        <h2>MerchantPro</h2>
+        <div class="field">
+          <label>URL magazin</label>
+          <input type="text" id="s-mp-url" placeholder="https://magazinul-tau.ro/" value="${v(s.merchantProShopUrl)}" />
+        </div>
+        <div class="form-row">
+          <div class="field">
+            <label>Cheie API (API Key)</label>
+            <input type="text" id="s-mp-key" value="${v(s.merchantProApiKey)}" />
+          </div>
+          <div class="field">
+            <label>Secret API${s.merchantProApiSecretSet ? ' — setat ✓' : ''}</label>
+            <input type="password" id="s-mp-secret" placeholder="${s.merchantProApiSecretSet ? '••••••••  (lasă gol ca să păstrezi)' : 'Introdu secretul API'}" />
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-bottom:20px;">
+        <h2>GLS</h2>
+        <div class="form-row">
+          <div class="field">
+            <label>Utilizator</label>
+            <input type="text" id="s-gls-user" value="${v(s.glsUsername)}" />
+          </div>
+          <div class="field">
+            <label>Parolă${s.glsPasswordSet ? ' — setată ✓' : ''}</label>
+            <input type="password" id="s-gls-pass" placeholder="${s.glsPasswordSet ? '••••••••  (lasă gol ca să păstrezi)' : 'Introdu parola'}" />
+          </div>
+        </div>
+        <div class="field">
+          <label>Număr client GLS</label>
+          <input type="text" id="s-gls-client" value="${v(s.glsClientNumber)}" />
+        </div>
+        <div class="sub" style="margin:16px 0 8px;">Date expeditor (apar pe etichetele GLS)</div>
+        <div class="form-row">
+          <div class="field">
+            <label>Nume firmă</label>
+            <input type="text" id="s-gls-sname" value="${v(s.glsSenderName)}" />
+          </div>
+          <div class="field">
+            <label>Persoană de contact</label>
+            <input type="text" id="s-gls-scontact" value="${v(s.glsSenderContact)}" />
+          </div>
+        </div>
+        <div class="field">
+          <label>Adresă</label>
+          <input type="text" id="s-gls-saddress" value="${v(s.glsSenderAddress)}" />
+        </div>
+        <div class="form-row">
+          <div class="field">
+            <label>Oraș</label>
+            <input type="text" id="s-gls-scity" value="${v(s.glsSenderCity)}" />
+          </div>
+          <div class="field">
+            <label>Cod poștal</label>
+            <input type="text" id="s-gls-szip" value="${v(s.glsSenderZipcode)}" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field">
+            <label>Telefon</label>
+            <input type="text" id="s-gls-sphone" value="${v(s.glsSenderPhone)}" />
+          </div>
+          <div class="field">
+            <label>Email</label>
+            <input type="text" id="s-gls-semail" value="${v(s.glsSenderEmail)}" />
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-bottom:20px;">
+        <h2>Sameday</h2>
+        <div class="form-row">
+          <div class="field">
+            <label>Utilizator</label>
+            <input type="text" id="s-sd-user" value="${v(s.samedayUsername)}" />
+          </div>
+          <div class="field">
+            <label>Parolă${s.samedayPasswordSet ? ' — setată ✓' : ''}</label>
+            <input type="password" id="s-sd-pass" placeholder="${s.samedayPasswordSet ? '••••••••  (lasă gol ca să păstrezi)' : 'Introdu parola'}" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field">
+            <label>ID punct de ridicare</label>
+            <input type="text" id="s-sd-pickupid" value="${v(s.samedayPickupPointId)}" />
+          </div>
+          <div class="field">
+            <label>ID persoană de contact (opțional)</label>
+            <input type="text" id="s-sd-contactid" value="${v(s.samedayContactPersonId)}" />
+          </div>
+        </div>
+        <div class="field">
+          <label>Adresă punct de ridicare</label>
+          <input type="text" id="s-sd-pickupaddr" value="${v(s.samedayPickupPointAddress)}" />
+        </div>
+        <div class="sub" style="margin:16px 0 8px;">Date expeditor (folosite ca destinatar real la ridicările de la client)</div>
+        <div class="form-row">
+          <div class="field">
+            <label>Nume firmă</label>
+            <input type="text" id="s-sd-sname" value="${v(s.samedaySenderName)}" />
+          </div>
+          <div class="field">
+            <label>Telefon</label>
+            <input type="text" id="s-sd-sphone" value="${v(s.samedaySenderPhone)}" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field">
+            <label>Cod poștal</label>
+            <input type="text" id="s-sd-szip" value="${v(s.samedaySenderPostalCode)}" />
+          </div>
+          <div class="field">
+            <label>Adresă</label>
+            <input type="text" id="s-sd-saddress" value="${v(s.samedaySenderAddress)}" />
+          </div>
+        </div>
+      </div>
+
+      <button class="btn btn-primary" type="submit">Salvează setările</button>
+    </form>
+  `));
+
+  content.querySelector('#settingsForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const q = (id) => content.querySelector(id).value.trim();
+    const payload = {
+      merchantProShopUrl: q('#s-mp-url'),
+      merchantProApiKey: q('#s-mp-key'),
+      merchantProApiSecret: q('#s-mp-secret'),
+      glsUsername: q('#s-gls-user'),
+      glsPassword: q('#s-gls-pass'),
+      glsClientNumber: q('#s-gls-client'),
+      glsSenderName: q('#s-gls-sname'),
+      glsSenderContact: q('#s-gls-scontact'),
+      glsSenderAddress: q('#s-gls-saddress'),
+      glsSenderCity: q('#s-gls-scity'),
+      glsSenderZipcode: q('#s-gls-szip'),
+      glsSenderPhone: q('#s-gls-sphone'),
+      glsSenderEmail: q('#s-gls-semail'),
+      samedayUsername: q('#s-sd-user'),
+      samedayPassword: q('#s-sd-pass'),
+      samedayPickupPointId: q('#s-sd-pickupid'),
+      samedayContactPersonId: q('#s-sd-contactid'),
+      samedayPickupPointAddress: q('#s-sd-pickupaddr'),
+      samedaySenderName: q('#s-sd-sname'),
+      samedaySenderPhone: q('#s-sd-sphone'),
+      samedaySenderPostalCode: q('#s-sd-szip'),
+      samedaySenderAddress: q('#s-sd-saddress'),
+    };
+    try {
+      await api('/api/company/settings', { method: 'PATCH', body: JSON.stringify(payload) });
+      showToast('Setări salvate');
+      renderSettings();
+    } catch (err) {
+      showToast('Eroare: ' + err.message);
+    }
+  });
+}
+
 // ---------------- router principal ----------------
 
 function render() {
@@ -2542,6 +2739,9 @@ function render() {
   } else if (path === '#/admin') {
     hideDrawer();
     renderAdmin();
+  } else if (path === '#/settings') {
+    hideDrawer();
+    renderSettings();
   } else if (path.startsWith('#/tickets/')) {
     renderTicketDetail(path.replace('#/tickets/', ''));
   } else if (path.startsWith('#/orders/')) {

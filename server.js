@@ -299,6 +299,41 @@ async function handleApi(req, res, pathname, query) {
       }
     }
 
+    // ---- setari companie (credentiale curieri/MerchantPro, doar manageri) ----
+
+    if (pathname === '/api/company/settings' && req.method === 'GET') {
+      if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot accesa setările companiei' });
+      const company = db.getCompany(currentAgent.companyId);
+      if (!company) return sendJSON(res, 404, { error: 'Companie negăsită' });
+      // secretele nu se trimit niciodata in clar catre browser -- doar daca sunt setate sau nu
+      const { merchantProApiSecret, glsPassword, samedayPassword, ...rest } = company;
+      return sendJSON(res, 200, {
+        ...rest,
+        merchantProApiSecretSet: Boolean(merchantProApiSecret),
+        glsPasswordSet: Boolean(glsPassword),
+        samedayPasswordSet: Boolean(samedayPassword),
+      });
+    }
+
+    if (pathname === '/api/company/settings' && req.method === 'PATCH') {
+      if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot modifica setările companiei' });
+      const body = await readBody(req);
+      // campurile de secret (parole/chei) se actualizeaza DOAR daca vin nevide in cerere --
+      // camp gol in formular inseamna "pastreaza valoarea existenta", nu "sterge-o"
+      const patch = { ...body };
+      if (patch.merchantProApiSecret === '') delete patch.merchantProApiSecret;
+      if (patch.glsPassword === '') delete patch.glsPassword;
+      if (patch.samedayPassword === '') delete patch.samedayPassword;
+      const updated = db.updateCompanyCredentials(currentAgent.companyId, patch);
+      const { merchantProApiSecret, glsPassword, samedayPassword, ...rest } = updated;
+      return sendJSON(res, 200, {
+        ...rest,
+        merchantProApiSecretSet: Boolean(merchantProApiSecret),
+        glsPasswordSet: Boolean(glsPassword),
+        samedayPasswordSet: Boolean(samedayPassword),
+      });
+    }
+
     if (pathname === '/api/stats' && req.method === 'GET') {
       return sendJSON(res, 200, db.getStats(currentAgent.companyId));
     }
