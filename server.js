@@ -650,7 +650,7 @@ async function handleApi(req, res, pathname, query) {
       const courier = body.courier === 'sameday' ? 'sameday' : 'gls';
       const courierClient = courier === 'sameday' ? sameday : gls;
 
-      if (!courierClient.isConfigured()) {
+      if (!courierClient.isConfigured(company)) {
         return sendJSON(res, 400, { error: `Integrarea ${courier === 'sameday' ? 'Sameday' : 'GLS'} nu este configurată pe server.` });
       }
 
@@ -671,7 +671,7 @@ async function handleApi(req, res, pathname, query) {
       }
 
       try {
-        const result = await courierClient.createPickupAwb({
+        const result = await courierClient.createPickupAwb(company, {
           ticketId: ticket.id, reason, customerName, address, city, postalCode, phone, email,
         });
         const updated = db.setTicketPickupAwb(currentAgent.companyId, ticket.id, {
