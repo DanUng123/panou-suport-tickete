@@ -2229,6 +2229,12 @@ async function renderAdmin() {
         <button class="admin-tab" data-tab="categories">Categorii</button>
       </div>
       <div id="admin-body">Se încarcă…</div>
+
+      <div class="panel" style="margin-top:24px;border-color:rgba(232,92,76,0.3);">
+        <h2 style="color:var(--priority-urgent);">Zonă periculoasă</h2>
+        <div class="hint" style="margin-bottom:12px;">Șterge definitiv toate tichetele (Suport, Service, Retur, Colet la Schimb) — comenzile nu sunt afectate. Acțiune ireversibilă.</div>
+        <button class="btn" id="deleteAllTicketsBtn" style="color:var(--priority-urgent);border-color:rgba(232,92,76,0.4);">Șterge toate tichetele</button>
+      </div>
     </div>
   `);
   renderShell('#/admin', content);
@@ -2243,6 +2249,21 @@ async function renderAdmin() {
       activeTab = btn.dataset.tab;
       paintTab();
     });
+  });
+
+  content.querySelector('#deleteAllTicketsBtn').addEventListener('click', async () => {
+    if (!confirm('Ești absolut sigur? Se șterg TOATE tichetele, din toate secțiunile (Suport, Service, Retur, Colet la Schimb), permanent, fără posibilitate de recuperare. Comenzile nu sunt afectate.')) return;
+    const typed = prompt('Pentru confirmare finală, scrie exact: STERGE TOATE TICHETELE');
+    if (typed !== 'STERGE TOATE TICHETELE') {
+      showToast('Text de confirmare incorect — nimic nu a fost șters.');
+      return;
+    }
+    try {
+      const result = await api('/api/admin/tickets/delete-all', { method: 'POST', body: JSON.stringify({ confirm: 'STERGE TOATE TICHETELE' }) });
+      showToast(`${result.deletedCount} tichete șterse.`);
+    } catch (e) {
+      showToast('Eroare: ' + e.message);
+    }
   });
 
   async function paintTab() {
