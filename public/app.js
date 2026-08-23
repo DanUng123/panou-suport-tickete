@@ -1063,51 +1063,6 @@ async function paintTicketDrawer(ticket) {
             </div>
           </div>
 
-          ${ticket.section === 'support' ? `
-          <div class="side-panel" style="margin-bottom:16px;">
-            <h2>Gestionare tichet</h2>
-            <div class="form-row">
-              <div class="side-field">
-                <label>Status</label>
-                <select id="sel-status">
-                  ${Object.entries(STATUS_LABELS).map(([v, l]) => `<option value="${v}" ${ticket.status === v ? 'selected' : ''}>${l}</option>`).join('')}
-                </select>
-              </div>
-              <div class="side-field">
-                <label>Prioritate</label>
-                <select id="sel-priority">
-                  ${Object.entries(PRIORITY_LABELS).map(([v, l]) => `<option value="${v}" ${ticket.priority === v ? 'selected' : ''}>${l}</option>`).join('')}
-                </select>
-              </div>
-            </div>
-            <div class="form-row">
-              <div class="side-field">
-                <label>Categorie</label>
-                <select id="sel-category">
-                  ${categoriesCache.map((c) => `<option value="${escapeHtml(c)}" ${ticket.category === c ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}
-                </select>
-              </div>
-              <div class="side-field">
-                <label>Agent asignat</label>
-                <select id="sel-assigned">
-                  <option value="">Neasignat</option>
-                  ${agentsCache.map((a) => `<option value="${a.id}" ${ticket.assignedTo === a.id ? 'selected' : ''}>${escapeHtml(a.name)}</option>`).join('')}
-                </select>
-              </div>
-            </div>
-            <div class="side-field">
-              <label>Secțiune</label>
-              <select id="sel-section">
-                <option value="support" ${ticket.section === 'support' ? 'selected' : ''}>Tichete (suport general)</option>
-                <option value="service" ${ticket.section === 'service' ? 'selected' : ''}>Service</option>
-                <option value="retur" ${ticket.section === 'retur' ? 'selected' : ''}>Retur</option>
-                <option value="schimb" ${ticket.section === 'schimb' ? 'selected' : ''}>Colet la Schimb</option>
-              </select>
-              <div class="hint" style="margin-top:6px;">Se schimbă automat la generarea unui AWB de ridicare — sau poți muta manual tichetul de aici.</div>
-            </div>
-          </div>
-          ` : ''}
-
           <div class="side-panel" style="margin-bottom:16px;">
             <h2>${{ service: 'AWB ridicare (client → service)', retur: 'Ridicare de la client (GLS)', schimb: 'AWB colet la schimb (GLS)' }[ticket.section] || 'AWB ridicare (GLS)'}</h2>
             ${ticket.pickupAwbNumber ? `
@@ -1291,23 +1246,6 @@ async function paintTicketDrawer(ticket) {
           }
         });
       });
-    });
-
-    async function patchField(field, value) {
-      try {
-        ticket = await api(`/api/tickets/${ticket.id}`, { method: 'PATCH', body: JSON.stringify({ [field]: value }) });
-        showToast('Tichet actualizat');
-        paint();
-      } catch (e) {
-        showToast('Eroare: ' + e.message);
-      }
-    }
-
-    ['#sel-status', '#sel-priority', '#sel-category', '#sel-assigned', '#sel-section'].forEach((sel) => {
-      const fieldEl = content.querySelector(sel);
-      if (!fieldEl) return; // panoul "Gestionare tichet" nu exista pentru Service/Retur
-      const field = { '#sel-status': 'status', '#sel-priority': 'priority', '#sel-category': 'category', '#sel-assigned': 'assignedTo', '#sel-section': 'section' }[sel];
-      fieldEl.addEventListener('change', (e) => patchField(field, e.target.value));
     });
 
     const pickupForm = content.querySelector('#pickupAwbForm');
