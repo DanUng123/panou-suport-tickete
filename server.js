@@ -402,10 +402,10 @@ async function handleApi(req, res, pathname, query) {
     // ---- comenzi (MerchantPro) ----
 
     if (pathname === '/api/orders/sync-status' && req.method === 'GET') {
-      const status = orderSync.getSyncStatus();
+      const status = orderSync.getSyncStatus(company);
       let platformLabel = 'MERCHANTPRO';
       try {
-        const host = new URL(process.env.MERCHANTPRO_SHOP_URL || '').hostname;
+        const host = new URL(company.merchantProShopUrl || '').hostname;
         const bareHost = host.replace(/^www\./, '').split('.')[0];
         if (bareHost) platformLabel = bareHost.toUpperCase();
       } catch (e) { /* URL lipsa/invalida, pastram implicitul */ }
@@ -414,7 +414,7 @@ async function handleApi(req, res, pathname, query) {
 
     if (pathname === '/api/orders/sync' && req.method === 'POST') {
       try {
-        const result = await orderSync.runSync();
+        const result = await orderSync.runSyncForCompany(company);
         return sendJSON(res, 200, result);
       } catch (e) {
         return sendJSON(res, 502, { error: e.message });
