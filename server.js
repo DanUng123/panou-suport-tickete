@@ -232,6 +232,9 @@ async function handleApi(req, res, pathname, query) {
     if (!currentAgent || !currentAgent.active) return sendJSON(res, 401, { error: 'Neautentificat' });
 
     const requireManager = () => currentAgent.role === 'manager';
+    // datele companiei (inclusiv credentialele decriptate GLS/Sameday/MerchantPro) --
+    // preluate o singura data, disponibile pentru toate rutele de mai jos
+    const company = db.getCompany(currentAgent.companyId);
 
     if (pathname === '/api/categories' && req.method === 'GET') {
       return sendJSON(res, 200, db.listCategories(currentAgent.companyId));
@@ -471,13 +474,13 @@ async function handleApi(req, res, pathname, query) {
 
     const issueInvoiceMatch = pathname.match(/^\/api\/orders\/([^/]+)\/issue-invoice$/);
     if (issueInvoiceMatch && req.method === 'POST') {
-      if (!mp.isConfigured()) return sendJSON(res, 400, { error: 'Integrarea MerchantPro nu este configurată pe server.' });
+      if (!mp.isConfigured(company)) return sendJSON(res, 400, { error: 'Integrarea MerchantPro nu este configurată pentru compania ta — completeaz-o în Setări.' });
       const order = db.getOrder(currentAgent.companyId, issueInvoiceMatch[1]);
       if (!order) return sendJSON(res, 404, { error: 'Comandă negăsită' });
       try {
-        await mp.issueInvoice(order.mpId);
+        await mp.issueInvoice(company, order.mpId);
         // factura nu vine in raspunsul de mai sus -- resincronizam comanda ca sa o preluam
-        const fresh = await mp.getOrder(order.mpId);
+        const fresh = await mp.getOrder(company, order.mpId);
         db.upsertOrderFromMerchantPro(currentAgent.companyId, fresh);
         return sendJSON(res, 200, db.getOrder(currentAgent.companyId, order.id));
       } catch (e) {
@@ -488,16 +491,16 @@ async function handleApi(req, res, pathname, query) {
     // ---- AWB / curier GLS ----
 
     if (pathname === '/api/gls/status' && req.method === 'GET') {
-      return sendJSON(res, 200, { configured: gls.isConfigured() });
+      return sendJSON(res, 200, { configured: gls.isConfigured(company) });
     }
 
     if (pathname === '/api/sameday/status' && req.method === 'GET') {
-      return sendJSON(res, 200, { configured: sameday.isConfigured() });
+      return sendJSON(res, 200, { configured: sameday.isConfigured(company) });
     }
 
     const generateAwbMatch = pathname.match(/^\/api\/orders\/([^/]+)\/generate-awb$/);
     if (generateAwbMatch && req.method === 'POST') {
-      if (!gls.isConfigured()) return sendJSON(res, 400, { error: 'Integrarea GLS nu este configurată pe server.' });
+      if (!gls.isConfigured(company)) return sendJSON(res, 400, { error: 'Integrarea GLS nu este configurată pentru compania ta — completeaz-o în Setări.' });
       const order = db.getOrder(currentAgent.companyId, generateAwbMatch[1]);
       if (!order) return sendJSON(res, 404, { error: 'Comandă negăsită' });
       if (!order.shippingAddress || !order.shippingCity || !order.shippingPostalCode || !order.shippingPhone) {
@@ -505,7 +508,7 @@ async function handleApi(req, res, pathname, query) {
       }
       try {
         const isCod = (order.paymentStatus === 'awaiting');
-        const result = await gls.createParcel({
+        const result = await gls.createParcel(company, {
           mpId: order.mpId,
           codAmount: isCod ? order.totalAmount : 0,
           currency: order.currency,
@@ -526,8 +529,8 @@ async function handleApi(req, res, pathname, query) {
           internalStatus: 'awb_generated',
         }, currentAgent);
         // incercam si sa scriem AWB-ul inapoi in MerchantPro, dar nu blocam raspunsul daca esueaza
-        if (mp.isConfigured()) {
-          mp.updateOrder(order.mpId, { shipping_awb: result.trackingNumber }).catch((e) => {
+        if (mp.isConfigured(company)) {
+          mp.updateOrder(company, order.mpId, { shipping_awb: result.trackingNumber }).catch((e) => {
             console.error('Nu am putut scrie AWB-ul înapoi în MerchantPro:', e.message);
           });
         }
@@ -543,7 +546,7 @@ async function handleApi(req, res, pathname, query) {
       if (!order) return sendJSON(res, 404, { error: 'Comandă negăsită' });
       if (!order.awbParcelId) return sendJSON(res, 400, { error: 'Comanda nu are AWB generat.' });
       try {
-        await gls.deleteParcel(order.awbParcelId);
+        await gls.deleteParcel(company, order.awbParcelId);
         const updated = db.updateOrderInternal(currentAgent.companyId, order.id, {
           awbNumber: null,
           awbParcelId: null,
@@ -576,7 +579,7 @@ async function handleApi(req, res, pathname, query) {
       }
 
       try {
-        const pdfBuffer = await gls.getLabelPdf(order.awbParcelId);
+        const pdfBuffer = await gls.getLabelPdf(company, order.awbParcelId);
         db.updateOrderInternal(currentAgent.companyId, order.id, { awbLabelPdf: pdfBuffer.toString('base64') }, currentAgent);
         res.writeHead(200, {
           'Content-Type': 'application/pdf',
@@ -652,9 +655,9 @@ async function handleApi(req, res, pathname, query) {
       if (!ticket.pickupAwbParcelId) return sendJSON(res, 400, { error: 'Tichetul nu are AWB de ridicare generat.' });
       try {
         if (ticket.pickupAwbCourier === 'sameday') {
-          await sameday.deleteAwb(ticket.pickupAwbParcelId);
+          await sameday.deleteAwb(company, ticket.pickupAwbParcelId);
         } else {
-          await gls.deleteParcel(ticket.pickupAwbParcelId);
+          await gls.deleteParcel(company, ticket.pickupAwbParcelId);
         }
         const updated = db.clearTicketPickupAwb(currentAgent.companyId, ticket.id, currentAgent);
         return sendJSON(res, 200, updated);
@@ -681,8 +684,8 @@ async function handleApi(req, res, pathname, query) {
       try {
         const activeCourier = ticket.pickupAwbCourier === 'sameday' ? sameday : gls;
         const pdfBuffer = activeCourier === sameday
-          ? await sameday.getAwbPdf(ticket.pickupAwbParcelId)
-          : await gls.getLabelPdf(ticket.pickupAwbParcelId);
+          ? await sameday.getAwbPdf(company, ticket.pickupAwbParcelId)
+          : await gls.getLabelPdf(company, ticket.pickupAwbParcelId);
         db.setTicketPickupAwb(currentAgent.companyId, ticket.id, {
           awbNumber: ticket.pickupAwbNumber,
           parcelId: ticket.pickupAwbParcelId,
@@ -716,16 +719,16 @@ async function handleApi(req, res, pathname, query) {
 
       const body = await readBody(req);
       const courier = body.courier === 'sameday' ? 'sameday' : 'gls';
-      if (courier === 'sameday' && !sameday.isConfigured()) {
+      if (courier === 'sameday' && !sameday.isConfigured(company)) {
         return sendJSON(res, 400, { error: 'Integrarea Sameday nu este configurată pe server.' });
       }
-      if (courier === 'gls' && !gls.isConfigured()) {
+      if (courier === 'gls' && !gls.isConfigured(company)) {
         return sendJSON(res, 400, { error: 'Integrarea GLS nu este configurată pe server.' });
       }
 
       try {
         const result = courier === 'sameday'
-          ? await sameday.createForwardAwb({
+          ? await sameday.createForwardAwb(company, {
               mpId: `${ticket.id}-RETUR`,
               codAmount: 0,
               shippingName: ticket.requesterName,
@@ -734,7 +737,7 @@ async function handleApi(req, res, pathname, query) {
               shippingCity: ticket.pickupCity,
               shippingPhone: ticket.pickupPhone,
             })
-          : await gls.createParcel({
+          : await gls.createParcel(company, {
               mpId: `${ticket.id}-RETUR`,
               codAmount: 0,
               currency: 'RON',
@@ -764,9 +767,9 @@ async function handleApi(req, res, pathname, query) {
       if (!ticket.returnAwbParcelId) return sendJSON(res, 400, { error: 'Tichetul nu are AWB de retur generat.' });
       try {
         if (ticket.returnAwbCourier === 'sameday') {
-          await sameday.deleteAwb(ticket.returnAwbParcelId);
+          await sameday.deleteAwb(company, ticket.returnAwbParcelId);
         } else {
-          await gls.deleteParcel(ticket.returnAwbParcelId);
+          await gls.deleteParcel(company, ticket.returnAwbParcelId);
         }
         const updated = db.clearTicketReturnAwb(currentAgent.companyId, ticket.id, currentAgent);
         return sendJSON(res, 200, updated);
@@ -792,8 +795,8 @@ async function handleApi(req, res, pathname, query) {
       try {
         const activeCourier = ticket.returnAwbCourier === 'sameday' ? sameday : gls;
         const pdfBuffer = activeCourier === sameday
-          ? await sameday.getAwbPdf(ticket.returnAwbParcelId)
-          : await gls.getLabelPdf(ticket.returnAwbParcelId);
+          ? await sameday.getAwbPdf(company, ticket.returnAwbParcelId)
+          : await gls.getLabelPdf(company, ticket.returnAwbParcelId);
         db.setTicketReturnAwb(currentAgent.companyId, ticket.id, {
           awbNumber: ticket.returnAwbNumber,
           parcelId: ticket.returnAwbParcelId,
@@ -827,7 +830,7 @@ async function handleApi(req, res, pathname, query) {
       if (!trackingNumber) return sendJSON(res, 400, { error: 'Tichetul nu are niciun AWB activ de urmărit.' });
 
       try {
-        const statuses = activeCourier === sameday ? await sameday.getAwbStatus(trackingNumber) : await gls.getParcelStatus(trackingNumber);
+        const statuses = activeCourier === sameday ? await sameday.getAwbStatus(company, trackingNumber) : await gls.getParcelStatus(company, trackingNumber);
         const delivered = statuses.some((s) => /livrat|delivered|predat destinatar|handed over/i.test(s.StatusDescription || ''));
         const pickedUp = statuses.some((s) => /preluat|ridicat|colectat|picked ?up|pickup|a p[ăa]r[ăa]sit/i.test(s.StatusDescription || ''));
 
@@ -860,7 +863,7 @@ async function handleApi(req, res, pathname, query) {
       const legCourier = (leg === 'return' ? ticket.returnAwbCourier : ticket.pickupAwbCourier) === 'sameday' ? sameday : gls;
       if (!trackingNumber) return sendJSON(res, 404, { error: 'Nu există AWB pentru acest segment.' });
       try {
-        const statuses = legCourier === sameday ? await sameday.getAwbStatus(trackingNumber) : await gls.getParcelStatus(trackingNumber);
+        const statuses = legCourier === sameday ? await sameday.getAwbStatus(company, trackingNumber) : await gls.getParcelStatus(company, trackingNumber);
         return sendJSON(res, 200, statuses);
       } catch (e) {
         return sendJSON(res, 502, { error: e.message });
