@@ -1054,6 +1054,19 @@ async function paintTicketDrawer(ticket) {
                 `).join('')}
               </div>
             ` : ''}
+            ${relatedOrder && relatedOrder.lineItems && relatedOrder.lineItems.length ? `
+              <div class="line-items-list" style="margin-top:14px;">
+                ${relatedOrder.lineItems.map((it) => `
+                  <div class="line-item-row">
+                    ${it.product_image_url
+                      ? `<img class="li-thumb" src="${escapeHtml(it.product_image_url)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'li-thumb li-thumb-placeholder',textContent:'—'}))" />`
+                      : `<div class="li-thumb li-thumb-placeholder">—</div>`}
+                    <div class="li-name">${escapeHtml(it.product_name || '—')}${it.product_sku ? ` <span style="color:var(--text-dim);">(${escapeHtml(it.product_sku)})</span>` : ''}</div>
+                    <div class="li-qty">× ${it.quantity ?? 1}</div>
+                  </div>
+                `).join('')}
+              </div>
+            ` : ''}
             <div class="meta-row">
               <div class="meta-item"><div class="meta-label">Solicitant</div><div class="meta-value">${escapeHtml(ticket.requesterName)}</div></div>
               <div class="meta-item"><div class="meta-label">Telefon</div><div class="meta-value">${escapeHtml(ticket.requesterPhone || '—')}</div></div>
@@ -1066,82 +1079,78 @@ async function paintTicketDrawer(ticket) {
           <div class="side-panel" style="margin-bottom:16px;">
             <h2>${{ service: 'AWB ridicare (client → service)', retur: 'Ridicare de la client (GLS)', schimb: 'AWB colet la schimb (GLS)' }[ticket.section] || 'AWB ridicare (GLS)'}</h2>
             ${ticket.pickupAwbNumber ? `
-              <div class="form-row">
-                <div class="side-field">
-                  <label>Număr AWB</label>
-                  <div style="font-family:var(--font-mono);font-size:14px;color:var(--accent);font-weight:600;padding:8px 0;">${escapeHtml(ticket.pickupAwbNumber)}</div>
-                </div>
-                <div class="side-field">
-                  <label>Unde e marfa</label>
-                  <div style="display:flex;align-items:center;gap:7px;padding:8px 0;font-size:13px;">
-                    <span class="status-pill-dot" style="background:${stageDotColor(ticket.stage)};"></span>${stageLocationLabel(ticket.stage, ticket.section)}
-                  </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid var(--border);">
+                <div style="font-family:var(--font-mono);font-size:13px;color:var(--accent);font-weight:600;">${escapeHtml(ticket.pickupAwbNumber)}</div>
+                <div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--text-secondary);">
+                  <span class="status-pill-dot" style="background:${stageDotColor(ticket.stage)};"></span>${stageLocationLabel(ticket.stage, ticket.section)}
                 </div>
               </div>
               ${ticket.pickupAwbSecondaryNumber ? `
-                <div class="hint" style="background:rgba(232,163,61,0.1);border:1px solid rgba(232,163,61,0.3);border-radius:8px;padding:10px 12px;margin-bottom:12px;color:var(--status-open);">
-                  ⚠ Colet la schimb: Sameday a generat automat și un AWB secundar legat — <strong style="font-family:var(--font-mono);">${escapeHtml(ticket.pickupAwbSecondaryNumber)}</strong>. Dacă anulezi, trebuie anulat manual și acesta, din panoul Sameday.
+                <div class="hint" style="background:rgba(232,163,61,0.1);border:1px solid rgba(232,163,61,0.3);border-radius:6px;padding:8px 10px;margin-bottom:10px;color:var(--status-open);font-size:11.5px;">
+                  ⚠ AWB secundar legat: <strong style="font-family:var(--font-mono);">${escapeHtml(ticket.pickupAwbSecondaryNumber)}</strong> — anulează-l manual din panoul Sameday, dacă e cazul.
                 </div>
               ` : ''}
               <div class="btn-row">
-                <button class="btn" id="refreshPickupStatusBtn">↻ Actualizează status</button>
-                <button class="btn" id="viewPickupTrackingBtn">Vezi drumul complet</button>
+                <button class="btn btn-sm" id="refreshPickupStatusBtn">↻ Status</button>
+                <button class="btn btn-sm" id="viewPickupTrackingBtn">Traseu</button>
+                <button class="btn btn-sm" id="downloadPickupLabelBtn">↓ PDF</button>
+                <button class="btn btn-sm" id="cancelPickupAwbBtn" style="color:var(--priority-urgent);">Anulează</button>
               </div>
-              <div id="pickupTrackingBox" style="display:none;margin-bottom:10px;"></div>
-              <button class="btn btn-block btn-primary" id="downloadPickupLabelBtn" style="margin-bottom:8px;">↓ Descarcă eticheta PDF</button>
-              <button class="btn btn-block" id="cancelPickupAwbBtn" style="color:var(--priority-urgent);">Anulează AWB ridicare</button>
+              <div id="pickupTrackingBox" style="display:none;margin-top:10px;"></div>
             ` : `
               <form id="pickupAwbForm">
-                <div class="field">
-                  <label>Motiv ridicare *</label>
-                  <select id="pu-reason" required>
-                    <option value="service">Service / reparație</option>
-                    <option value="retur">Retur produs</option>
-                    <option value="schimb">Colet la schimb</option>
-                  </select>
+                <div class="form-row">
+                  <div class="field-compact">
+                    <label>Motiv ridicare *</label>
+                    <select id="pu-reason" required>
+                      <option value="service">Service / reparație</option>
+                      <option value="retur">Retur produs</option>
+                      <option value="schimb">Colet la schimb</option>
+                    </select>
+                  </div>
+                  <div class="field-compact">
+                    <label>Curier *</label>
+                    <select id="pu-courier" required>
+                      <option value="gls" ${glsConfigured ? '' : 'disabled'}>GLS${glsConfigured ? '' : ' (neconfigurat)'}</option>
+                      <option value="sameday" ${samedayConfigured ? '' : 'disabled'}>Sameday${samedayConfigured ? '' : ' (neconfigurat)'}</option>
+                    </select>
+                  </div>
                 </div>
-                <div class="field">
-                  <label>Curier *</label>
-                  <select id="pu-courier" required>
-                    <option value="gls" ${glsConfigured ? '' : 'disabled'}>GLS${glsConfigured ? '' : ' (neconfigurat)'}</option>
-                    <option value="sameday" ${samedayConfigured ? '' : 'disabled'}>Sameday${samedayConfigured ? '' : ' (neconfigurat)'}</option>
-                  </select>
-                </div>
-                <div class="field">
+                <div class="field-compact">
                   <label>Adresă ridicare *</label>
                   <input type="text" id="pu-address" required placeholder="Stradă, număr" value="${escapeHtml(relatedOrder?.shippingAddress || '')}" />
                 </div>
                 <div class="form-row">
-                  <div class="field">
+                  <div class="field-compact">
                     <label>Oraș *</label>
                     <input type="text" id="pu-city" required value="${escapeHtml(relatedOrder?.shippingCity || '')}" />
                   </div>
-                  <div class="field">
+                  <div class="field-compact">
                     <label>Cod poștal *</label>
                     <input type="text" id="pu-postal" required value="${escapeHtml(relatedOrder?.shippingPostalCode || '')}" />
                   </div>
                 </div>
-                <div class="field">
+                <div class="field-compact">
                   <label>Telefon client *</label>
                   <input type="text" id="pu-phone" required value="${escapeHtml(relatedOrder?.shippingPhone || '')}" />
                 </div>
-                ${!glsConfigured && !samedayConfigured ? '<div class="hint" style="margin-bottom:10px;">Niciun curier nu este configurat pe server.</div>' : ''}
-                <button class="btn btn-block btn-primary" type="submit" ${glsConfigured || samedayConfigured ? '' : 'disabled style="opacity:0.5;cursor:not-allowed;"'}>Generează AWB ridicare</button>
-                ${relatedOrder ? '<div class="hint" style="margin-top:8px;">Adresa a fost preluată automat din comanda asociată — o poți edita mai sus.</div>' : ''}
+                ${!glsConfigured && !samedayConfigured ? '<div class="hint" style="margin-bottom:8px;">Niciun curier nu este configurat pe server.</div>' : ''}
+                <button class="btn btn-sm btn-block btn-primary" type="submit" ${glsConfigured || samedayConfigured ? '' : 'disabled style="opacity:0.5;cursor:not-allowed;"'}>Generează AWB ridicare</button>
+                ${relatedOrder ? '<div class="hint" style="margin-top:6px;">Adresa preluată automat din comanda asociată.</div>' : ''}
               </form>
             `}
           </div>
 
           ${ticket.section === 'service' && ticket.stage === 'at_service' && !ticket.returnAwbNumber ? `
             <div class="side-panel" style="margin-bottom:16px;">
-              <div class="field" style="margin-bottom:12px;">
+              <div class="field-compact" style="margin-bottom:10px;">
                 <label>Curier pentru AWB retur</label>
                 <select id="return-courier">
                   <option value="gls" ${glsConfigured ? '' : 'disabled'}>GLS${glsConfigured ? '' : ' (neconfigurat)'}</option>
                   <option value="sameday" ${samedayConfigured ? '' : 'disabled'}>Sameday${samedayConfigured ? '' : ' (neconfigurat)'}</option>
                 </select>
               </div>
-              <button class="btn btn-block" id="readyToShipBtn" style="background:var(--status-resolved);color:#fff;border-color:var(--status-resolved);font-weight:600;">✓ Gata de expediere</button>
+              <button class="btn btn-sm btn-block" id="readyToShipBtn" style="background:var(--status-resolved);color:#fff;border-color:var(--status-resolved);font-weight:600;">✓ Gata de expediere</button>
             </div>
           ` : ''}
 
@@ -1149,25 +1158,19 @@ async function paintTicketDrawer(ticket) {
             <div class="side-panel" style="margin-bottom:16px;">
               <h2>AWB retur (service → client)</h2>
               ${ticket.returnAwbNumber ? `
-                <div class="form-row">
-                  <div class="side-field">
-                    <label>Număr AWB</label>
-                    <div style="font-family:var(--font-mono);font-size:14px;color:var(--accent);font-weight:600;padding:8px 0;">${escapeHtml(ticket.returnAwbNumber)}</div>
-                  </div>
-                  <div class="side-field">
-                    <label>Unde e marfa</label>
-                    <div style="display:flex;align-items:center;gap:7px;padding:8px 0;font-size:13px;">
-                      <span class="status-pill-dot" style="background:${stageDotColor(ticket.stage)};"></span>${stageLocationLabel(ticket.stage, ticket.section)}
-                    </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid var(--border);">
+                  <div style="font-family:var(--font-mono);font-size:13px;color:var(--accent);font-weight:600;">${escapeHtml(ticket.returnAwbNumber)}</div>
+                  <div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--text-secondary);">
+                    <span class="status-pill-dot" style="background:${stageDotColor(ticket.stage)};"></span>${stageLocationLabel(ticket.stage, ticket.section)}
                   </div>
                 </div>
                 <div class="btn-row">
-                  <button class="btn" id="refreshReturnStatusBtn">↻ Actualizează status</button>
-                  <button class="btn" id="viewReturnTrackingBtn">Vezi drumul complet</button>
+                  <button class="btn btn-sm" id="refreshReturnStatusBtn">↻ Status</button>
+                  <button class="btn btn-sm" id="viewReturnTrackingBtn">Traseu</button>
+                  <button class="btn btn-sm" id="downloadReturnLabelBtn">↓ PDF</button>
+                  <button class="btn btn-sm" id="cancelReturnAwbBtn" style="color:var(--priority-urgent);">Anulează</button>
                 </div>
-                <div id="returnTrackingBox" style="display:none;margin-bottom:10px;"></div>
-                <button class="btn btn-block btn-primary" id="downloadReturnLabelBtn" style="margin-bottom:8px;">↓ Descarcă eticheta PDF</button>
-                <button class="btn btn-block" id="cancelReturnAwbBtn" style="color:var(--priority-urgent);">Anulează AWB retur</button>
+                <div id="returnTrackingBox" style="display:none;margin-top:10px;"></div>
               ` : '<div class="hint">Apasă „Gata de expediere" mai sus pentru a genera AWB-ul de retur către client.</div>'}
             </div>
           ` : ''}
