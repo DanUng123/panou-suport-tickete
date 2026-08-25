@@ -3011,7 +3011,7 @@ function paintClientMapping(content, getRows, getHeaders, onImported) {
     const progressText = resultBox.querySelector('#clientsProgressText');
     const progressBar = resultBox.querySelector('#clientsProgressBar');
 
-    let totals = { totalRows: 0, saved: 0, duplicates: 0, noPhone: 0 };
+    let totals = { totalRows: 0, saved: 0, duplicates: 0, noPhone: 0, invalidPhone: 0 };
     let failed = false;
     for (let i = 0; i < chunks.length; i += 1) {
       try {
@@ -3020,6 +3020,7 @@ function paintClientMapping(content, getRows, getHeaders, onImported) {
         totals.saved += r.saved;
         totals.duplicates += r.duplicates;
         totals.noPhone += r.noPhone;
+        totals.invalidPhone += r.invalidPhone;
       } catch (e) {
         failed = true;
         resultBox.innerHTML = `<div class="error-msg">Eroare la lotul ${i + 1}/${chunks.length}: ${escapeHtml(e.message)}. Ce s-a importat până acum (${totals.saved} clienți) a rămas salvat — poți relua din fișier fără duplicate.</div>`;
@@ -3034,7 +3035,7 @@ function paintClientMapping(content, getRows, getHeaders, onImported) {
     if (!failed) {
       resultBox.innerHTML = `
         <div class="hint" style="background:rgba(107,196,130,0.1);border:1px solid rgba(107,196,130,0.3);border-radius:8px;padding:10px 12px;">
-          ✓ ${totals.saved} client(ți) noi salvați · ${totals.duplicates} duplicate ignorate · ${totals.noPhone} rânduri fără telefon valid ignorate (din ${totals.totalRows} total).
+          ✓ ${totals.saved} client(ți) noi salvați · ${totals.duplicates} duplicate ignorate · ${totals.invalidPhone} telefoane invalide eliminate · ${totals.noPhone} rânduri fără telefon (din ${totals.totalRows} total).
         </div>
       `;
     }
