@@ -2790,11 +2790,18 @@ async function renderClients() {
         <div id="clientsImportArea" style="margin-top:16px;"></div>
       </div>
 
+      <div class="panel" id="lastImportPanel" style="margin-bottom:20px;display:none;">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+          <h2 style="margin:0;">Clienți unici din ultimul import (<span id="lastImportCount">0</span>)</h2>
+          <button class="btn btn-sm" id="lastImportExportBtn">↓ Descarcă doar aceștia</button>
+        </div>
+      </div>
+
       <div class="panel">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
-          <h2 style="margin:0;">Clienți salvați (<span id="clientsCount">…</span>)</h2>
+          <h2 style="margin:0;">Total clienți (<span id="clientsCount">…</span>)</h2>
           <div style="display:flex;gap:8px;">
-            <button class="btn btn-sm" id="clientsExportBtn">↓ Descarcă Excel</button>
+            <button class="btn btn-sm" id="clientsExportBtn">↓ Descarcă toți</button>
             ${currentAgent.role === 'manager' ? '<button class="btn btn-sm" id="clientsDeleteAllBtn" style="color:var(--priority-urgent);">Șterge toți</button>' : ''}
           </div>
         </div>
@@ -2811,6 +2818,21 @@ async function renderClients() {
   let currentPage = 1;
   const pageSize = 100;
   let searchTimer = null;
+  let lastImportClients = []; // clientii unici salvati efectiv la ultimul import (persista pe durata sesiunii curente in pagina)
+
+  function exportClientsToExcel(clients, filenamePrefix) {
+    if (!clients.length) { showToast('Niciun client de exportat.'); return; }
+    const ws = XLSX.utils.json_to_sheet(clients.map((c) => ({
+      Nume: c.name || '', Adresă: c.address || '', Oraș: c.city || '', Județ: c.county || '', Telefon: c.phone || '',
+    })));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Clienți');
+    XLSX.writeFile(wb, `${filenamePrefix}-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  }
+
+  content.querySelector('#lastImportExportBtn').addEventListener('click', () => {
+    exportClientsToExcel(lastImportClients, 'clienti-import-nou');
+  });
 
   async function loadClientsList() {
     const listArea = content.querySelector('#clientsListArea');
@@ -2913,7 +2935,11 @@ async function renderClients() {
       }
       parsedHeaders = rows[0].map((h) => String(h || '').trim());
       parsedRows = rows.slice(1).filter((r) => r.some((cell) => String(cell || '').trim()));
-      paintClientMapping(content, () => parsedRows, () => parsedHeaders, () => { currentPage = 1; loadClientsList(); });
+      paintClientMapping(content, () => parsedRows, () => parsedHeaders, () => { currentPage = 1; loadClientsList(); }, (clients) => {
+        lastImportClients = clients;
+        content.querySelector('#lastImportPanel').style.display = clients.length ? '' : 'none';
+        content.querySelector('#lastImportCount').textContent = clients.length;
+      });
     };
     reader.readAsArrayBuffer(file);
   });
@@ -2924,18 +2950,12 @@ async function renderClients() {
     btn.textContent = 'Se pregătește…';
     try {
       const clients = await api('/api/clients/export');
-      if (!clients.length) { showToast('Niciun client de exportat.'); return; }
-      const ws = XLSX.utils.json_to_sheet(clients.map((c) => ({
-        Nume: c.name || '', Telefon: c.phone || '', Email: c.email || '', Adresă: c.address || '', Oraș: c.city || '', Județ: c.county || '',
-      })));
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Clienți');
-      XLSX.writeFile(wb, `clienti-${new Date().toISOString().slice(0, 10)}.xlsx`);
+      exportClientsToExcel(clients, 'clienti-total');
     } catch (e) {
       showToast('Eroare: ' + e.message);
     } finally {
       btn.disabled = false;
-      btn.textContent = '↓ Descarcă Excel';
+      btn.textContent = '↓ Descarcă toți';
     }
   });
 
@@ -2959,7 +2979,7 @@ async function renderClients() {
   }
 }
 
-function paintClientMapping(content, getRows, getHeaders, onImported) {
+function paintClientMapping(content, getRows, getHeaders, onImported, onLastImportUpdated) {
   const rows = getRows();
   const headers = getHeaders();
   const area = content.querySelector('#clientsImportArea');
@@ -3022,6 +3042,7 @@ function paintClientMapping(content, getRows, getHeaders, onImported) {
     const progressBar = resultBox.querySelector('#clientsProgressBar');
 
     let totals = { totalRows: 0, saved: 0, duplicates: 0, noPhone: 0, invalidPhone: 0 };
+    let allSavedClients = [];
     let failed = false;
     for (let i = 0; i < chunks.length; i += 1) {
       try {
@@ -3031,6 +3052,7 @@ function paintClientMapping(content, getRows, getHeaders, onImported) {
         totals.duplicates += r.duplicates;
         totals.noPhone += r.noPhone;
         totals.invalidPhone += r.invalidPhone;
+        allSavedClients = allSavedClients.concat(r.savedClients || []);
       } catch (e) {
         failed = true;
         resultBox.innerHTML = `<div class="error-msg">Eroare la lotul ${i + 1}/${chunks.length}: ${escapeHtml(e.message)}. Ce s-a importat până acum (${totals.saved} clienți) a rămas salvat — poți relua din fișier fără duplicate.</div>`;
@@ -3041,6 +3063,7 @@ function paintClientMapping(content, getRows, getHeaders, onImported) {
     }
 
     onImported(); // reimprospatam lista/numarul o singura data, la final
+    onLastImportUpdated(allSavedClients);
 
     if (!failed) {
       resultBox.innerHTML = `
