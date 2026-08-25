@@ -2829,23 +2829,21 @@ async function renderClients() {
       listArea.innerHTML = '';
       const rowsHtml = items.map((c) => `
         <div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;">
-          <div style="flex:1.1;min-width:0;font-weight:500;">${escapeHtml(c.name || '—')}</div>
-          <div style="flex:0.9;min-width:0;font-family:var(--font-mono);color:var(--text-secondary);">${escapeHtml(c.phone || '—')}</div>
-          <div style="flex:1.1;min-width:0;color:var(--text-secondary);">${escapeHtml(c.email || '—')}</div>
-          <div style="flex:1.3;min-width:0;color:var(--text-secondary);">${escapeHtml(c.address || '—')}</div>
-          <div style="flex:0.8;min-width:0;color:var(--text-secondary);">${escapeHtml(c.city || '—')}</div>
-          <div style="flex:0.6;min-width:0;color:var(--text-secondary);">${escapeHtml(c.county || '—')}</div>
+          <div style="flex:1.2;min-width:0;font-weight:500;">${escapeHtml(c.name || '—')}</div>
+          <div style="flex:1.4;min-width:0;color:var(--text-secondary);">${escapeHtml(c.address || '—')}</div>
+          <div style="flex:0.9;min-width:0;color:var(--text-secondary);">${escapeHtml(c.city || '—')}</div>
+          <div style="flex:0.7;min-width:0;color:var(--text-secondary);">${escapeHtml(c.county || '—')}</div>
+          <div style="flex:1;min-width:0;font-family:var(--font-mono);color:var(--text-secondary);">${escapeHtml(c.phone || '—')}</div>
           <button class="btn btn-sm client-delete-btn" data-id="${c.id}" style="color:var(--priority-urgent);flex-shrink:0;">Șterge</button>
         </div>
       `).join('');
       const headerHtml = `
         <div style="display:flex;align-items:center;gap:12px;padding:6px 0 8px;border-bottom:2px solid var(--border);font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.03em;">
-          <div style="flex:1.1;min-width:0;">Nume</div>
-          <div style="flex:0.9;min-width:0;">Telefon</div>
-          <div style="flex:1.1;min-width:0;">Email</div>
-          <div style="flex:1.3;min-width:0;">Adresă</div>
-          <div style="flex:0.8;min-width:0;">Oraș</div>
-          <div style="flex:0.6;min-width:0;">Județ</div>
+          <div style="flex:1.2;min-width:0;">Nume</div>
+          <div style="flex:1.4;min-width:0;">Adresă</div>
+          <div style="flex:0.9;min-width:0;">Oraș</div>
+          <div style="flex:0.7;min-width:0;">Județ</div>
+          <div style="flex:1;min-width:0;">Telefon</div>
           <div style="flex-shrink:0;width:70px;"></div>
         </div>
       `;
