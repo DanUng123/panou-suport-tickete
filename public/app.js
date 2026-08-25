@@ -477,6 +477,7 @@ function renderShell(activeRoute, contentNode) {
         <div class="nav-item" data-route="#/service">${NAV_ICONS.service}Service</div>
         <div class="nav-item" data-route="#/retur">${NAV_ICONS.retur}Retur</div>
         <div class="nav-item" data-route="#/schimb">${NAV_ICONS.schimb}Colet la Schimb</div>
+        <div class="nav-item" data-route="#/clients">👤 Clienți</div>
         ${currentAgent.role === 'manager' ? `<div class="nav-item" data-route="#/admin">${NAV_ICONS.admin}Administrare</div>` : ''}
         ${currentAgent.role === 'manager' ? `<div class="nav-item" data-route="#/settings">⚙️ Setări</div>` : ''}
       </nav>
@@ -2749,6 +2750,226 @@ async function renderSettings() {
   });
 }
 
+// ---------------- Clienti (import Excel + deduplicare telefon) ----------------
+
+const CLIENT_FIELD_OPTIONS = [
+  { value: '', label: '— ignoră —' },
+  { value: 'name', label: 'Nume' },
+  { value: 'phone', label: 'Telefon *' },
+  { value: 'email', label: 'Email' },
+  { value: 'address', label: 'Adresă' },
+  { value: 'city', label: 'Oraș' },
+];
+
+function guessClientField(header) {
+  const h = String(header || '').toLowerCase();
+  if (/telefon|phone|mobil|gsm/.test(h)) return 'phone';
+  if (/nume|name/.test(h)) return 'name';
+  if (/email|e-mail/.test(h)) return 'email';
+  if (/adres/.test(h)) return 'address';
+  if (/ora[sș]|city|localitate/.test(h)) return 'city';
+  return '';
+}
+
+async function renderClients() {
+  const content = el(`
+    <div>
+      <div class="page-header">
+        <div>
+          <h1>Clienți</h1>
+          <div class="sub">Importă clienți din Excel — dublurile sunt eliminate automat, după telefon</div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-bottom:20px;">
+        <h2>Import din Excel</h2>
+        <input type="file" id="clientsFileInput" accept=".xlsx,.xls" style="display:none;" />
+        <button class="btn btn-sm" id="clientsUploadBtn">📂 Alege fișier Excel</button>
+        <div id="clientsImportArea" style="margin-top:16px;"></div>
+      </div>
+
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+          <h2 style="margin:0;">Clienți salvați (<span id="clientsCount">…</span>)</h2>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-sm" id="clientsExportBtn">↓ Descarcă Excel</button>
+            ${currentAgent.role === 'manager' ? '<button class="btn btn-sm" id="clientsDeleteAllBtn" style="color:var(--priority-urgent);">Șterge toți</button>' : ''}
+          </div>
+        </div>
+        <div id="clientsListArea">Se încarcă…</div>
+      </div>
+    </div>
+  `);
+  renderShell('#/clients', content);
+
+  let parsedRows = null;
+  let parsedHeaders = [];
+
+  async function loadClientsList() {
+    const listArea = content.querySelector('#clientsListArea');
+    const countSpan = content.querySelector('#clientsCount');
+    try {
+      const clients = await api('/api/clients');
+      countSpan.textContent = clients.length;
+      if (!clients.length) {
+        listArea.innerHTML = '<div class="hint">Niciun client salvat încă.</div>';
+        return;
+      }
+      listArea.innerHTML = '';
+      const rowsHtml = clients.map((c) => `
+        <div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;">
+          <div style="flex:1;min-width:0;font-weight:500;">${escapeHtml(c.name || '—')}</div>
+          <div style="flex:1;min-width:0;font-family:var(--font-mono);color:var(--text-secondary);">${escapeHtml(c.phone || '—')}</div>
+          <div style="flex:1;min-width:0;color:var(--text-secondary);">${escapeHtml(c.email || '—')}</div>
+          <div style="flex:1;min-width:0;color:var(--text-secondary);">${escapeHtml(c.city || '—')}</div>
+          <button class="btn btn-sm client-delete-btn" data-id="${c.id}" style="color:var(--priority-urgent);flex-shrink:0;">Șterge</button>
+        </div>
+      `).join('');
+      listArea.appendChild(el(`<div>${rowsHtml}</div>`));
+      listArea.querySelectorAll('.client-delete-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          if (!confirm('Ștergi acest client?')) return;
+          try {
+            await api(`/api/clients/${btn.dataset.id}`, { method: 'DELETE' });
+            showToast('Client șters');
+            loadClientsList();
+          } catch (e) {
+            showToast('Eroare: ' + e.message);
+          }
+        });
+      });
+    } catch (e) {
+      listArea.innerHTML = `<div class="error-msg">${escapeHtml(e.message)}</div>`;
+    }
+  }
+  loadClientsList();
+
+  content.querySelector('#clientsUploadBtn').addEventListener('click', () => {
+    content.querySelector('#clientsFileInput').click();
+  });
+
+  content.querySelector('#clientsFileInput').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      let rows;
+      try {
+        const data = new Uint8Array(evt.target.result);
+        const wb = XLSX.read(data, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      } catch (err) {
+        showToast('Nu am putut citi fișierul — verifică dacă e un Excel valid.');
+        return;
+      }
+      if (!rows.length) {
+        showToast('Fișierul pare gol.');
+        return;
+      }
+      parsedHeaders = rows[0].map((h) => String(h || '').trim());
+      parsedRows = rows.slice(1).filter((r) => r.some((cell) => String(cell || '').trim()));
+      paintClientMapping(content, () => parsedRows, () => parsedHeaders, loadClientsList);
+    };
+    reader.readAsArrayBuffer(file);
+  });
+
+  content.querySelector('#clientsExportBtn').addEventListener('click', async () => {
+    try {
+      const clients = await api('/api/clients');
+      if (!clients.length) { showToast('Niciun client de exportat.'); return; }
+      const ws = XLSX.utils.json_to_sheet(clients.map((c) => ({
+        Nume: c.name || '', Telefon: c.phone || '', Email: c.email || '', Adresă: c.address || '', Oraș: c.city || '',
+      })));
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Clienți');
+      XLSX.writeFile(wb, `clienti-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    } catch (e) {
+      showToast('Eroare: ' + e.message);
+    }
+  });
+
+  const deleteAllClientsBtn = content.querySelector('#clientsDeleteAllBtn');
+  if (deleteAllClientsBtn) {
+    deleteAllClientsBtn.addEventListener('click', async () => {
+      if (!confirm('Ești sigur? Se șterg TOȚI clienții salvați, permanent, fără posibilitate de recuperare.')) return;
+      const typed = prompt('Pentru confirmare finală, scrie exact: STERGE TOTI CLIENTII');
+      if (typed !== 'STERGE TOTI CLIENTII') {
+        showToast('Text de confirmare incorect — nimic nu a fost șters.');
+        return;
+      }
+      try {
+        const result = await api('/api/clients/delete-all', { method: 'POST', body: JSON.stringify({ confirm: 'STERGE TOTI CLIENTII' }) });
+        showToast(`${result.deletedCount} clienți șterși.`);
+        loadClientsList();
+      } catch (e) {
+        showToast('Eroare: ' + e.message);
+      }
+    });
+  }
+}
+
+function paintClientMapping(content, getRows, getHeaders, onImported) {
+  const rows = getRows();
+  const headers = getHeaders();
+  const area = content.querySelector('#clientsImportArea');
+  area.innerHTML = '';
+  area.appendChild(el(`
+    <div>
+      <div class="hint" style="margin-bottom:10px;">${rows.length} rânduri găsite. Potrivește coloanele din fișier cu câmpurile de mai jos:</div>
+      <div class="form-row" style="flex-wrap:wrap;gap:12px;">
+        ${headers.map((h, i) => `
+          <div class="field-compact" style="min-width:160px;">
+            <label>${escapeHtml(h || `Coloana ${i + 1}`)}</label>
+            <select class="mapping-select" data-index="${i}">
+              ${CLIENT_FIELD_OPTIONS.map((o) => `<option value="${o.value}" ${guessClientField(h) === o.value ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('')}
+            </select>
+          </div>
+        `).join('')}
+      </div>
+      <button class="btn btn-sm btn-primary" id="clientsImportBtn" style="margin-top:16px;">Importă ${rows.length} rânduri</button>
+      <div id="clientsImportResult" style="margin-top:12px;"></div>
+    </div>
+  `));
+
+  area.querySelector('#clientsImportBtn').addEventListener('click', async () => {
+    const mapping = {};
+    area.querySelectorAll('.mapping-select').forEach((sel) => {
+      if (sel.value) mapping[Number(sel.dataset.index)] = sel.value;
+    });
+    const hasPhone = Object.values(mapping).includes('phone');
+    if (!hasPhone) {
+      showToast('Trebuie să potrivești o coloană cu „Telefon" — e obligatoriu pentru deduplicare.');
+      return;
+    }
+    const mappedRows = rows.map((r) => {
+      const row = {};
+      for (const [idx, field] of Object.entries(mapping)) {
+        row[field] = String(r[Number(idx)] || '').trim();
+      }
+      return row;
+    });
+
+    const btn = area.querySelector('#clientsImportBtn');
+    btn.disabled = true;
+    btn.textContent = 'Se importă…';
+    try {
+      const result = await api('/api/clients/import', { method: 'POST', body: JSON.stringify({ rows: mappedRows }) });
+      area.querySelector('#clientsImportResult').innerHTML = `
+        <div class="hint" style="background:rgba(107,196,130,0.1);border:1px solid rgba(107,196,130,0.3);border-radius:8px;padding:10px 12px;">
+          ✓ ${result.saved} client(ți) noi salvați · ${result.duplicates} duplicate ignorate · ${result.noPhone} rânduri fără telefon valid ignorate (din ${result.totalRows} total).
+        </div>
+      `;
+      onImported();
+    } catch (e) {
+      showToast('Eroare: ' + e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = `Importă ${rows.length} rânduri`;
+    }
+  });
+}
+
 // ---------------- router principal ----------------
 
 function render() {
@@ -2785,6 +3006,9 @@ function render() {
   } else if (path === '#/settings') {
     hideDrawer();
     renderSettings();
+  } else if (path === '#/clients') {
+    hideDrawer();
+    renderClients();
   } else if (path.startsWith('#/tickets/')) {
     renderTicketDetail(path.replace('#/tickets/', ''));
   } else if (path.startsWith('#/orders/')) {
