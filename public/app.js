@@ -2759,6 +2759,7 @@ const CLIENT_FIELD_OPTIONS = [
   { value: 'email', label: 'Email' },
   { value: 'address', label: 'Adresă' },
   { value: 'city', label: 'Oraș' },
+  { value: 'county', label: 'Județ' },
 ];
 
 function guessClientField(header) {
@@ -2766,6 +2767,7 @@ function guessClientField(header) {
   if (/telefon|phone|mobil|gsm/.test(h)) return 'phone';
   if (/nume|name/.test(h)) return 'name';
   if (/email|e-mail/.test(h)) return 'email';
+  if (/jude[tț]|county/.test(h)) return 'county';
   if (/adres/.test(h)) return 'address';
   if (/ora[sș]|city|localitate/.test(h)) return 'city';
   return '';
@@ -2796,7 +2798,9 @@ async function renderClients() {
             ${currentAgent.role === 'manager' ? '<button class="btn btn-sm" id="clientsDeleteAllBtn" style="color:var(--priority-urgent);">Șterge toți</button>' : ''}
           </div>
         </div>
+        <input type="text" id="clientsSearchInput" placeholder="Caută după nume, telefon sau email…" style="width:100%;margin-bottom:12px;background:var(--surface-raised);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:13px;color:var(--text);" />
         <div id="clientsListArea">Se încarcă…</div>
+        <div id="clientsPager" style="display:flex;justify-content:center;align-items:center;gap:12px;margin-top:16px;"></div>
       </div>
     </div>
   `);
@@ -2804,24 +2808,32 @@ async function renderClients() {
 
   let parsedRows = null;
   let parsedHeaders = [];
+  let currentPage = 1;
+  const pageSize = 100;
+  let searchTimer = null;
 
   async function loadClientsList() {
     const listArea = content.querySelector('#clientsListArea');
+    const pagerArea = content.querySelector('#clientsPager');
     const countSpan = content.querySelector('#clientsCount');
+    const q = content.querySelector('#clientsSearchInput').value.trim();
     try {
-      const clients = await api('/api/clients');
-      countSpan.textContent = clients.length;
-      if (!clients.length) {
-        listArea.innerHTML = '<div class="hint">Niciun client salvat încă.</div>';
+      const params = new URLSearchParams({ page: currentPage, pageSize, q });
+      const { items, total } = await api(`/api/clients?${params.toString()}`);
+      countSpan.textContent = total;
+      if (!total) {
+        listArea.innerHTML = q ? '<div class="hint">Niciun client găsit pentru această căutare.</div>' : '<div class="hint">Niciun client salvat încă.</div>';
+        pagerArea.innerHTML = '';
         return;
       }
       listArea.innerHTML = '';
-      const rowsHtml = clients.map((c) => `
+      const rowsHtml = items.map((c) => `
         <div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;">
-          <div style="flex:1;min-width:0;font-weight:500;">${escapeHtml(c.name || '—')}</div>
+          <div style="flex:1.2;min-width:0;font-weight:500;">${escapeHtml(c.name || '—')}</div>
           <div style="flex:1;min-width:0;font-family:var(--font-mono);color:var(--text-secondary);">${escapeHtml(c.phone || '—')}</div>
-          <div style="flex:1;min-width:0;color:var(--text-secondary);">${escapeHtml(c.email || '—')}</div>
-          <div style="flex:1;min-width:0;color:var(--text-secondary);">${escapeHtml(c.city || '—')}</div>
+          <div style="flex:1.2;min-width:0;color:var(--text-secondary);">${escapeHtml(c.email || '—')}</div>
+          <div style="flex:0.8;min-width:0;color:var(--text-secondary);">${escapeHtml(c.city || '—')}</div>
+          <div style="flex:0.8;min-width:0;color:var(--text-secondary);">${escapeHtml(c.county || '—')}</div>
           <button class="btn btn-sm client-delete-btn" data-id="${c.id}" style="color:var(--priority-urgent);flex-shrink:0;">Șterge</button>
         </div>
       `).join('');
@@ -2838,11 +2850,33 @@ async function renderClients() {
           }
         });
       });
+
+      const totalPages = Math.max(1, Math.ceil(total / pageSize));
+      pagerArea.innerHTML = '';
+      pagerArea.appendChild(el(`
+        <div style="display:flex;align-items:center;gap:12px;">
+          <button class="btn btn-sm" id="clientsPrevPage" ${currentPage <= 1 ? 'disabled' : ''}>← Anterioară</button>
+          <span class="hint">Pagina ${currentPage} din ${totalPages}</span>
+          <button class="btn btn-sm" id="clientsNextPage" ${currentPage >= totalPages ? 'disabled' : ''}>Următoare →</button>
+        </div>
+      `));
+      const prevBtn = pagerArea.querySelector('#clientsPrevPage');
+      const nextBtn = pagerArea.querySelector('#clientsNextPage');
+      if (prevBtn) prevBtn.addEventListener('click', () => { currentPage -= 1; loadClientsList(); });
+      if (nextBtn) nextBtn.addEventListener('click', () => { currentPage += 1; loadClientsList(); });
     } catch (e) {
       listArea.innerHTML = `<div class="error-msg">${escapeHtml(e.message)}</div>`;
     }
   }
   loadClientsList();
+
+  content.querySelector('#clientsSearchInput').addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      currentPage = 1;
+      loadClientsList();
+    }, 350);
+  });
 
   content.querySelector('#clientsUploadBtn').addEventListener('click', () => {
     content.querySelector('#clientsFileInput').click();
@@ -2869,23 +2903,29 @@ async function renderClients() {
       }
       parsedHeaders = rows[0].map((h) => String(h || '').trim());
       parsedRows = rows.slice(1).filter((r) => r.some((cell) => String(cell || '').trim()));
-      paintClientMapping(content, () => parsedRows, () => parsedHeaders, loadClientsList);
+      paintClientMapping(content, () => parsedRows, () => parsedHeaders, () => { currentPage = 1; loadClientsList(); });
     };
     reader.readAsArrayBuffer(file);
   });
 
   content.querySelector('#clientsExportBtn').addEventListener('click', async () => {
+    const btn = content.querySelector('#clientsExportBtn');
+    btn.disabled = true;
+    btn.textContent = 'Se pregătește…';
     try {
-      const clients = await api('/api/clients');
+      const clients = await api('/api/clients/export');
       if (!clients.length) { showToast('Niciun client de exportat.'); return; }
       const ws = XLSX.utils.json_to_sheet(clients.map((c) => ({
-        Nume: c.name || '', Telefon: c.phone || '', Email: c.email || '', Adresă: c.address || '', Oraș: c.city || '',
+        Nume: c.name || '', Telefon: c.phone || '', Email: c.email || '', Adresă: c.address || '', Oraș: c.city || '', Județ: c.county || '',
       })));
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Clienți');
       XLSX.writeFile(wb, `clienti-${new Date().toISOString().slice(0, 10)}.xlsx`);
     } catch (e) {
       showToast('Eroare: ' + e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '↓ Descarcă Excel';
     }
   });
 
@@ -2951,22 +2991,55 @@ function paintClientMapping(content, getRows, getHeaders, onImported) {
     });
 
     const btn = area.querySelector('#clientsImportBtn');
+    const resultBox = area.querySelector('#clientsImportResult');
     btn.disabled = true;
-    btn.textContent = 'Se importă…';
-    try {
-      const result = await api('/api/clients/import', { method: 'POST', body: JSON.stringify({ rows: mappedRows }) });
-      area.querySelector('#clientsImportResult').innerHTML = `
+
+    // trimitem pe bucati -- esential pentru fisiere cu sute de mii de randuri
+    // (un singur request urias ar risca limite de dimensiune/timeout)
+    const CHUNK_SIZE = 10000;
+    const chunks = [];
+    for (let i = 0; i < mappedRows.length; i += CHUNK_SIZE) {
+      chunks.push(mappedRows.slice(i, i + CHUNK_SIZE));
+    }
+
+    resultBox.innerHTML = `
+      <div class="hint" style="margin-bottom:6px;">Se importă… <span id="clientsProgressText">0 / ${chunks.length} loturi</span></div>
+      <div style="background:var(--surface-raised);border-radius:6px;height:8px;overflow:hidden;">
+        <div id="clientsProgressBar" style="background:var(--accent);height:100%;width:0%;transition:width 0.2s;"></div>
+      </div>
+    `;
+    const progressText = resultBox.querySelector('#clientsProgressText');
+    const progressBar = resultBox.querySelector('#clientsProgressBar');
+
+    let totals = { totalRows: 0, saved: 0, duplicates: 0, noPhone: 0 };
+    let failed = false;
+    for (let i = 0; i < chunks.length; i += 1) {
+      try {
+        const r = await api('/api/clients/import', { method: 'POST', body: JSON.stringify({ rows: chunks[i] }) });
+        totals.totalRows += r.totalRows;
+        totals.saved += r.saved;
+        totals.duplicates += r.duplicates;
+        totals.noPhone += r.noPhone;
+      } catch (e) {
+        failed = true;
+        resultBox.innerHTML = `<div class="error-msg">Eroare la lotul ${i + 1}/${chunks.length}: ${escapeHtml(e.message)}. Ce s-a importat până acum (${totals.saved} clienți) a rămas salvat — poți relua din fișier fără duplicate.</div>`;
+        break;
+      }
+      progressText.textContent = `${i + 1} / ${chunks.length} loturi`;
+      progressBar.style.width = `${Math.round(((i + 1) / chunks.length) * 100)}%`;
+    }
+
+    onImported(); // reimprospatam lista/numarul o singura data, la final
+
+    if (!failed) {
+      resultBox.innerHTML = `
         <div class="hint" style="background:rgba(107,196,130,0.1);border:1px solid rgba(107,196,130,0.3);border-radius:8px;padding:10px 12px;">
-          ✓ ${result.saved} client(ți) noi salvați · ${result.duplicates} duplicate ignorate · ${result.noPhone} rânduri fără telefon valid ignorate (din ${result.totalRows} total).
+          ✓ ${totals.saved} client(ți) noi salvați · ${totals.duplicates} duplicate ignorate · ${totals.noPhone} rânduri fără telefon valid ignorate (din ${totals.totalRows} total).
         </div>
       `;
-      onImported();
-    } catch (e) {
-      showToast('Eroare: ' + e.message);
-    } finally {
-      btn.disabled = false;
-      btn.textContent = `Importă ${rows.length} rânduri`;
     }
+    btn.disabled = false;
+    btn.textContent = `Importă ${rows.length} rânduri`;
   });
 }
 

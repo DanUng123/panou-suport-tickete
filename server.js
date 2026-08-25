@@ -1037,11 +1037,17 @@ async function handleApi(req, res, pathname, query) {
     // ---- clienti importati (Excel) ----
 
     if (pathname === '/api/clients' && req.method === 'GET') {
-      return sendJSON(res, 200, db.listClients(currentAgent.companyId));
+      const page = Math.max(1, Number(query.page) || 1);
+      const pageSize = Math.min(500, Math.max(1, Number(query.pageSize) || 100));
+      return sendJSON(res, 200, db.listClients(currentAgent.companyId, { page, pageSize, q: query.q || '' }));
+    }
+
+    if (pathname === '/api/clients/export' && req.method === 'GET') {
+      return sendJSON(res, 200, db.listAllClients(currentAgent.companyId));
     }
 
     if (pathname === '/api/clients/import' && req.method === 'POST') {
-      const body = await readBody(req, 15_000_000); // pana la ~15MB (fisiere Excel mari)
+      const body = await readBody(req, 60_000_000); // pana la ~60MB (fisiere Excel mari, zeci de mii de randuri)
       if (!Array.isArray(body.rows) || !body.rows.length) {
         return sendJSON(res, 400, { error: 'Niciun rând de importat.' });
       }
