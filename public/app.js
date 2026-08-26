@@ -447,6 +447,9 @@ async function logout() {
 
 // ---------------- shell (sidebar + main) ----------------
 
+// etape in care coletul a ajuns deja fizic la service (nu mai are sens sa anulezi AWB-ul de ridicare)
+const ARRIVED_STAGES = ['at_service', 'return_awb_issued', 'in_transit_to_client', 'delivered_to_client'];
+
 const NAV_ICONS = {
   dashboard: '<svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="1.5" width="6" height="6" rx="1.2"/><rect x="8.5" y="1.5" width="6" height="4" rx="1.2"/><rect x="8.5" y="7.5" width="6" height="7" rx="1.2"/><rect x="1.5" y="9.5" width="6" height="5" rx="1.2"/></svg>',
   tickets: '<svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1.5 5.5a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v1.2a1.3 1.3 0 0 0 0 2.6v1.2a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1V9.3a1.3 1.3 0 0 0 0-2.6V5.5Z"/><path d="M6 4.5v7" stroke-dasharray="1.6 1.6"/></svg>',
@@ -791,7 +794,7 @@ async function renderServiceReturnList(route, section) {
   // coletul -- "Colete Ridicate" (AWB emis, inca in drum) vs "In Service"
   // (a ajuns la atelier -- mutarea e automata, pe baza statusului real de
   // la curier, deja actualizat de refresh-awb-status)
-  const ARRIVED_STAGES = ['at_service', 'return_awb_issued', 'in_transit_to_client', 'delivered_to_client'];
+  // (foloseste constanta globala ARRIVED_STAGES, definita mai sus in fisier)
   if (section === 'service') {
     const activeLocation = filters.loc === 'inservice' ? 'inservice' : 'picked';
     const locationBuckets = {
@@ -1197,7 +1200,7 @@ async function paintTicketDrawer(ticket) {
                 <button class="btn btn-sm" id="refreshPickupStatusBtn">↻ Status</button>
                 <button class="btn btn-sm" id="viewPickupTrackingBtn">Traseu</button>
                 <button class="btn btn-sm" id="downloadPickupLabelBtn">↓ PDF</button>
-                <button class="btn btn-sm" id="cancelPickupAwbBtn" style="color:var(--priority-urgent);">Anulează</button>
+                ${!ARRIVED_STAGES.includes(ticket.stage) ? '<button class="btn btn-sm" id="cancelPickupAwbBtn" style="color:var(--priority-urgent);">Anulează</button>' : ''}
               </div>
               <div id="pickupTrackingBox" style="display:none;margin-top:10px;"></div>
             ` : `
@@ -1253,7 +1256,7 @@ async function paintTicketDrawer(ticket) {
                   <option value="sameday" ${samedayConfigured ? '' : 'disabled'}>Sameday${samedayConfigured ? '' : ' (neconfigurat)'}</option>
                 </select>
               </div>
-              <button class="btn btn-sm btn-block" id="readyToShipBtn" style="background:var(--status-resolved);color:#fff;border-color:var(--status-resolved);font-weight:600;">✓ Gata de expediere</button>
+              <button class="btn btn-sm btn-block" id="readyToShipBtn" style="background:var(--status-resolved);color:#fff;border-color:var(--status-resolved);font-weight:600;">✓ PRODUS REPARAT</button>
             </div>
           ` : ''}
 
@@ -1274,7 +1277,7 @@ async function paintTicketDrawer(ticket) {
                   <button class="btn btn-sm" id="cancelReturnAwbBtn" style="color:var(--priority-urgent);">Anulează</button>
                 </div>
                 <div id="returnTrackingBox" style="display:none;margin-top:10px;"></div>
-              ` : '<div class="hint">Apasă „Gata de expediere" mai sus pentru a genera AWB-ul de retur către client.</div>'}
+              ` : '<div class="hint">Apasă „PRODUS REPARAT" mai sus pentru a genera AWB-ul de retur către client.</div>'}
             </div>
           ` : ''}
 
@@ -1469,7 +1472,7 @@ async function paintTicketDrawer(ticket) {
         } catch (err) {
           showToast('Eroare: ' + err.message);
           readyToShipBtn.disabled = false;
-          readyToShipBtn.textContent = '✓ Gata de expediere';
+          readyToShipBtn.textContent = '✓ PRODUS REPARAT';
         }
       });
     }
