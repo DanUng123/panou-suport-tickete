@@ -1873,9 +1873,23 @@ async function renderOrdersList() {
 
   renderPeriodPicker(content.querySelector('#periodPickerContainer'), filters, (range) => applyFiltersFromForm(range));
 
-  // status sincronizare
-  try {
-    const syncStatus = await api('/api/orders/sync-status');
+  // ---- cele trei cereri independente, in PARALEL (nu secvential) --
+  // reduce timpul total de asteptare la cel al celei mai lente dintre ele,
+  // nu la suma tuturor (asa cum erau inainte, una dupa alta)
+  const statsQuery = new URLSearchParams();
+  if (filters.dateFrom) statsQuery.set('dateFrom', filters.dateFrom);
+  if (filters.dateTo) statsQuery.set('dateTo', filters.dateTo);
+  const apiFilters = { ...filters };
+  const query = new URLSearchParams(apiFilters).toString();
+
+  const [syncStatusResult, statsResult, ordersResult] = await Promise.allSettled([
+    api('/api/orders/sync-status'),
+    api(`/api/orders/stats?${statsQuery.toString()}`),
+    api(`/api/orders?${query}`),
+  ]);
+
+  if (syncStatusResult.status === 'fulfilled') {
+    const syncStatus = syncStatusResult.value;
     platformLabel = syncStatus.platformLabel || 'MERCHANTPRO';
     const banner = content.querySelector('#sync-banner');
     if (!syncStatus.configured) {
@@ -1887,7 +1901,7 @@ async function renderOrdersList() {
       const r = syncStatus.lastSyncResult;
       banner.innerHTML = `<div style="color:var(--text-dim);font-size:12px;margin-bottom:14px;">Ultima sincronizare: ${fmtDate(r.at)} · ${r.created} noi, ${r.updated} actualizate</div>`;
     }
-  } catch (e) { /* n-o afisam ca eroare blocanta */ }
+  } // altfel: n-o afisam ca eroare blocanta
 
   content.querySelector('#syncNowBtn').addEventListener('click', async (e) => {
     e.target.disabled = true;
@@ -1954,11 +1968,8 @@ async function renderOrdersList() {
     });
   }
 
-  try {
-    const statsQuery = new URLSearchParams();
-    if (filters.dateFrom) statsQuery.set('dateFrom', filters.dateFrom);
-    if (filters.dateTo) statsQuery.set('dateTo', filters.dateTo);
-    const stats = await api(`/api/orders/stats?${statsQuery.toString()}`);
+  if (statsResult.status === 'fulfilled') {
+    const stats = statsResult.value;
     const PERIOD_SUBLABEL = { all: 'toate perioadele', today: 'azi', week: 'săptămâna aceasta', month: 'luna aceasta', custom: 'perioadă personalizată' };
     const activePeriodLabel = PERIOD_SUBLABEL[detectActivePeriod(filters.dateFrom, filters.dateTo)];
     content.querySelector('#order-stats').innerHTML = `
@@ -1993,16 +2004,14 @@ async function renderOrdersList() {
         { value: '0', label: 'Cu AWB', count: stats.withAwb, dot: 'var(--status-resolved)' },
       ],
     });
-  } catch (e) { /* n-o afisam ca eroare blocanta */ }
+  } // altfel: n-o afisam ca eroare blocanta
 
   const listBody = content.querySelector('#orders-body');
-  const apiFilters = { ...filters };
-  const query = new URLSearchParams(apiFilters).toString();
   let orders;
-  try {
-    orders = await api(`/api/orders?${query}`);
-  } catch (e) {
-    listBody.innerHTML = `<div class="panel">Eroare la încărcarea comenzilor: ${escapeHtml(e.message)}</div>`;
+  if (ordersResult.status === 'fulfilled') {
+    orders = ordersResult.value;
+  } else {
+    listBody.innerHTML = `<div class="panel">Eroare la încărcarea comenzilor: ${escapeHtml(ordersResult.reason.message)}</div>`;
     return;
   }
 
