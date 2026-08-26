@@ -771,6 +771,9 @@ async function renderServiceReturnList(route, section) {
       <div class="filters-search-row">
         <input type="text" id="q" placeholder="Caută: cod, comandă, client, produs, AWB…" value="${escapeHtml(filters.q || '')}" />
       </div>
+      ${section === 'service' ? `
+        <div class="segmented-group" id="locationRow" style="margin-bottom:18px;"></div>
+      ` : ''}
       <div id="list-body">Se încarcă…</div>
     </div>
   `);
@@ -782,6 +785,36 @@ async function renderServiceReturnList(route, section) {
   } catch (e) {
     content.querySelector('#list-body').innerHTML = `<div class="panel">Eroare: ${escapeHtml(e.message)}</div>`;
     return;
+  }
+
+  // pentru Service: doua sectiuni de nivel superior, dupa unde se afla fizic
+  // coletul -- "Colete Ridicate" (AWB emis, inca in drum) vs "In Service"
+  // (a ajuns la atelier -- mutarea e automata, pe baza statusului real de
+  // la curier, deja actualizat de refresh-awb-status)
+  const ARRIVED_STAGES = ['at_service', 'return_awb_issued', 'in_transit_to_client', 'delivered_to_client'];
+  if (section === 'service') {
+    const activeLocation = filters.loc === 'inservice' ? 'inservice' : 'picked';
+    const locationBuckets = {
+      picked: tickets.filter((t) => t.pickupAwbNumber && !ARRIVED_STAGES.includes(t.stage)),
+      inservice: tickets.filter((t) => ARRIVED_STAGES.includes(t.stage)),
+    };
+    const locationTabs = [
+      { key: 'picked', label: 'Colete Ridicate' },
+      { key: 'inservice', label: 'In Service' },
+    ];
+    content.querySelector('#locationRow').innerHTML = locationTabs.map((t) =>
+      `<button class="status-pill ${activeLocation === t.key ? 'active' : ''}" data-loc="${t.key}">${t.label}<span class="status-pill-count">${locationBuckets[t.key].length}</span></button>`
+    ).join('');
+    content.querySelectorAll('#locationRow .status-pill').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const params = new URLSearchParams();
+        if (filters.q) params.set('q', filters.q);
+        if (filters.tab) params.set('tab', filters.tab);
+        params.set('loc', btn.dataset.loc);
+        navigate(`${route}?${params.toString()}`);
+      });
+    });
+    tickets = locationBuckets[activeLocation];
   }
 
   // preluam si comenzile asociate (pentru coloanele Comandă/Produs) — volum mic, fetch direct
