@@ -188,8 +188,22 @@ function navigate(hash) {
 // re-randarea inutila a fundalului cand deja arata ce trebuie
 let currentMainRoute = null;
 
-window.addEventListener('hashchange', render);
-window.addEventListener('popstate', render); // butonul Inapoi/Inainte al browserului
+// Mai multe evenimente de schimbare a adresei pot surveni foarte apropiat in
+// timp (ex: o redirectionare interna care schimba adresa de doua ori la rand
+// -- vezi renderOrdersList). Fara aceasta amanare, fiecare ar declansa propria
+// randare completa, suprapunandu-se -- exact cauza incarcarii vizibil mai
+// lente, resimtite la fiecare click. Colectam toate declansarile foarte
+// apropiate intr-una singura, care citeste adresa finala, curenta.
+let renderDebounceHandle = null;
+function scheduleRender() {
+  if (renderDebounceHandle !== null) clearTimeout(renderDebounceHandle);
+  renderDebounceHandle = setTimeout(() => {
+    renderDebounceHandle = null;
+    render();
+  }, 0);
+}
+window.addEventListener('hashchange', scheduleRender);
+window.addEventListener('popstate', scheduleRender); // butonul Inapoi/Inainte al browserului
 
 // ---------------- panou lateral (drawer) ----------------
 
