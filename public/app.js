@@ -756,8 +756,7 @@ async function renderServiceReturnList(route, section) {
     schimb: 'Colet la schimb: ridicare produs vechi + livrare produs nou, într-o singură vizită a curierului.',
   }[section];
   const titleIconColor = { service: 'var(--status-open)', retur: 'var(--status-in_progress)', schimb: 'var(--status-waiting)' }[section];
-  const filters = parseListRoute(window.location.hash);
-  const activeTab = filters.tab || 'all';
+  const initialFilters = parseListRoute(window.location.hash);
 
   const content = el(`
     <div>
@@ -772,7 +771,7 @@ async function renderServiceReturnList(route, section) {
       </div>
       <div class="status-pills segmented-group" id="tabRow" style="margin-bottom:18px;"></div>
       <div class="filters-search-row">
-        <input type="text" id="q" placeholder="Caută: cod, comandă, client, produs, AWB…" value="${escapeHtml(filters.q || '')}" />
+        <input type="text" id="q" placeholder="Caută: cod, comandă, client, produs, AWB…" value="${escapeHtml(initialFilters.q || '')}" />
       </div>
       ${section === 'service' ? `
         <div class="segmented-group" id="locationRow" style="margin-bottom:18px;"></div>
@@ -782,144 +781,156 @@ async function renderServiceReturnList(route, section) {
   `);
   renderShell(route, content);
 
-  let tickets;
+  // ---- incarcare UNICA de date: tichete + comenzile lor asociate. Comutarea
+  // intre tab-uri/sectiuni de mai jos filtreaza doar local, in memorie, fara
+  // niciun apel nou catre server -- altfel fiecare click ar reface un fetch
+  // complet, cu intarzierea vizibila resimtita inainte.
+  let allTickets;
   try {
-    tickets = await api(`/api/tickets?section=${section}`);
+    allTickets = await api(`/api/tickets?section=${section}`);
   } catch (e) {
     content.querySelector('#list-body').innerHTML = `<div class="panel">Eroare: ${escapeHtml(e.message)}</div>`;
     return;
   }
 
-  // pentru Service: doua sectiuni de nivel superior, dupa unde se afla fizic
-  // coletul -- "Colete Ridicate" (AWB emis, inca in drum) vs "In Service"
-  // (a ajuns la atelier -- mutarea e automata, pe baza statusului real de
-  // la curier, deja actualizat de refresh-awb-status)
-  // (foloseste constanta globala ARRIVED_STAGES doar pentru butonul de anulare a AWB-ului de ridicare, mai jos in fisier)
-  if (section === 'service') {
-    const activeLocation = ['inservice', 'returned'].includes(filters.loc) ? filters.loc : 'picked';
-    const locationBuckets = {
-      picked: tickets.filter((t) => t.pickupAwbNumber && ['pickup_awb_issued', 'in_transit_to_service'].includes(t.stage)),
-      inservice: tickets.filter((t) => ['at_service', 'return_awb_issued', 'in_transit_to_client'].includes(t.stage)),
-      returned: tickets.filter((t) => t.stage === 'delivered_to_client'),
-    };
-    const locationTabs = [
-      { key: 'picked', label: 'Colete Ridicate' },
-      { key: 'inservice', label: 'In Service' },
-      { key: 'returned', label: 'Inapoi la Client' },
-    ];
-    content.querySelector('#locationRow').innerHTML = locationTabs.map((t) =>
-      `<button class="status-pill ${activeLocation === t.key ? 'active' : ''}" data-loc="${t.key}">${t.label}<span class="status-pill-count">${locationBuckets[t.key].length}</span></button>`
-    ).join('');
-    content.querySelectorAll('#locationRow .status-pill').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const params = new URLSearchParams();
-        if (filters.q) params.set('q', filters.q);
-        if (filters.tab) params.set('tab', filters.tab);
-        params.set('loc', btn.dataset.loc);
-        navigate(`${route}?${params.toString()}`);
-      });
-    });
-    tickets = locationBuckets[activeLocation];
-  }
-
-  // preluam si comenzile asociate (pentru coloanele Comandă/Produs) — volum mic, fetch direct
   const linkedOrders = {};
-  await Promise.all(tickets.filter((t) => t.relatedOrderId).map(async (t) => {
+  await Promise.all(allTickets.filter((t) => t.relatedOrderId).map(async (t) => {
     try { linkedOrders[t.id] = await api(`/api/orders/${t.relatedOrderId}`); } catch (e) { /* comanda poate lipsi */ }
   }));
 
-  // asiguram eticheta platformei, daca nu a fost deja incarcata (ex: navigare directa, fara a trece prin Comenzi)
   if (platformLabel === 'MERCHANTPRO') {
     try { const s = await api('/api/orders/sync-status'); platformLabel = s.platformLabel || platformLabel; } catch (e) { /* n-o blocam */ }
   }
 
-  const buckets = {
-    open: tickets.filter((t) => t.status !== 'resolved' && t.status !== 'closed'),
-    atelier: tickets.filter((t) => t.stage === 'at_service'),
-    overdue: tickets.filter((t) => isPastDeadline(t)),
-    closed: tickets.filter((t) => t.status === 'resolved' || t.status === 'closed'),
-    all: tickets,
-  };
+  // stare locala (nu mai citim din URL la fiecare click -- doar la incarcarea initiala)
+  let activeLocation = section === 'service' && ['inservice', 'returned'].includes(initialFilters.loc) ? initialFilters.loc : 'picked';
+  let activeTab = initialFilters.tab || 'all';
+  let searchQuery = initialFilters.q || '';
 
-  const tabs = [
-    { key: 'open', label: 'Deschise' },
-    { key: 'atelier', label: { service: 'La atelier', retur: 'La depozit', schimb: 'Finalizate' }[section] },
-    { key: 'overdue', label: 'Peste 7 zile' },
-    { key: 'closed', label: 'Închise' },
-    { key: 'all', label: 'Toate' },
-  ];
-  content.querySelector('#tabRow').innerHTML = tabs.map((t) =>
-    `<button class="status-pill ${activeTab === t.key ? 'active' : ''}" data-tab="${t.key}">${t.label}<span class="status-pill-count">${buckets[t.key].length}</span></button>`
-  ).join('');
-  content.querySelectorAll('#tabRow .status-pill').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const params = new URLSearchParams();
-      if (filters.q) params.set('q', filters.q);
-      params.set('tab', btn.dataset.tab);
-      navigate(`${route}?${params.toString()}`);
-    });
-  });
-
-  const q = (filters.q || '').toLowerCase();
-  let rows = buckets[activeTab] || buckets.open;
-  if (q) {
-    rows = rows.filter((t) => {
-      const order = linkedOrders[t.id];
-      const haystack = [t.sectionCode, t.requesterName, t.pickupAwbNumber, t.returnAwbNumber, order?.mpId, order?.lineItems?.[0]?.product_name, t.subject]
-        .filter(Boolean).join(' ').toLowerCase();
-      return haystack.includes(q);
-    });
+  function updateUrlSilently() {
+    const params = new URLSearchParams();
+    if (searchQuery) params.set('q', searchQuery);
+    if (activeTab) params.set('tab', activeTab);
+    if (section === 'service') params.set('loc', activeLocation);
+    history.replaceState(null, '', `${route}?${params.toString()}`);
   }
 
-  const listBody = content.querySelector('#list-body');
-  if (!rows.length) {
-    listBody.innerHTML = `<div class="panel" style="text-align:center;color:var(--text-dim);">Niciun tichet în această categorie.</div>`;
-  } else {
-    const tableRows = rows.map((t) => {
-      const order = linkedOrders[t.id];
-      const product = order?.lineItems?.[0]
-        ? `${escapeHtml(order.lineItems[0].product_name || '—')}`
-        : escapeHtml(t.subject);
-      const deadline = computeDeadline(t);
-      const overdue = isPastDeadline(t);
-      return `
-      <div class="service-row" data-id="${t.id}">
-        <div class="service-cod">${escapeHtml(t.sectionCode || t.id)}</div>
-        <div class="order-platform"><span class="platform-dot"></span>${escapeHtml(platformLabel)}</div>
-        <div><span class="status-pill ${['at_service', 'delivered_to_client'].includes(t.stage) && (t.section === 'schimb' || t.stage === 'delivered_to_client') ? 'status-pill-filled-green' : ''}" style="cursor:default;padding:5px 11px;"><span class="status-pill-dot" style="background:${stageDotColor(t.stage)};"></span>${stageStatusLabel(t.stage, t.section)}</span></div>
-        <div style="color:var(--text-secondary);font-size:12.5px;">${stageLocationLabel(t.stage, t.section)}</div>
-        <div class="order-id">${order ? `#${order.mpId}` : '—'}</div>
-        <div class="t-title" style="font-size:13px;">${escapeHtml(t.requesterName)}</div>
-        <div class="t-requester" style="font-size:12.5px;color:var(--text-secondary);">${product}</div>
-        <div style="font-size:12px;color:${overdue ? 'var(--priority-urgent)' : 'var(--text-dim)'};white-space:nowrap;">${deadline ? `⏱ ${fmtShortDate(deadline)}` : '—'}</div>
-      </div>`;
-    }).join('');
+  function renderAll() {
+    let tickets = allTickets;
 
-    listBody.innerHTML = `
-      <div class="ticket-table">
-        <div class="service-row header">
-          <div>COD</div><div>CANAL</div><div>STATUS</div><div>UNDE E MARFA</div><div>COMANDĂ</div><div>CLIENT</div><div>PRODUS</div><div>TERMEN 7 ZILE</div>
-        </div>
-        ${tableRows}
-      </div>
-    `;
-    listBody.querySelectorAll('.service-row[data-id]').forEach((row) => {
-      row.addEventListener('click', () => {
-        history.pushState(null, '', `#/tickets/${row.dataset.id}`);
-        openTicketDrawer(row.dataset.id);
+    // pentru Service: trei sectiuni de nivel superior, dupa unde se afla fizic
+    // coletul -- mutarea e automata, pe baza statusului real de la curier
+    if (section === 'service') {
+      const locationBuckets = {
+        picked: allTickets.filter((t) => t.pickupAwbNumber && ['pickup_awb_issued', 'in_transit_to_service'].includes(t.stage)),
+        inservice: allTickets.filter((t) => ['at_service', 'return_awb_issued', 'in_transit_to_client'].includes(t.stage)),
+        returned: allTickets.filter((t) => t.stage === 'delivered_to_client'),
+      };
+      const locationTabs = [
+        { key: 'picked', label: 'Colete Ridicate' },
+        { key: 'inservice', label: 'In Service' },
+        { key: 'returned', label: 'Inapoi la Client' },
+      ];
+      content.querySelector('#locationRow').innerHTML = locationTabs.map((t) =>
+        `<button class="status-pill ${activeLocation === t.key ? 'active' : ''}" data-loc="${t.key}">${t.label}<span class="status-pill-count">${locationBuckets[t.key].length}</span></button>`
+      ).join('');
+      content.querySelectorAll('#locationRow .status-pill').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          activeLocation = btn.dataset.loc;
+          updateUrlSilently();
+          renderAll();
+        });
+      });
+      tickets = locationBuckets[activeLocation];
+    }
+
+    const buckets = {
+      open: tickets.filter((t) => t.status !== 'resolved' && t.status !== 'closed'),
+      atelier: tickets.filter((t) => t.stage === 'at_service'),
+      overdue: tickets.filter((t) => isPastDeadline(t)),
+      closed: tickets.filter((t) => t.status === 'resolved' || t.status === 'closed'),
+      all: tickets,
+    };
+
+    const tabs = [
+      { key: 'open', label: 'Deschise' },
+      { key: 'atelier', label: { service: 'La atelier', retur: 'La depozit', schimb: 'Finalizate' }[section] },
+      { key: 'overdue', label: 'Peste 7 zile' },
+      { key: 'closed', label: 'Închise' },
+      { key: 'all', label: 'Toate' },
+    ];
+    content.querySelector('#tabRow').innerHTML = tabs.map((t) =>
+      `<button class="status-pill ${activeTab === t.key ? 'active' : ''}" data-tab="${t.key}">${t.label}<span class="status-pill-count">${buckets[t.key].length}</span></button>`
+    ).join('');
+    content.querySelectorAll('#tabRow .status-pill').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        activeTab = btn.dataset.tab;
+        updateUrlSilently();
+        renderAll();
       });
     });
+
+    const q = searchQuery.toLowerCase();
+    let rows = buckets[activeTab] || buckets.open;
+    if (q) {
+      rows = rows.filter((t) => {
+        const order = linkedOrders[t.id];
+        const haystack = [t.sectionCode, t.requesterName, t.pickupAwbNumber, t.returnAwbNumber, order?.mpId, order?.lineItems?.[0]?.product_name, t.subject]
+          .filter(Boolean).join(' ').toLowerCase();
+        return haystack.includes(q);
+      });
+    }
+
+    const listBody = content.querySelector('#list-body');
+    if (!rows.length) {
+      listBody.innerHTML = `<div class="panel" style="text-align:center;color:var(--text-dim);">Niciun tichet în această categorie.</div>`;
+    } else {
+      const tableRows = rows.map((t) => {
+        const order = linkedOrders[t.id];
+        const product = order?.lineItems?.[0]
+          ? `${escapeHtml(order.lineItems[0].product_name || '—')}`
+          : escapeHtml(t.subject);
+        const deadline = computeDeadline(t);
+        const overdue = isPastDeadline(t);
+        return `
+        <div class="service-row" data-id="${t.id}">
+          <div class="service-cod">${escapeHtml(t.sectionCode || t.id)}</div>
+          <div class="order-platform"><span class="platform-dot"></span>${escapeHtml(platformLabel)}</div>
+          <div><span class="status-pill ${['at_service', 'delivered_to_client'].includes(t.stage) && (t.section === 'schimb' || t.stage === 'delivered_to_client') ? 'status-pill-filled-green' : ''}" style="cursor:default;padding:5px 11px;"><span class="status-pill-dot" style="background:${stageDotColor(t.stage)};"></span>${stageStatusLabel(t.stage, t.section)}</span></div>
+          <div style="color:var(--text-secondary);font-size:12.5px;">${stageLocationLabel(t.stage, t.section)}</div>
+          <div class="order-id">${order ? `#${order.mpId}` : '—'}</div>
+          <div class="t-title" style="font-size:13px;">${escapeHtml(t.requesterName)}</div>
+          <div class="t-requester" style="font-size:12.5px;color:var(--text-secondary);">${product}</div>
+          <div style="font-size:12px;color:${overdue ? 'var(--priority-urgent)' : 'var(--text-dim)'};white-space:nowrap;">${deadline ? `⏱ ${fmtShortDate(deadline)}` : '—'}</div>
+        </div>`;
+      }).join('');
+
+      listBody.innerHTML = `
+        <div class="ticket-table">
+          <div class="service-row header">
+            <div>COD</div><div>CANAL</div><div>STATUS</div><div>UNDE E MARFA</div><div>COMANDĂ</div><div>CLIENT</div><div>PRODUS</div><div>TERMEN 7 ZILE</div>
+          </div>
+          ${tableRows}
+        </div>
+      `;
+      listBody.querySelectorAll('.service-row[data-id]').forEach((row) => {
+        row.addEventListener('click', () => {
+          history.pushState(null, '', `#/tickets/${row.dataset.id}`);
+          openTicketDrawer(row.dataset.id);
+        });
+      });
+    }
   }
+
+  renderAll();
 
   let qTimer;
   content.querySelector('#q').addEventListener('input', () => {
     clearTimeout(qTimer);
     qTimer = setTimeout(() => {
-      const params = new URLSearchParams();
-      const val = content.querySelector('#q').value.trim();
-      if (val) params.set('q', val);
-      if (activeTab) params.set('tab', activeTab);
-      navigate(`${route}?${params.toString()}`);
+      searchQuery = content.querySelector('#q').value.trim();
+      updateUrlSilently();
+      renderAll();
     }, 350);
   });
 }
