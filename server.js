@@ -898,6 +898,19 @@ async function handleApi(req, res, pathname, query) {
       }
     }
 
+    const setStageMatch = pathname.match(/^\/api\/tickets\/([^/]+)\/set-stage$/);
+    if (setStageMatch && req.method === 'POST') {
+      const ticket = db.getTicket(currentAgent.companyId, setStageMatch[1]);
+      if (!ticket) return sendJSON(res, 404, { error: 'Tichet negăsit' });
+      const body = await readBody(req);
+      const ALLOWED_MANUAL_STAGES = ['pickup_awb_issued', 'at_service', 'delivered_to_client'];
+      if (!ALLOWED_MANUAL_STAGES.includes(body.stage)) {
+        return sendJSON(res, 400, { error: 'Etapă invalidă.' });
+      }
+      const updated = db.updateTicketStage(currentAgent.companyId, ticket.id, body.stage, currentAgent);
+      return sendJSON(res, 200, updated);
+    }
+
     const trackingMatch = pathname.match(/^\/api\/tickets\/([^/]+)\/awb-tracking$/);
     if (trackingMatch && req.method === 'GET') {
       const ticket = db.getTicket(currentAgent.companyId, trackingMatch[1]);
