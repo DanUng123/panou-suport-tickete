@@ -794,16 +794,18 @@ async function renderServiceReturnList(route, section) {
   // coletul -- "Colete Ridicate" (AWB emis, inca in drum) vs "In Service"
   // (a ajuns la atelier -- mutarea e automata, pe baza statusului real de
   // la curier, deja actualizat de refresh-awb-status)
-  // (foloseste constanta globala ARRIVED_STAGES, definita mai sus in fisier)
+  // (foloseste constanta globala ARRIVED_STAGES doar pentru butonul de anulare a AWB-ului de ridicare, mai jos in fisier)
   if (section === 'service') {
-    const activeLocation = filters.loc === 'inservice' ? 'inservice' : 'picked';
+    const activeLocation = ['inservice', 'returned'].includes(filters.loc) ? filters.loc : 'picked';
     const locationBuckets = {
-      picked: tickets.filter((t) => t.pickupAwbNumber && !ARRIVED_STAGES.includes(t.stage)),
-      inservice: tickets.filter((t) => ARRIVED_STAGES.includes(t.stage)),
+      picked: tickets.filter((t) => t.pickupAwbNumber && ['pickup_awb_issued', 'in_transit_to_service'].includes(t.stage)),
+      inservice: tickets.filter((t) => ['at_service', 'return_awb_issued', 'in_transit_to_client'].includes(t.stage)),
+      returned: tickets.filter((t) => t.stage === 'delivered_to_client'),
     };
     const locationTabs = [
       { key: 'picked', label: 'Colete Ridicate' },
       { key: 'inservice', label: 'In Service' },
+      { key: 'returned', label: 'Inapoi la Client' },
     ];
     content.querySelector('#locationRow').innerHTML = locationTabs.map((t) =>
       `<button class="status-pill ${activeLocation === t.key ? 'active' : ''}" data-loc="${t.key}">${t.label}<span class="status-pill-count">${locationBuckets[t.key].length}</span></button>`
