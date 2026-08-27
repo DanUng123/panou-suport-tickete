@@ -1324,11 +1324,11 @@ async function paintTicketDrawer(ticket) {
               <div class="form-row">
                 <div class="field">
                   <label>IBAN *</label>
-                  <input type="text" id="rf-iban" placeholder="RO49AAAA1B31007593840000" value="${escapeHtml(ticket.refundIban || '')}" style="font-family:var(--font-mono);" />
+                  <input type="text" id="rf-iban" placeholder="RO49AAAA1B31007593840000" value="${escapeHtml(ticket.refundIban || '')}" style="font-family:var(--font-mono);text-transform:uppercase;" minlength="24" />
                 </div>
                 <div class="field">
                   <label>Titular cont</label>
-                  <input type="text" id="rf-holder" placeholder="Implicit: numele clientului" value="${escapeHtml(ticket.refundAccountHolder || '')}" />
+                  <input type="text" id="rf-holder" placeholder="Implicit: numele clientului" value="${escapeHtml(ticket.refundAccountHolder || '')}" style="text-transform:uppercase;" />
                 </div>
               </div>
               <div class="form-row">
@@ -1339,7 +1339,7 @@ async function paintTicketDrawer(ticket) {
               </div>
               <div class="field">
                 <label>Motiv retur</label>
-                <textarea id="rf-reason" placeholder="Ex: Produs cu defect de fabricație…" style="min-height:60px;">${escapeHtml(ticket.refundReason || '')}</textarea>
+                <textarea id="rf-reason" placeholder="Ex: Produs cu defect de fabricație…" style="min-height:60px;text-transform:uppercase;">${escapeHtml(ticket.refundReason || '')}</textarea>
               </div>
               <button class="btn btn-block btn-primary" id="saveRefundInfoBtn" style="margin-bottom:10px;">Salvează datele bancare</button>
               ${ticket.refundIban && ticket.refundAmount != null ? `
@@ -1567,6 +1567,16 @@ async function paintTicketDrawer(ticket) {
       });
     }
 
+    ['#rf-iban', '#rf-holder', '#rf-reason'].forEach((sel) => {
+      const fieldEl = content.querySelector(sel);
+      if (!fieldEl) return; // panoul de rambursare nu exista pentru tichete din afara Retur
+      fieldEl.addEventListener('input', () => {
+        const pos = fieldEl.selectionStart; // pastram pozitia cursorului, ca sa nu sara la final
+        fieldEl.value = fieldEl.value.toUpperCase();
+        fieldEl.setSelectionRange(pos, pos);
+      });
+    });
+
     const saveRefundInfoBtn = content.querySelector('#saveRefundInfoBtn');
     if (saveRefundInfoBtn) {
       saveRefundInfoBtn.addEventListener('click', async () => {
@@ -1575,6 +1585,7 @@ async function paintTicketDrawer(ticket) {
         const amount = content.querySelector('#rf-amount').value;
         const reason = content.querySelector('#rf-reason').value.trim();
         if (!iban) { showToast('Completează IBAN-ul.'); return; }
+        if (iban.length < 24) { showToast('IBAN-ul trebuie să aibă minimum 24 de caractere.'); return; }
         if (!amount || Number(amount) <= 0) { showToast('Completează o sumă validă.'); return; }
         saveRefundInfoBtn.disabled = true;
         saveRefundInfoBtn.textContent = 'Se salvează…';
