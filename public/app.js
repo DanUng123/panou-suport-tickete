@@ -3050,10 +3050,18 @@ async function renderClients() {
   content.querySelector('#clientsExportBtn').addEventListener('click', async () => {
     const btn = content.querySelector('#clientsExportBtn');
     btn.disabled = true;
-    btn.textContent = 'Se pregătește…';
+    const EXPORT_PAGE_SIZE = 20000;
+    let allClients = [];
     try {
-      const clients = await api('/api/clients/export');
-      exportClientsToExcel(clients, 'clienti-total');
+      let page = 1;
+      while (true) {
+        btn.textContent = `Se pregătește… (${allClients.length} preluați)`;
+        const { items, total } = await api(`/api/clients?page=${page}&pageSize=${EXPORT_PAGE_SIZE}`);
+        allClients = allClients.concat(items);
+        if (allClients.length >= total || items.length < EXPORT_PAGE_SIZE) break;
+        page += 1;
+      }
+      exportClientsToExcel(allClients, 'clienti-total');
     } catch (e) {
       showToast('Eroare: ' + e.message);
     } finally {
