@@ -1168,7 +1168,7 @@ const server = http.createServer((req, res) => {
     "script-src 'self' https://cdnjs.cloudflare.com",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com", // 'unsafe-inline' necesar -- interfata foloseste stiluri inline extensiv
     "font-src 'self' https://fonts.gstatic.com",
-    "img-src 'self' data:",
+    "img-src 'self' data: https:", // https: larg -- imaginile produselor vin de pe domeniul magazinului fiecarei companii, diferit de la una la alta
     "connect-src 'self'",
     "frame-ancestors 'none'",
   ].join('; '));
