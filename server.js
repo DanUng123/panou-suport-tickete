@@ -199,7 +199,7 @@ async function handleApi(req, res, pathname, query) {
       try {
         const { company, agent } = db.createCompany({ companyName, agentName, email, password });
         const token = createSession(agent.id);
-        res.setHeader('Set-Cookie', `session=${token}; HttpOnly; Path=/; SameSite=Lax`);
+        res.setHeader('Set-Cookie', `session=${token}; HttpOnly; Secure; Path=/; SameSite=Lax`);
         return sendJSON(res, 201, { company, agent });
       } catch (e) {
         return sendJSON(res, 400, { error: e.message });
@@ -223,7 +223,7 @@ async function handleApi(req, res, pathname, query) {
       }
       clearFailedAttempts(email);
       const token = createSession(agent.id);
-      res.setHeader('Set-Cookie', `session=${token}; HttpOnly; Path=/; SameSite=Lax`);
+      res.setHeader('Set-Cookie', `session=${token}; HttpOnly; Secure; Path=/; SameSite=Lax`);
       return sendJSON(res, 200, agent);
     }
 
@@ -231,7 +231,7 @@ async function handleApi(req, res, pathname, query) {
       const cookie = req.headers.cookie || '';
       const match = cookie.match(/(?:^|;\s*)session=([^;]+)/);
       if (match) sessions.delete(match[1]);
-      res.setHeader('Set-Cookie', 'session=; HttpOnly; Path=/; Max-Age=0');
+      res.setHeader('Set-Cookie', 'session=; HttpOnly; Secure; Path=/; Max-Age=0');
       return sendJSON(res, 200, { ok: true });
     }
 
