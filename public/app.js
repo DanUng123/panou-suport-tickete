@@ -1347,19 +1347,20 @@ async function paintTicketDrawer(ticket) {
           </div>
 
           <div class="side-panel" style="margin-bottom:16px;">
-            <h2>${{ service: 'AWB ridicare (client → service)', retur: 'Ridicare de la client (GLS)', schimb: 'AWB colet la schimb (GLS)' }[ticket.section] || 'AWB ridicare (GLS)'}</h2>
+            ${(() => {
+              const courierLabel = ticket.pickupAwbCourier === 'sameday' ? 'Sameday' : (ticket.pickupAwbCourier === 'gls' ? 'GLS' : null);
+              const baseTitles = { service: 'AWB ridicare (client → service)', retur: 'Ridicare de la client', schimb: 'AWB colet la schimb' };
+              const base = baseTitles[ticket.section] || 'AWB ridicare';
+              return `<h2>${base}${courierLabel ? ` (${courierLabel})` : ''}</h2>`;
+            })()}
             ${ticket.pickupAwbNumber ? `
+              ${ticket.pickupAwbSecondaryNumber ? '<div class="sub" style="margin-bottom:6px;font-weight:600;">Tur (livrare produs nou)</div>' : ''}
               <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid var(--border);">
                 <div style="font-family:var(--font-mono);font-size:13px;color:var(--accent);font-weight:600;">${escapeHtml(ticket.pickupAwbNumber)}</div>
                 <div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--text-secondary);">
                   <span class="status-pill-dot" style="background:${stageDotColor(ticket.stage)};"></span>${stageLocationLabel(ticket.stage, ticket.section)}
                 </div>
               </div>
-              ${ticket.pickupAwbSecondaryNumber ? `
-                <div class="hint" style="background:rgba(232,163,61,0.1);border:1px solid rgba(232,163,61,0.3);border-radius:6px;padding:8px 10px;margin-bottom:10px;color:var(--status-open);font-size:11.5px;">
-                  ⚠ AWB secundar legat: <strong style="font-family:var(--font-mono);">${escapeHtml(ticket.pickupAwbSecondaryNumber)}</strong> — anulează-l manual din panoul Sameday, dacă e cazul.
-                </div>
-              ` : ''}
               <div class="btn-row">
                 <button class="btn btn-sm" id="refreshPickupStatusBtn">↻ Status</button>
                 <button class="btn btn-sm" id="viewPickupTrackingBtn">Traseu</button>
@@ -1367,6 +1368,18 @@ async function paintTicketDrawer(ticket) {
                 ${!ARRIVED_STAGES.includes(ticket.stage) ? '<button class="btn btn-sm" id="cancelPickupAwbBtn" style="color:var(--priority-urgent);">Anulează</button>' : ''}
               </div>
               <div id="pickupTrackingBox" style="display:none;margin-top:10px;"></div>
+              ${ticket.pickupAwbSecondaryNumber ? `
+                <div class="sub" style="margin:16px 0 6px;font-weight:600;">Retur (ridicare produs vechi)</div>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid var(--border);">
+                  <div style="font-family:var(--font-mono);font-size:13px;color:var(--accent);font-weight:600;">${escapeHtml(ticket.pickupAwbSecondaryNumber)}</div>
+                </div>
+                <div class="hint" style="margin-bottom:8px;">Generat automat de Sameday, odată cu AWB-ul de tur. Se anulează manual din panoul Sameday, dacă e cazul.</div>
+                <div class="btn-row">
+                  <button class="btn btn-sm" id="refreshSecondaryStatusBtn">↻ Status</button>
+                  <button class="btn btn-sm" id="viewSecondaryTrackingBtn">Traseu</button>
+                </div>
+                <div id="secondaryTrackingBox" style="display:none;margin-top:10px;"></div>
+              ` : ''}
             ` : `
               <form id="pickupAwbForm">
                 <div class="form-row">
@@ -1647,6 +1660,16 @@ async function paintTicketDrawer(ticket) {
     const viewPickupTrackingBtn = content.querySelector('#viewPickupTrackingBtn');
     if (viewPickupTrackingBtn) {
       viewPickupTrackingBtn.addEventListener('click', () => handleViewTracking('pickup', content.querySelector('#pickupTrackingBox')));
+    }
+
+    const refreshSecondaryBtn = content.querySelector('#refreshSecondaryStatusBtn');
+    const viewSecondaryTrackingBtn = content.querySelector('#viewSecondaryTrackingBtn');
+    const secondaryTrackingBox = content.querySelector('#secondaryTrackingBox');
+    if (refreshSecondaryBtn && secondaryTrackingBox) {
+      refreshSecondaryBtn.addEventListener('click', () => handleViewTracking('secondary', secondaryTrackingBox));
+    }
+    if (viewSecondaryTrackingBtn && secondaryTrackingBox) {
+      viewSecondaryTrackingBtn.addEventListener('click', () => handleViewTracking('secondary', secondaryTrackingBox));
     }
 
     const readyToShipBtn = content.querySelector('#readyToShipBtn');

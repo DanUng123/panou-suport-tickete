@@ -915,9 +915,11 @@ async function handleApi(req, res, pathname, query) {
     if (trackingMatch && req.method === 'GET') {
       const ticket = db.getTicket(currentAgent.companyId, trackingMatch[1]);
       if (!ticket) return sendJSON(res, 404, { error: 'Tichet negăsit' });
-      const leg = query.leg === 'return' ? 'return' : 'pickup';
-      const trackingNumber = leg === 'return' ? ticket.returnAwbNumber : ticket.pickupAwbNumber;
-      const legCourier = (leg === 'return' ? ticket.returnAwbCourier : ticket.pickupAwbCourier) === 'sameday' ? sameday : gls;
+      const leg = ['return', 'secondary'].includes(query.leg) ? query.leg : 'pickup';
+      const trackingNumber = leg === 'return' ? ticket.returnAwbNumber : (leg === 'secondary' ? ticket.pickupAwbSecondaryNumber : ticket.pickupAwbNumber);
+      // AWB-ul secundar (Colet la Schimb) e generat mereu de acelasi curier ca cel principal (doar Sameday are acest mecanism)
+      const legCourierRaw = leg === 'return' ? ticket.returnAwbCourier : ticket.pickupAwbCourier;
+      const legCourier = legCourierRaw === 'sameday' ? sameday : gls;
       if (!trackingNumber) return sendJSON(res, 404, { error: 'Nu există AWB pentru acest segment.' });
       try {
         const statuses = legCourier === sameday ? await sameday.getAwbStatus(company, trackingNumber) : await gls.getParcelStatus(company, trackingNumber);
