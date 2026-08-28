@@ -81,9 +81,9 @@ function fmtShortDate(date) {
 function stageStatusLabel(stage, section) {
   if (section === 'schimb') {
     const map = {
-      pickup_awb_issued: 'AWB colet la schimb emis',
-      in_transit_to_service: 'În curs de schimb',
-      at_service: 'Schimb finalizat',
+      pickup_awb_issued: 'AWB emis',
+      in_transit_to_service: 'In drum spre client',
+      at_service: 'Colet livrat',
     };
     return map[stage] || 'Neridicat încă';
   }
@@ -97,6 +97,26 @@ function stageStatusLabel(stage, section) {
     delivered_to_client: 'Livrat la client',
   };
   return map[stage] || 'Neridicat încă';
+}
+
+/** Statusul AWB-ului RETUR, la Colet la Schimb (ridicarea produsului vechi de la client) — independent de statusul AWB-ului tur. */
+function stageSecondaryStatusLabel(secondaryStage, hasSecondaryAwb) {
+  if (!hasSecondaryAwb) return '—';
+  const map = {
+    awb_issued: 'AWB emis',
+    picked_up: 'Schimb Ridicate',
+    delivered: 'Schimb Livrat',
+  };
+  return map[secondaryStage] || 'AWB emis';
+}
+
+function stageSecondaryDotColor(secondaryStage) {
+  const map = {
+    awb_issued: 'var(--status-open)',
+    picked_up: 'var(--status-in_progress)',
+    delivered: 'var(--status-resolved)',
+  };
+  return map[secondaryStage] || 'var(--status-open)';
 }
 
 /** Eticheta pentru coloana "Unde e marfa" — locația fizică reală, nu statusul AWB-ului. */
@@ -959,6 +979,7 @@ async function renderServiceReturnList(route, section) {
       listBody.innerHTML = `<div class="panel" style="text-align:center;color:var(--text-dim);">Niciun tichet în această categorie.</div>`;
     } else {
       const showRefundSelect = section === 'retur' && activeLocation === 'readyRefund';
+      const isSchimb = section === 'schimb';
       const tableRows = rows.map((t) => {
         const order = linkedOrders[t.id];
         const product = order?.lineItems?.[0]
@@ -966,12 +987,18 @@ async function renderServiceReturnList(route, section) {
           : escapeHtml(t.subject);
         const deadline = computeDeadline(t);
         const overdue = isPastDeadline(t);
+        const statusColumns = isSchimb ? `
+          <div><span class="status-pill" style="cursor:default;padding:5px 11px;"><span class="status-pill-dot" style="background:${stageDotColor(t.stage)};"></span>${stageStatusLabel(t.stage, t.section)}</span></div>
+          <div><span class="status-pill" style="cursor:default;padding:5px 11px;"><span class="status-pill-dot" style="background:${stageSecondaryDotColor(t.pickupAwbSecondaryStage)};"></span>${stageSecondaryStatusLabel(t.pickupAwbSecondaryStage, Boolean(t.pickupAwbSecondaryNumber))}</span></div>
+        ` : `
+          <div><span class="status-pill ${['at_service', 'delivered_to_client'].includes(t.stage) && t.stage === 'delivered_to_client' ? 'status-pill-filled-green' : ''}" style="cursor:default;padding:5px 11px;"><span class="status-pill-dot" style="background:${stageDotColor(t.stage)};"></span>${stageStatusLabel(t.stage, t.section)}</span></div>
+          <div style="color:var(--text-secondary);font-size:12.5px;">${stageLocationLabel(t.stage, t.section)}</div>
+        `;
         return `
         <div class="service-row" data-id="${t.id}">
           <div class="service-cod">${showRefundSelect ? `<input type="checkbox" class="refund-select-cb" data-id="${t.id}" ${selectedRefundTicketIds.has(t.id) ? 'checked' : ''} style="margin-right:8px;vertical-align:middle;" />` : ''}${escapeHtml(t.sectionCode || t.id)}</div>
           <div class="order-platform"><span class="platform-dot"></span>${escapeHtml(platformLabel)}</div>
-          <div><span class="status-pill ${['at_service', 'delivered_to_client'].includes(t.stage) && (t.section === 'schimb' || t.stage === 'delivered_to_client') ? 'status-pill-filled-green' : ''}" style="cursor:default;padding:5px 11px;"><span class="status-pill-dot" style="background:${stageDotColor(t.stage)};"></span>${stageStatusLabel(t.stage, t.section)}</span></div>
-          <div style="color:var(--text-secondary);font-size:12.5px;">${stageLocationLabel(t.stage, t.section)}</div>
+          ${statusColumns}
           <div class="order-id">${order ? `#${order.mpId}` : '—'}</div>
           <div class="t-title" style="font-size:13px;">${escapeHtml(t.requesterName)}${t.refundPaidAt ? ' <span style="color:var(--status-resolved);" title="Bani Returnați">✓</span>' : ''}</div>
           <div class="t-requester" style="font-size:12.5px;color:var(--text-secondary);">${product}</div>
@@ -982,7 +1009,9 @@ async function renderServiceReturnList(route, section) {
       listBody.innerHTML = `
         <div class="ticket-table">
           <div class="service-row header">
-            <div>COD</div><div>CANAL</div><div>STATUS</div><div>UNDE E MARFA</div><div>COMANDĂ</div><div>CLIENT</div><div>PRODUS</div><div>TERMEN 7 ZILE</div>
+            ${isSchimb
+              ? '<div>COD</div><div>CANAL</div><div>STATUS TUR</div><div>STATUS RETUR</div><div>COMANDĂ</div><div>CLIENT</div><div>PRODUS</div><div>TERMEN 7 ZILE</div>'
+              : '<div>COD</div><div>CANAL</div><div>STATUS</div><div>UNDE E MARFA</div><div>COMANDĂ</div><div>CLIENT</div><div>PRODUS</div><div>TERMEN 7 ZILE</div>'}
           </div>
           ${tableRows}
         </div>
@@ -1372,6 +1401,9 @@ async function paintTicketDrawer(ticket) {
                 <div class="sub" style="margin:16px 0 6px;font-weight:600;">Retur (ridicare produs vechi)</div>
                 <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid var(--border);">
                   <div style="font-family:var(--font-mono);font-size:13px;color:var(--accent);font-weight:600;">${escapeHtml(ticket.pickupAwbSecondaryNumber)}</div>
+                  <div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--text-secondary);">
+                    <span class="status-pill-dot" style="background:${stageSecondaryDotColor(ticket.pickupAwbSecondaryStage)};"></span>${stageSecondaryStatusLabel(ticket.pickupAwbSecondaryStage, true)}
+                  </div>
                 </div>
                 <div class="hint" style="margin-bottom:8px;">Generat automat de Sameday, odată cu AWB-ul de tur. Se anulează manual din panoul Sameday, dacă e cazul.</div>
                 <div class="btn-row">
@@ -1665,8 +1697,21 @@ async function paintTicketDrawer(ticket) {
     const refreshSecondaryBtn = content.querySelector('#refreshSecondaryStatusBtn');
     const viewSecondaryTrackingBtn = content.querySelector('#viewSecondaryTrackingBtn');
     const secondaryTrackingBox = content.querySelector('#secondaryTrackingBox');
-    if (refreshSecondaryBtn && secondaryTrackingBox) {
-      refreshSecondaryBtn.addEventListener('click', () => handleViewTracking('secondary', secondaryTrackingBox));
+    if (refreshSecondaryBtn) {
+      refreshSecondaryBtn.addEventListener('click', async () => {
+        const original = refreshSecondaryBtn.textContent;
+        refreshSecondaryBtn.disabled = true;
+        refreshSecondaryBtn.textContent = 'Se verifică…';
+        try {
+          ticket = await api(`/api/tickets/${ticket.id}/refresh-secondary-status`, { method: 'POST' });
+          showToast('Status retur actualizat');
+          paint();
+        } catch (err) {
+          showToast('Eroare: ' + err.message);
+          refreshSecondaryBtn.disabled = false;
+          refreshSecondaryBtn.textContent = original;
+        }
+      });
     }
     if (viewSecondaryTrackingBtn && secondaryTrackingBox) {
       viewSecondaryTrackingBtn.addEventListener('click', () => handleViewTracking('secondary', secondaryTrackingBox));

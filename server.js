@@ -911,6 +911,32 @@ async function handleApi(req, res, pathname, query) {
       return sendJSON(res, 200, updated);
     }
 
+    const refreshSecondaryMatch = pathname.match(/^\/api\/tickets\/([^/]+)\/refresh-secondary-status$/);
+    if (refreshSecondaryMatch && req.method === 'POST') {
+      const ticket = db.getTicket(currentAgent.companyId, refreshSecondaryMatch[1]);
+      if (!ticket) return sendJSON(res, 404, { error: 'Tichet negăsit' });
+      if (!ticket.pickupAwbSecondaryNumber) return sendJSON(res, 400, { error: 'Tichetul nu are AWB secundar (retur).' });
+      // AWB-ul secundar exista doar la Sameday (Colet la Schimb)
+      try {
+        const statuses = await sameday.getAwbStatus(company, ticket.pickupAwbSecondaryNumber);
+        const delivered = statuses.some((s) => /livrat|delivered|predat destinatar|handed over/i.test(s.StatusDescription || ''));
+        const pickedUp = statuses.some((s) => /preluat|ridicat|colectat|picked ?up|pickup|a p[ăa]r[ăa]sit/i.test(s.StatusDescription || ''));
+
+        let newStage = ticket.pickupAwbSecondaryStage || 'awb_issued';
+        if (newStage === 'awb_issued') {
+          if (delivered) newStage = 'delivered';
+          else if (pickedUp) newStage = 'picked_up';
+        } else if (newStage === 'picked_up') {
+          if (delivered) newStage = 'delivered';
+        }
+
+        const updated = db.updateTicketPickupSecondaryStage(currentAgent.companyId, ticket.id, newStage, currentAgent);
+        return sendJSON(res, 200, { ...updated, trackingEventsCount: statuses.length });
+      } catch (e) {
+        return sendJSON(res, 502, { error: e.message });
+      }
+    }
+
     const trackingMatch = pathname.match(/^\/api\/tickets\/([^/]+)\/awb-tracking$/);
     if (trackingMatch && req.method === 'GET') {
       const ticket = db.getTicket(currentAgent.companyId, trackingMatch[1]);
