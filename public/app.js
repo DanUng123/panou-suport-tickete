@@ -973,7 +973,7 @@ async function renderServiceReturnList(route, section) {
           <div><span class="status-pill ${['at_service', 'delivered_to_client'].includes(t.stage) && (t.section === 'schimb' || t.stage === 'delivered_to_client') ? 'status-pill-filled-green' : ''}" style="cursor:default;padding:5px 11px;"><span class="status-pill-dot" style="background:${stageDotColor(t.stage)};"></span>${stageStatusLabel(t.stage, t.section)}</span></div>
           <div style="color:var(--text-secondary);font-size:12.5px;">${stageLocationLabel(t.stage, t.section)}</div>
           <div class="order-id">${order ? `#${order.mpId}` : '—'}</div>
-          <div class="t-title" style="font-size:13px;">${escapeHtml(t.requesterName)}</div>
+          <div class="t-title" style="font-size:13px;">${escapeHtml(t.requesterName)}${t.refundPaidAt ? ' <span style="color:var(--status-resolved);" title="Bani Returnați">✓</span>' : ''}</div>
           <div class="t-requester" style="font-size:12.5px;color:var(--text-secondary);">${product}</div>
           <div style="font-size:12px;color:${overdue ? 'var(--priority-urgent)' : 'var(--text-dim)'};white-space:nowrap;">${deadline ? `⏱ ${fmtShortDate(deadline)}` : '—'}</div>
         </div>`;
@@ -1011,7 +1011,7 @@ async function renderServiceReturnList(route, section) {
 
   const bulkRefundExportBtn = content.querySelector('#bulkRefundExportBtn');
   if (bulkRefundExportBtn) {
-    bulkRefundExportBtn.addEventListener('click', () => {
+    bulkRefundExportBtn.addEventListener('click', async () => {
       if (!selectedRefundTicketIds.size) { showToast('Selectează cel puțin un tichet.'); return; }
       const selectedTickets = allTickets.filter((t) => selectedRefundTicketIds.has(t.id));
       const ws = XLSX.utils.json_to_sheet(selectedTickets.map((t) => ({
@@ -1025,6 +1025,18 @@ async function renderServiceReturnList(route, section) {
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Date bancare');
       XLSX.writeFile(wb, `date-bancare-retur-${new Date().toISOString().slice(0, 10)}.xlsx`);
+
+      try {
+        const idsToMark = Array.from(selectedRefundTicketIds);
+        await api('/api/tickets/mark-refund-paid-bulk', { method: 'POST', body: JSON.stringify({ ticketIds: idsToMark }) });
+        const markedSet = new Set(idsToMark);
+        allTickets.forEach((t) => { if (markedSet.has(t.id)) t.refundPaidAt = new Date().toISOString(); });
+        showToast(`${idsToMark.length} tichete marcate „Bani Returnați"`);
+        selectedRefundTicketIds.clear();
+        renderAll();
+      } catch (e) {
+        showToast('Export reușit, dar marcarea a eșuat: ' + e.message);
+      }
     });
   }
 
@@ -1297,6 +1309,7 @@ async function paintTicketDrawer(ticket) {
               <span class="badge badge-priority-${ticket.priority}">${PRIORITY_LABELS[ticket.priority]}</span>
               ${ticket.section === 'service' ? '<span class="badge badge-status-in_progress">🔧 Service</span>' : ''}
               ${ticket.section === 'retur' ? '<span class="badge badge-priority-urgent">↩ Retur</span>' : ''}
+              ${ticket.refundPaidAt ? '<span class="badge" style="background:rgba(107,196,130,0.18);color:var(--status-resolved);border:1px solid rgba(107,196,130,0.4);">✓ Bani Returnați</span>' : ''}
               ${ticket.stage ? `<span class="badge" style="background:rgba(255,255,255,0.06);"><span class="status-pill-dot" style="background:${stageDotColor(ticket.stage)};"></span>${stageStatusLabel(ticket.stage, ticket.section)}</span>` : ''}
               ${computeDeadline(ticket) ? `<span class="badge" style="background:rgba(255,255,255,0.06);color:${isPastDeadline(ticket) ? 'var(--priority-urgent)' : 'var(--text-secondary)'};">⏱ ${fmtShortDate(computeDeadline(ticket))}</span>` : ''}
               ${relatedOrder ? `<span class="badge badge-status-waiting" id="relatedOrderLink" style="cursor:pointer;">📦 Comandă #${relatedOrder.mpId}</span>` : ''}
@@ -1723,13 +1736,27 @@ async function paintTicketDrawer(ticket) {
       });
     }
 
+    async function markRefundPaidAndRepaint() {
+      if (ticket.refundPaidAt) return; // deja marcat, nu mai facem un apel inutil
+      try {
+        ticket = await api(`/api/tickets/${ticket.id}/mark-refund-paid`, { method: 'POST' });
+        paint();
+      } catch (e) { /* n-o blocam pe utilizator daca marcarea esueaza */ }
+    }
+
     const downloadRefundPdfBtn = content.querySelector('#downloadRefundPdfBtn');
     if (downloadRefundPdfBtn) {
-      downloadRefundPdfBtn.addEventListener('click', () => window.open(`/api/tickets/${ticket.id}/refund-label.pdf`, '_blank'));
+      downloadRefundPdfBtn.addEventListener('click', () => {
+        window.open(`/api/tickets/${ticket.id}/refund-label.pdf`, '_blank');
+        markRefundPaidAndRepaint();
+      });
     }
     const downloadRefundCsvBtn = content.querySelector('#downloadRefundCsvBtn');
     if (downloadRefundCsvBtn) {
-      downloadRefundCsvBtn.addEventListener('click', () => window.open(`/api/tickets/${ticket.id}/refund-label.csv`, '_blank'));
+      downloadRefundCsvBtn.addEventListener('click', () => {
+        window.open(`/api/tickets/${ticket.id}/refund-label.csv`, '_blank');
+        markRefundPaidAndRepaint();
+      });
     }
     const cancelRefundInfoBtn = content.querySelector('#cancelRefundInfoBtn');
     if (cancelRefundInfoBtn) {

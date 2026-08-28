@@ -996,6 +996,23 @@ async function handleApi(req, res, pathname, query) {
       return sendJSON(res, 200, updated);
     }
 
+    const markRefundPaidMatch = pathname.match(/^\/api\/tickets\/([^/]+)\/mark-refund-paid$/);
+    if (markRefundPaidMatch && req.method === 'POST') {
+      const ticket = db.getTicket(currentAgent.companyId, markRefundPaidMatch[1]);
+      if (!ticket) return sendJSON(res, 404, { error: 'Tichet negăsit' });
+      const updated = db.markTicketRefundPaid(currentAgent.companyId, ticket.id, currentAgent);
+      return sendJSON(res, 200, updated);
+    }
+
+    if (pathname === '/api/tickets/mark-refund-paid-bulk' && req.method === 'POST') {
+      const body = await readBody(req);
+      if (!Array.isArray(body.ticketIds) || !body.ticketIds.length) {
+        return sendJSON(res, 400, { error: 'Lipsesc id-urile tichetelor.' });
+      }
+      const result = db.markTicketsRefundPaidBulk(currentAgent.companyId, body.ticketIds, currentAgent);
+      return sendJSON(res, 200, result);
+    }
+
     const refundLabelMatch = pathname.match(/^\/api\/tickets\/([^/]+)\/refund-label\.(pdf|csv)$/);
     if (refundLabelMatch && req.method === 'GET') {
       const ticket = db.getTicket(currentAgent.companyId, refundLabelMatch[1]);
