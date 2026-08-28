@@ -775,9 +775,10 @@ async function renderDashboard() {
   `);
   renderShell('#/dashboard', content);
 
+  const todayRange = computePeriodRange('today');
   const [stats, orderStats, serviceTickets, returTickets, schimbTickets, allTickets] = await Promise.all([
     api('/api/stats'),
-    api('/api/orders/stats').catch(() => null),
+    api(`/api/orders/stats?dateFrom=${encodeURIComponent(todayRange.dateFrom)}&dateTo=${encodeURIComponent(todayRange.dateTo)}`).catch(() => null),
     api('/api/tickets?section=service').catch(() => []),
     api('/api/tickets?section=retur').catch(() => []),
     api('/api/tickets?section=schimb').catch(() => []),
