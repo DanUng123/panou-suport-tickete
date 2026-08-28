@@ -1127,4 +1127,21 @@ server.listen(PORT, () => {
   console.log(`Ticket support app rulează pe http://localhost:${PORT}`);
   const syncIntervalMs = Number(process.env.MERCHANTPRO_SYNC_INTERVAL_MS || 2 * 60 * 1000);
   orderSync.startBackgroundSync(syncIntervalMs);
+
+  // curatare periodica a etichetelor AWB vechi (peste 30 de zile) -- pastram
+  // doar numarul AWB, nu si PDF-ul greu; ruleaza o data la pornire, apoi o
+  // data pe zi. Daca cineva mai are nevoie de o eticheta veche, se re-cere
+  // live de la curier (fallback deja existent in rutele de mai sus).
+  const AWB_LABEL_RETENTION_DAYS = 30;
+  function runAwbLabelCleanup() {
+    try {
+      const result = db.purgeOldAwbLabels(AWB_LABEL_RETENTION_DAYS);
+      const total = result.orders + result.ticketsPickup + result.ticketsReturn;
+      if (total > 0) console.log(`Curățare etichete AWB vechi (>${AWB_LABEL_RETENTION_DAYS} zile): ${total} șterse (${result.orders} comenzi, ${result.ticketsPickup} ridicări, ${result.ticketsReturn} retururi).`);
+    } catch (e) {
+      console.error('Eroare la curățarea etichetelor AWB vechi:', e.message);
+    }
+  }
+  runAwbLabelCleanup();
+  setInterval(runAwbLabelCleanup, 24 * 60 * 60 * 1000);
 });
