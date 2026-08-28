@@ -335,7 +335,8 @@ async function boot() {
     await loadReferenceData();
     render();
   } catch (e) {
-    renderLogin();
+    currentAgent = null;
+    render();
   }
 }
 
@@ -686,8 +687,8 @@ function renderSignup(errorMsg) {
 async function logout() {
   await api('/api/logout', { method: 'POST' });
   currentAgent = null;
-  app.innerHTML = '';
-  renderLogin();
+  window.location.hash = '#/login';
+  render();
 }
 
 // ---------------- shell (sidebar + main) ----------------
