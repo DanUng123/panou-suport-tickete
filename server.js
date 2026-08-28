@@ -1156,6 +1156,23 @@ async function handleApi(req, res, pathname, query) {
 }
 
 const server = http.createServer((req, res) => {
+  // antete de securitate, aplicate la fiecare raspuns -- vezi ce resurse
+  // externe chiar foloseste aplicatia (fonturi Google, biblioteca XLSX de pe
+  // cdnjs), ca sa nu blocam din greseala ceva ce functioneaza deja
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains');
+  res.setHeader('Content-Security-Policy', [
+    "default-src 'self'",
+    "script-src 'self' https://cdnjs.cloudflare.com",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com", // 'unsafe-inline' necesar -- interfata foloseste stiluri inline extensiv
+    "font-src 'self' https://fonts.gstatic.com",
+    "img-src 'self' data:",
+    "connect-src 'self'",
+    "frame-ancestors 'none'",
+  ].join('; '));
+
   const parsed = url.parse(req.url, true);
   const pathname = parsed.pathname;
 
