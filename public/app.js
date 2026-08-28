@@ -791,8 +791,9 @@ async function renderServiceReturnList(route, section) {
         <div class="segmented-group" id="locationRow" style="margin-bottom:18px;"></div>
       ` : ''}
       ${section === 'retur' ? `
-        <div id="bulkRefundExportArea" style="display:none;margin-bottom:14px;">
-          <button class="btn btn-sm btn-primary" id="bulkRefundExportBtn">↓ Descarcă date bancare (<span id="bulkRefundCount">0</span> tichete)</button>
+        <div id="bulkRefundExportArea" style="display:none;margin-bottom:14px;gap:8px;align-items:center;">
+          <button class="btn btn-sm" id="selectAllRefundBtn">Selectează toate</button>
+          <button class="btn btn-sm btn-primary" id="bulkRefundExportBtn">↓ Descarcă date bancare (<span id="bulkRefundCount">0</span> selectate)</button>
         </div>
       ` : ''}
       <div id="list-body">Se încarcă…</div>
@@ -829,6 +830,11 @@ async function renderServiceReturnList(route, section) {
   let activeLocation = LOCATION_KEYS_BY_SECTION[section]?.includes(initialFilters.loc) ? initialFilters.loc : 'picked';
   let activeTab = initialFilters.tab || 'all';
   let searchQuery = initialFilters.q || '';
+  const selectedRefundTicketIds = new Set(); // pentru selectia manuala de export in "Gata de Retur"
+  function updateBulkRefundExportLabel() {
+    const countSpan = content.querySelector('#bulkRefundCount');
+    if (countSpan) countSpan.textContent = selectedRefundTicketIds.size;
+  }
 
   function updateUrlSilently() {
     const params = new URLSearchParams();
@@ -893,16 +899,22 @@ async function renderServiceReturnList(route, section) {
       });
       tickets = locationBuckets[activeLocation];
 
-      // export in bloc, doar cand suntem in "Gata de Retur" si sunt 2+ tichete
+      // export in bloc, doar cand suntem in "Gata de Retur" si sunt 2+ tichete acolo
       const bulkExportArea = content.querySelector('#bulkRefundExportArea');
       if (bulkExportArea) {
         if (activeLocation === 'readyRefund' && locationBuckets.readyRefund.length > 1) {
-          bulkExportArea.style.display = '';
-          bulkExportArea.querySelector('#bulkRefundCount').textContent = locationBuckets.readyRefund.length;
+          bulkExportArea.style.display = 'flex';
+          // curatam din selectie orice id care nu mai e in lista curenta (ex: iban sters between timp)
+          const readyIds = new Set(locationBuckets.readyRefund.map((t) => t.id));
+          for (const id of Array.from(selectedRefundTicketIds)) {
+            if (!readyIds.has(id)) selectedRefundTicketIds.delete(id);
+          }
+          updateBulkRefundExportLabel();
         } else {
           bulkExportArea.style.display = 'none';
         }
       }
+
     }
 
     const buckets = {
@@ -946,6 +958,7 @@ async function renderServiceReturnList(route, section) {
     if (!rows.length) {
       listBody.innerHTML = `<div class="panel" style="text-align:center;color:var(--text-dim);">Niciun tichet în această categorie.</div>`;
     } else {
+      const showRefundSelect = section === 'retur' && activeLocation === 'readyRefund';
       const tableRows = rows.map((t) => {
         const order = linkedOrders[t.id];
         const product = order?.lineItems?.[0]
@@ -955,7 +968,7 @@ async function renderServiceReturnList(route, section) {
         const overdue = isPastDeadline(t);
         return `
         <div class="service-row" data-id="${t.id}">
-          <div class="service-cod">${escapeHtml(t.sectionCode || t.id)}</div>
+          <div class="service-cod">${showRefundSelect ? `<input type="checkbox" class="refund-select-cb" data-id="${t.id}" ${selectedRefundTicketIds.has(t.id) ? 'checked' : ''} style="margin-right:8px;vertical-align:middle;" />` : ''}${escapeHtml(t.sectionCode || t.id)}</div>
           <div class="order-platform"><span class="platform-dot"></span>${escapeHtml(platformLabel)}</div>
           <div><span class="status-pill ${['at_service', 'delivered_to_client'].includes(t.stage) && (t.section === 'schimb' || t.stage === 'delivered_to_client') ? 'status-pill-filled-green' : ''}" style="cursor:default;padding:5px 11px;"><span class="status-pill-dot" style="background:${stageDotColor(t.stage)};"></span>${stageStatusLabel(t.stage, t.section)}</span></div>
           <div style="color:var(--text-secondary);font-size:12.5px;">${stageLocationLabel(t.stage, t.section)}</div>
@@ -980,6 +993,17 @@ async function renderServiceReturnList(route, section) {
           openTicketDrawer(row.dataset.id);
         });
       });
+
+      if (showRefundSelect) {
+        listBody.querySelectorAll('.refund-select-cb').forEach((cb) => {
+          cb.addEventListener('click', (e) => e.stopPropagation()); // nu deschide tichetul la bifare
+          cb.addEventListener('change', () => {
+            if (cb.checked) selectedRefundTicketIds.add(cb.dataset.id);
+            else selectedRefundTicketIds.delete(cb.dataset.id);
+            updateBulkRefundExportLabel();
+          });
+        });
+      }
     }
   }
 
@@ -988,9 +1012,9 @@ async function renderServiceReturnList(route, section) {
   const bulkRefundExportBtn = content.querySelector('#bulkRefundExportBtn');
   if (bulkRefundExportBtn) {
     bulkRefundExportBtn.addEventListener('click', () => {
-      const readyTickets = allTickets.filter((t) => t.stage === 'at_service' && t.refundIban);
-      if (readyTickets.length < 2) { showToast('Nu sunt suficiente tichete gata de retur.'); return; }
-      const ws = XLSX.utils.json_to_sheet(readyTickets.map((t) => ({
+      if (!selectedRefundTicketIds.size) { showToast('Selectează cel puțin un tichet.'); return; }
+      const selectedTickets = allTickets.filter((t) => selectedRefundTicketIds.has(t.id));
+      const ws = XLSX.utils.json_to_sheet(selectedTickets.map((t) => ({
         Tichet: t.sectionCode || t.id,
         Client: t.requesterName || '',
         IBAN: t.refundIban || '',
@@ -1001,6 +1025,20 @@ async function renderServiceReturnList(route, section) {
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Date bancare');
       XLSX.writeFile(wb, `date-bancare-retur-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    });
+  }
+
+  const selectAllRefundBtn = content.querySelector('#selectAllRefundBtn');
+  if (selectAllRefundBtn) {
+    selectAllRefundBtn.addEventListener('click', () => {
+      const readyTickets = allTickets.filter((t) => t.stage === 'at_service' && t.refundIban);
+      const allSelected = readyTickets.every((t) => selectedRefundTicketIds.has(t.id));
+      if (allSelected) {
+        selectedRefundTicketIds.clear(); // toate erau deja bifate -- debifam tot
+      } else {
+        readyTickets.forEach((t) => selectedRefundTicketIds.add(t.id));
+      }
+      renderAll();
     });
   }
 
