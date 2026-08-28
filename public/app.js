@@ -368,7 +368,7 @@ const MARKETING_NAV_LINKS = [
 function renderMarketingShell(activeRoute, innerHtml) {
   app.innerHTML = '';
   const page = el(`
-    <div style="min-height:100vh;display:flex;flex-direction:column;background:var(--bg);">
+    <div style="min-height:100vh;width:100%;display:flex;flex-direction:column;background:var(--bg);">
       <header style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;padding:18px 32px;border-bottom:1px solid var(--border);">
         <div style="display:flex;align-items:center;gap:10px;cursor:pointer;" id="marketingLogo">
           <div style="width:32px;height:32px;border-radius:8px;background:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;">S</div>
