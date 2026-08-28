@@ -166,6 +166,21 @@ async function handleApi(req, res, pathname, query) {
   try {
     // ---- auth ----
 
+    if (pathname === '/api/public/contact' && req.method === 'POST') {
+      const body = await readBody(req);
+      const name = (body.name || '').trim();
+      const email = (body.email || '').trim();
+      const message = (body.message || '').trim();
+      if (!name || !email || !message) {
+        return sendJSON(res, 400, { error: 'Toate câmpurile sunt obligatorii.' });
+      }
+      if (message.length > 5000) {
+        return sendJSON(res, 400, { error: 'Mesajul e prea lung.' });
+      }
+      const result = db.createContactMessage({ name, email, message });
+      return sendJSON(res, 201, result);
+    }
+
     if (pathname === '/api/signup' && req.method === 'POST') {
       const body = await readBody(req);
       const companyName = (body.companyName || '').trim();

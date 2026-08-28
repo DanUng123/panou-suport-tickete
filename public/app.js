@@ -354,6 +354,217 @@ async function loadReferenceData() {
 
 // ---------------- ecran login ----------------
 
+// ---------------- Pagini publice (marketing) — inainte de autentificare ----------------
+
+const MARKETING_NAV_LINKS = [
+  { route: '#/acasa', label: 'Acasă' },
+  { route: '#/ce-este', label: 'Ce este' },
+  { route: '#/preturi', label: 'Prețuri' },
+  { route: '#/despre', label: 'Despre' },
+  { route: '#/contact', label: 'Contact' },
+];
+
+function renderMarketingShell(activeRoute, innerHtml) {
+  app.innerHTML = '';
+  const page = el(`
+    <div style="min-height:100vh;display:flex;flex-direction:column;background:var(--bg);">
+      <header style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;padding:18px 32px;border-bottom:1px solid var(--border);">
+        <div style="display:flex;align-items:center;gap:10px;cursor:pointer;" id="marketingLogo">
+          <div style="width:32px;height:32px;border-radius:8px;background:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;">S</div>
+          <div style="font-weight:700;font-size:16px;">SuportMaster</div>
+        </div>
+        <nav style="display:flex;gap:4px;flex-wrap:wrap;">
+          ${MARKETING_NAV_LINKS.map((l) => `<a href="${l.route}" class="marketing-nav-link" data-route="${l.route}" style="padding:8px 14px;border-radius:6px;font-size:13.5px;text-decoration:none;color:${activeRoute === l.route ? 'var(--text)' : 'var(--text-secondary)'};background:${activeRoute === l.route ? 'var(--surface-raised)' : 'transparent'};">${l.label}</a>`).join('')}
+        </nav>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-sm" id="marketingLoginBtn">Autentificare</button>
+          <button class="btn btn-sm btn-primary" id="marketingSignupBtn">Creează cont</button>
+        </div>
+      </header>
+      <main style="flex:1;">${innerHtml}</main>
+      <footer style="border-top:1px solid var(--border);padding:28px 32px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;color:var(--text-dim);font-size:12.5px;">
+        <div>© ${new Date().getFullYear()} SuportMaster. Toate drepturile rezervate.</div>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;">
+          ${MARKETING_NAV_LINKS.map((l) => `<a href="${l.route}" class="marketing-nav-link" data-route="${l.route}" style="color:var(--text-dim);text-decoration:none;">${l.label}</a>`).join('')}
+        </div>
+      </footer>
+    </div>
+  `);
+  app.appendChild(page);
+
+  page.querySelector('#marketingLogo').addEventListener('click', () => navigate('#/acasa'));
+  page.querySelector('#marketingLoginBtn').addEventListener('click', () => navigate('#/login'));
+  page.querySelector('#marketingSignupBtn').addEventListener('click', () => navigate('#/signup'));
+  page.querySelectorAll('.marketing-nav-link').forEach((link) => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      navigate(link.dataset.route);
+    });
+  });
+  return page;
+}
+
+function renderMarketingHome() {
+  renderMarketingShell('#/acasa', `
+    <section style="max-width:920px;margin:0 auto;padding:80px 24px 60px;text-align:center;">
+      <div style="display:inline-block;padding:6px 14px;border-radius:20px;background:var(--surface-raised);color:var(--accent);font-size:12.5px;font-weight:600;margin-bottom:20px;">Platformă pentru magazine online din România</div>
+      <h1 style="font-size:40px;line-height:1.15;margin-bottom:16px;">Suport clienți, comenzi și curieri — totul dintr-un singur loc</h1>
+      <p style="font-size:16px;color:var(--text-secondary);max-width:640px;margin:0 auto 32px;">SuportMaster unește tichetele de service, retur și schimb, sincronizarea automată a comenzilor din MerchantPro, și generarea AWB-urilor cu GLS și Sameday — într-o singură platformă, gândită pentru echipe reale.</p>
+      <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+        <button class="btn btn-primary" id="heroSignupBtn" style="padding:12px 24px;font-size:14.5px;">Creează cont gratuit</button>
+        <button class="btn" id="heroPricingBtn" style="padding:12px 24px;font-size:14.5px;">Vezi prețurile</button>
+      </div>
+    </section>
+
+    <section style="max-width:1080px;margin:0 auto;padding:20px 24px 80px;">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px;">
+        ${[
+          { icon: '🎫', title: 'Tichete Service, Retur, Schimb', desc: 'Fiecare tip de solicitare are propriul flux, cu etape urmărite automat, de la ridicare până la finalizare.' },
+          { icon: '📦', title: 'Curieri conectați direct', desc: 'AWB-uri generate și urmărite automat prin GLS și Sameday, fără să părăsești platforma.' },
+          { icon: '🔄', title: 'Comenzi sincronizate din MerchantPro', desc: 'Comenzile intră automat, la interval regulat, fără introducere manuală.' },
+          { icon: '👥', title: 'Multi-companie, izolat complet', desc: 'Fiecare firmă are datele ei separate — perfect pentru echipe sau clienți multipli.' },
+        ].map((f) => `
+          <div class="panel">
+            <div style="font-size:26px;margin-bottom:10px;">${f.icon}</div>
+            <div style="font-weight:600;margin-bottom:6px;">${f.title}</div>
+            <div style="font-size:13px;color:var(--text-secondary);line-height:1.5;">${f.desc}</div>
+          </div>
+        `).join('')}
+      </div>
+    </section>
+
+    <section style="text-align:center;padding:20px 24px 90px;">
+      <h2 style="font-size:24px;margin-bottom:12px;">Gata să simplifici procesul de suport?</h2>
+      <p style="color:var(--text-secondary);margin-bottom:24px;">Pornește gratuit — devii automat manager pe contul companiei tale.</p>
+      <button class="btn btn-primary" id="ctaSignupBtn" style="padding:12px 24px;font-size:14.5px;">Creează cont gratuit</button>
+    </section>
+  `);
+  document.getElementById('heroSignupBtn').addEventListener('click', () => navigate('#/signup'));
+  document.getElementById('heroPricingBtn').addEventListener('click', () => navigate('#/preturi'));
+  document.getElementById('ctaSignupBtn').addEventListener('click', () => navigate('#/signup'));
+}
+
+function renderMarketingWhatIs() {
+  const sections = [
+    { title: 'Tichete de suport, pe trei fluxuri dedicate', body: 'Service, Retur și Colet la Schimb au fiecare propriul flux — de la generarea AWB-ului de ridicare, până la finalizare. Etapele se actualizează automat, pe baza statusului real de la curier, sau manual, când e nevoie.' },
+    { title: 'Curieri integrați direct — GLS și Sameday', body: 'Generezi eticheta, urmărești traseul, descarci PDF-ul — totul din tichet, fără să deschizi panoul curierului separat. La Colet la Schimb, ambele AWB-uri (tur și retur) sunt urmărite independent.' },
+    { title: 'Comenzi sincronizate automat din MerchantPro', body: 'Comenzile magazinului tău intră automat în platformă, la interval regulat, cu tot ce ai nevoie: status plată, status livrare, produse, sumă.' },
+    { title: 'Rambursări gestionate complet', body: 'Datele bancare (IBAN, titular, sumă) se colectează direct pe tichet, cu validare automată. Etichetele se generează individual sau în bloc, pentru mai multe tichete deodată.' },
+    { title: 'Bază de clienți, cu import din Excel', body: 'Încarci un fișier Excel cu clienți, platforma elimină automat duplicatele (după telefon) și normalizează formatele — pregătit pentru volume mari, de sute de mii de rânduri.' },
+    { title: 'Multi-companie, de la prima zi', body: 'Fiecare companie își gestionează propriii agenți, tichete, comenzi și credențiale de curier — complet izolat de restul companiilor de pe platformă.' },
+  ];
+  renderMarketingShell('#/ce-este', `
+    <section style="max-width:760px;margin:0 auto;padding:60px 24px;">
+      <h1 style="font-size:32px;margin-bottom:12px;">Ce este SuportMaster</h1>
+      <p style="color:var(--text-secondary);margin-bottom:40px;font-size:15px;">O platformă construită special pentru echipele de suport ale magazinelor online — unde tichetele, comenzile și curierii lucrează împreună, nu separat.</p>
+      ${sections.map((s) => `
+        <div style="margin-bottom:32px;padding-bottom:32px;border-bottom:1px solid var(--border);">
+          <h2 style="font-size:18px;margin-bottom:8px;">${s.title}</h2>
+          <p style="color:var(--text-secondary);font-size:14px;line-height:1.6;">${s.body}</p>
+        </div>
+      `).join('')}
+    </section>
+  `);
+}
+
+function renderMarketingPricing() {
+  const plans = [
+    {
+      name: 'Start', price: '100', popular: false,
+      features: ['Până la 2 agenți', 'Un curier conectat (GLS sau Sameday)', 'Tichete nelimitate', 'Sincronizare comenzi MerchantPro', 'Suport prin email'],
+    },
+    {
+      name: 'Business', price: '200', popular: true,
+      features: ['Până la 5 agenți', 'Ambii curieri (GLS + Sameday)', 'Tichete și comenzi nelimitate', 'Gestionare rambursări (IBAN)', 'Import/export clienți din Excel', 'Suport prioritar'],
+    },
+    {
+      name: 'Enterprise', price: '300', popular: false,
+      features: ['Agenți nelimitați', 'Ambii curieri, plus prioritate la sincronizare', 'Import clienți la volum mare (sute de mii)', 'Export în bloc, date bancare', 'Suport dedicat, cu timp de răspuns garantat'],
+    },
+  ];
+  renderMarketingShell('#/preturi', `
+    <section style="max-width:1080px;margin:0 auto;padding:60px 24px;">
+      <div style="text-align:center;margin-bottom:48px;">
+        <h1 style="font-size:32px;margin-bottom:12px;">Prețuri simple, fără costuri ascunse</h1>
+        <p style="color:var(--text-secondary);font-size:15px;">Alege planul potrivit pentru mărimea echipei tale. Poți schimba planul oricând.</p>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px;align-items:start;">
+        ${plans.map((p) => `
+          <div class="panel" style="${p.popular ? 'border-color:var(--accent);position:relative;' : ''}">
+            ${p.popular ? '<div style="position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:var(--accent);color:#fff;font-size:11px;font-weight:600;padding:4px 12px;border-radius:12px;">Cel mai popular</div>' : ''}
+            <div style="font-weight:600;font-size:16px;margin-bottom:4px;">${p.name}</div>
+            <div style="margin-bottom:16px;"><span style="font-size:32px;font-weight:700;">${p.price}</span> <span style="color:var(--text-secondary);font-size:13px;">RON/lună</span></div>
+            <ul style="list-style:none;padding:0;margin:0 0 20px;display:flex;flex-direction:column;gap:10px;">
+              ${p.features.map((f) => `<li style="font-size:13px;color:var(--text-secondary);display:flex;gap:8px;align-items:flex-start;"><span style="color:var(--status-resolved);">✓</span>${f}</li>`).join('')}
+            </ul>
+            <button class="btn ${p.popular ? 'btn-primary' : ''} btn-block plan-signup-btn">Alege ${p.name}</button>
+          </div>
+        `).join('')}
+      </div>
+    </section>
+  `);
+  document.querySelectorAll('.plan-signup-btn').forEach((btn) => btn.addEventListener('click', () => navigate('#/signup')));
+}
+
+function renderMarketingAbout() {
+  renderMarketingShell('#/despre', `
+    <section style="max-width:720px;margin:0 auto;padding:60px 24px;">
+      <h1 style="font-size:32px;margin-bottom:20px;">Despre SuportMaster</h1>
+      <p style="color:var(--text-secondary);font-size:15px;line-height:1.7;margin-bottom:20px;">SuportMaster s-a născut dintr-o nevoie simplă: echipele care gestionează suportul clienților pentru magazine online lucrează în prea multe locuri deodată — un panou pentru tichete, altul pentru curieri, altul pentru comenzi. Am construit o singură platformă care le aduce pe toate laolaltă.</p>
+      <p style="color:var(--text-secondary);font-size:15px;line-height:1.7;margin-bottom:20px;">Fiecare funcționalitate a platformei — de la urmărirea automată a AWB-urilor, până la gestionarea rambursărilor — a plecat de la un proces real, folosit zilnic de o echipă de suport, nu de la o listă abstractă de funcții.</p>
+      <p style="color:var(--text-secondary);font-size:15px;line-height:1.7;">Platforma e construită pentru magazine online din România, cu integrări directe către curierii și platforma de eCommerce pe care le folosești deja.</p>
+    </section>
+  `);
+}
+
+function renderMarketingContact() {
+  const page = renderMarketingShell('#/contact', `
+    <section style="max-width:560px;margin:0 auto;padding:60px 24px;">
+      <h1 style="font-size:32px;margin-bottom:12px;">Contact</h1>
+      <p style="color:var(--text-secondary);font-size:14.5px;margin-bottom:32px;">Ai o întrebare despre platformă? Scrie-ne — revenim cât mai curând.</p>
+      <form id="contactForm">
+        <div class="field">
+          <label>Nume</label>
+          <input type="text" id="contactName" required />
+        </div>
+        <div class="field">
+          <label>Email</label>
+          <input type="email" id="contactEmail" required />
+        </div>
+        <div class="field">
+          <label>Mesaj</label>
+          <textarea id="contactMessage" style="min-height:120px;" required></textarea>
+        </div>
+        <button class="btn btn-primary btn-block" type="submit">Trimite mesajul</button>
+        <div id="contactResult" style="margin-top:14px;"></div>
+      </form>
+    </section>
+  `);
+
+  page.querySelector('#contactForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = page.querySelector('button[type="submit"]');
+    const resultBox = page.querySelector('#contactResult');
+    const payload = {
+      name: page.querySelector('#contactName').value.trim(),
+      email: page.querySelector('#contactEmail').value.trim(),
+      message: page.querySelector('#contactMessage').value.trim(),
+    };
+    btn.disabled = true;
+    btn.textContent = 'Se trimite…';
+    try {
+      await api('/api/public/contact', { method: 'POST', body: JSON.stringify(payload) });
+      resultBox.innerHTML = `<div class="hint" style="background:rgba(107,196,130,0.1);border:1px solid rgba(107,196,130,0.3);border-radius:8px;padding:10px 12px;">✓ Mesaj trimis — revenim cât mai curând.</div>`;
+      page.querySelector('#contactForm').reset();
+    } catch (err) {
+      resultBox.innerHTML = `<div class="error-msg">${escapeHtml(err.message)}</div>`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Trimite mesajul';
+    }
+  });
+}
+
 function renderLogin(errorMsg) {
   app.innerHTML = '';
   const card = el(`
@@ -387,7 +598,7 @@ function renderLogin(errorMsg) {
 
   card.querySelector('#goSignup').addEventListener('click', (e) => {
     e.preventDefault();
-    renderSignup();
+    navigate('#/signup');
   });
 
   card.querySelector('#login-form').addEventListener('submit', async (e) => {
@@ -446,7 +657,7 @@ function renderSignup(errorMsg) {
 
   card.querySelector('#goLogin').addEventListener('click', (e) => {
     e.preventDefault();
-    renderLogin();
+    navigate('#/login');
   });
 
   card.querySelector('#signup-form').addEventListener('submit', async (e) => {
@@ -3430,7 +3641,15 @@ function paintClientMapping(content, getRows, getHeaders, onImported, onLastImpo
 
 function render() {
   if (!currentAgent) {
-    renderLogin();
+    const publicHash = window.location.hash || '#/acasa';
+    const publicPath = publicHash.split('?')[0];
+    if (publicPath === '#/login') { renderLogin(); return; }
+    if (publicPath === '#/signup') { renderSignup(); return; }
+    if (publicPath === '#/ce-este') { renderMarketingWhatIs(); return; }
+    if (publicPath === '#/preturi') { renderMarketingPricing(); return; }
+    if (publicPath === '#/despre') { renderMarketingAbout(); return; }
+    if (publicPath === '#/contact') { renderMarketingContact(); return; }
+    renderMarketingHome();
     return;
   }
   const hash = window.location.hash || '#/dashboard';
