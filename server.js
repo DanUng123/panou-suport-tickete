@@ -988,6 +988,14 @@ async function handleApi(req, res, pathname, query) {
       return sendJSON(res, 200, updated);
     }
 
+    const clearRefundInfoMatch = pathname.match(/^\/api\/tickets\/([^/]+)\/refund-info$/);
+    if (clearRefundInfoMatch && req.method === 'DELETE') {
+      const ticket = db.getTicket(currentAgent.companyId, clearRefundInfoMatch[1]);
+      if (!ticket) return sendJSON(res, 404, { error: 'Tichet negăsit' });
+      const updated = db.clearTicketRefundInfo(currentAgent.companyId, ticket.id, currentAgent);
+      return sendJSON(res, 200, updated);
+    }
+
     const refundLabelMatch = pathname.match(/^\/api\/tickets\/([^/]+)\/refund-label\.(pdf|csv)$/);
     if (refundLabelMatch && req.method === 'GET') {
       const ticket = db.getTicket(currentAgent.companyId, refundLabelMatch[1]);

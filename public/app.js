@@ -787,8 +787,13 @@ async function renderServiceReturnList(route, section) {
       <div class="filters-search-row">
         <input type="text" id="q" placeholder="Caută: cod, comandă, client, produs, AWB…" value="${escapeHtml(initialFilters.q || '')}" />
       </div>
-      ${section === 'service' ? `
+      ${section === 'service' || section === 'retur' ? `
         <div class="segmented-group" id="locationRow" style="margin-bottom:18px;"></div>
+      ` : ''}
+      ${section === 'retur' ? `
+        <div id="bulkRefundExportArea" style="display:none;margin-bottom:14px;">
+          <button class="btn btn-sm btn-primary" id="bulkRefundExportBtn">↓ Descarcă date bancare (<span id="bulkRefundCount">0</span> tichete)</button>
+        </div>
       ` : ''}
       <div id="list-body">Se încarcă…</div>
     </div>
@@ -817,7 +822,11 @@ async function renderServiceReturnList(route, section) {
   }
 
   // stare locala (nu mai citim din URL la fiecare click -- doar la incarcarea initiala)
-  let activeLocation = section === 'service' && ['inservice', 'returned'].includes(initialFilters.loc) ? initialFilters.loc : 'picked';
+  const LOCATION_KEYS_BY_SECTION = {
+    service: ['picked', 'inservice', 'returned'],
+    retur: ['picked', 'waitingIban', 'readyRefund'],
+  };
+  let activeLocation = LOCATION_KEYS_BY_SECTION[section]?.includes(initialFilters.loc) ? initialFilters.loc : 'picked';
   let activeTab = initialFilters.tab || 'all';
   let searchQuery = initialFilters.q || '';
 
@@ -856,6 +865,44 @@ async function renderServiceReturnList(route, section) {
         });
       });
       tickets = locationBuckets[activeLocation];
+    }
+
+    // pentru Retur: la fel, dar a treia sectiune depinde si de IBAN completat,
+    // nu doar de starea curierului -- mutarea in "Gata de Retur" se intampla
+    // automat doar dupa salvarea datelor bancare (vezi butonul din tichet)
+    if (section === 'retur') {
+      const locationBuckets = {
+        picked: allTickets.filter((t) => t.pickupAwbNumber && ['pickup_awb_issued', 'in_transit_to_service'].includes(t.stage)),
+        waitingIban: allTickets.filter((t) => t.stage === 'at_service' && !t.refundIban),
+        readyRefund: allTickets.filter((t) => t.stage === 'at_service' && t.refundIban),
+      };
+      const locationTabs = [
+        { key: 'picked', label: 'Colete Ridicate' },
+        { key: 'waitingIban', label: 'In așteptare IBAN' },
+        { key: 'readyRefund', label: 'Gata de Retur' },
+      ];
+      content.querySelector('#locationRow').innerHTML = locationTabs.map((t) =>
+        `<button class="status-pill ${activeLocation === t.key ? 'active' : ''}" data-loc="${t.key}">${t.label}<span class="status-pill-count">${locationBuckets[t.key].length}</span></button>`
+      ).join('');
+      content.querySelectorAll('#locationRow .status-pill').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          activeLocation = btn.dataset.loc;
+          updateUrlSilently();
+          renderAll();
+        });
+      });
+      tickets = locationBuckets[activeLocation];
+
+      // export in bloc, doar cand suntem in "Gata de Retur" si sunt 2+ tichete
+      const bulkExportArea = content.querySelector('#bulkRefundExportArea');
+      if (bulkExportArea) {
+        if (activeLocation === 'readyRefund' && locationBuckets.readyRefund.length > 1) {
+          bulkExportArea.style.display = '';
+          bulkExportArea.querySelector('#bulkRefundCount').textContent = locationBuckets.readyRefund.length;
+        } else {
+          bulkExportArea.style.display = 'none';
+        }
+      }
     }
 
     const buckets = {
@@ -937,6 +984,25 @@ async function renderServiceReturnList(route, section) {
   }
 
   renderAll();
+
+  const bulkRefundExportBtn = content.querySelector('#bulkRefundExportBtn');
+  if (bulkRefundExportBtn) {
+    bulkRefundExportBtn.addEventListener('click', () => {
+      const readyTickets = allTickets.filter((t) => t.stage === 'at_service' && t.refundIban);
+      if (readyTickets.length < 2) { showToast('Nu sunt suficiente tichete gata de retur.'); return; }
+      const ws = XLSX.utils.json_to_sheet(readyTickets.map((t) => ({
+        Tichet: t.sectionCode || t.id,
+        Client: t.requesterName || '',
+        IBAN: t.refundIban || '',
+        'Titular cont': t.refundAccountHolder || '',
+        'Sumă (RON)': t.refundAmount != null ? t.refundAmount : '',
+        Motiv: t.refundReason || '',
+      })));
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Date bancare');
+      XLSX.writeFile(wb, `date-bancare-retur-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    });
+  }
 
   let qTimer;
   content.querySelector('#q').addEventListener('input', () => {
@@ -1176,6 +1242,16 @@ async function paintTicketDrawer(ticket) {
                 </div>
               </div>
             ` : ''}
+            ${ticket.section === 'retur' ? `
+              <div style="position:absolute;top:16px;right:16px;">
+                <button class="btn btn-sm" id="manualMoveBtn">↕ Mută tichetul manual</button>
+                <div id="manualMoveMenu" style="display:none;position:absolute;top:calc(100% + 6px);right:0;background:var(--surface-raised);border:1px solid var(--border);border-radius:8px;padding:6px;min-width:190px;z-index:20;box-shadow:0 4px 16px rgba(0,0,0,0.3);">
+                  <button class="btn btn-sm manual-move-option" data-stage="pickup_awb_issued" style="width:100%;justify-content:flex-start;margin-bottom:4px;">Colete Ridicate</button>
+                  <button class="btn btn-sm manual-move-option" data-stage="at_service" style="width:100%;justify-content:flex-start;margin-bottom:4px;">In așteptare IBAN</button>
+                  <button class="btn btn-sm manual-move-option" data-stage="at_service" data-require-iban="1" style="width:100%;justify-content:flex-start;">Gata de Retur</button>
+                </div>
+              </div>
+            ` : ''}
             <div class="t-id">${ticket.sectionCode ? escapeHtml(ticket.sectionCode) : ticket.id}</div>
             <h1>${escapeHtml(ticket.subject)}</h1>
             <div class="badges-row">
@@ -1346,6 +1422,7 @@ async function paintTicketDrawer(ticket) {
                 <div class="btn-row">
                   <button class="btn" id="downloadRefundPdfBtn">↓ Etichetă PDF</button>
                   <button class="btn" id="downloadRefundCsvBtn">↓ Exportă CSV (Excel)</button>
+                  <button class="btn" id="cancelRefundInfoBtn" style="color:var(--priority-urgent);">Anulează datele bancare</button>
                 </div>
               ` : '<div class="hint">Completează IBAN și suma, apoi salvează, ca să poți genera eticheta.</div>'}
             </div>
@@ -1380,6 +1457,10 @@ async function paintTicketDrawer(ticket) {
       document.addEventListener('click', () => { manualMoveMenu.style.display = 'none'; }, { once: true });
       content.querySelectorAll('.manual-move-option').forEach((btn) => {
         btn.addEventListener('click', async () => {
+          if (btn.dataset.requireIban === '1' && !ticket.refundIban) {
+            showToast('Completează IBAN-ul mai întâi.');
+            return;
+          }
           try {
             ticket = await api(`/api/tickets/${ticket.id}/set-stage`, { method: 'POST', body: JSON.stringify({ stage: btn.dataset.stage }) });
             showToast('Tichet mutat');
@@ -1611,6 +1692,19 @@ async function paintTicketDrawer(ticket) {
     const downloadRefundCsvBtn = content.querySelector('#downloadRefundCsvBtn');
     if (downloadRefundCsvBtn) {
       downloadRefundCsvBtn.addEventListener('click', () => window.open(`/api/tickets/${ticket.id}/refund-label.csv`, '_blank'));
+    }
+    const cancelRefundInfoBtn = content.querySelector('#cancelRefundInfoBtn');
+    if (cancelRefundInfoBtn) {
+      cancelRefundInfoBtn.addEventListener('click', async () => {
+        if (!confirm('Ștergi datele bancare salvate? Tichetul va reveni în „In așteptare IBAN".')) return;
+        try {
+          ticket = await api(`/api/tickets/${ticket.id}/refund-info`, { method: 'DELETE' });
+          showToast('Date bancare șterse');
+          paint();
+        } catch (err) {
+          showToast('Eroare: ' + err.message);
+        }
+      });
     }
 
     content.querySelector('#commentForm').addEventListener('submit', async (e) => {
