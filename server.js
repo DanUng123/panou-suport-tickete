@@ -78,6 +78,38 @@ function clearFailedAttempts(agentId) {
   loginAttempts.delete(agentId);
 }
 
+// ---------- limitare generala de rata, pe adresa IP ----------
+// Fereastra fixa, simpla, in memorie -- suficienta pentru o instanta unica.
+// Curatare periodica, ca sa nu creasca la nesfarsit (vezi mai jos, la finalul fisierului).
+const rateLimitBuckets = new Map(); // "scope:ip" -> { count, windowStart }
+
+function getClientIp(req) {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (forwarded) return forwarded.split(',')[0].trim();
+  return req.socket.remoteAddress || 'unknown';
+}
+
+/** Intoarce true daca cererea trebuie respinsa (prea multe, prea repede). */
+function isRateLimited(scope, req, maxRequests, windowMs) {
+  const key = `${scope}:${getClientIp(req)}`;
+  const now = Date.now();
+  const entry = rateLimitBuckets.get(key);
+  if (!entry || now - entry.windowStart > windowMs) {
+    rateLimitBuckets.set(key, { count: 1, windowStart: now });
+    return false;
+  }
+  entry.count += 1;
+  return entry.count > maxRequests;
+}
+
+// curatare periodica a bucket-urilor vechi, ca Map-ul sa nu creasca la nesfarsit
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of rateLimitBuckets) {
+    if (now - entry.windowStart > 10 * 60 * 1000) rateLimitBuckets.delete(key);
+  }
+}, 10 * 60 * 1000);
+
 // ---------- utilitare HTTP ----------
 
 function sendJSON(res, status, data) {
@@ -164,9 +196,18 @@ function serveStatic(req, res, pathname) {
 
 async function handleApi(req, res, pathname, query) {
   try {
+    // limita generala, pe orice cerere -- protejeaza serverul (un singur
+    // proces) de bombardare, accidentala sau intentionata
+    if (isRateLimited('general', req, 300, 60 * 1000)) {
+      return sendJSON(res, 429, { error: 'Prea multe cereri. Încearcă din nou peste puțin timp.' });
+    }
+
     // ---- auth ----
 
     if (pathname === '/api/public/contact' && req.method === 'POST') {
+      if (isRateLimited('contact', req, 5, 10 * 60 * 1000)) {
+        return sendJSON(res, 429, { error: 'Prea multe mesaje trimise. Încearcă din nou mai târziu.' });
+      }
       const body = await readBody(req);
       const name = (body.name || '').trim();
       const email = (body.email || '').trim();
@@ -182,6 +223,9 @@ async function handleApi(req, res, pathname, query) {
     }
 
     if (pathname === '/api/signup' && req.method === 'POST') {
+      if (isRateLimited('signup', req, 5, 10 * 60 * 1000)) {
+        return sendJSON(res, 429, { error: 'Prea multe încercări. Încearcă din nou mai târziu.' });
+      }
       const body = await readBody(req);
       const companyName = (body.companyName || '').trim();
       const agentName = (body.agentName || '').trim();
