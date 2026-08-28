@@ -273,6 +273,7 @@ function closeDrawer() {
   hideDrawer();
   if (currentMainRoute) {
     history.pushState(null, '', currentMainRoute);
+    render(); // reimprospatam lista de dedesubt -- un tichet poate fi ajuns intre timp intr-un alt tab (schimbare de status/etapa in panou)
   }
 }
 
