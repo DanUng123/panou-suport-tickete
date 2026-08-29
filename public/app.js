@@ -794,38 +794,7 @@ async function renderDashboard() {
   const schimbActive = schimbTickets.filter(isActive);
   const overdueAll = [...serviceTickets, ...returTickets, ...schimbTickets].filter((t) => isPastDeadline(t));
 
-  const openish = allTickets.filter((t) => t.section === 'support' && ['open', 'in_progress', 'waiting'].includes(t.status)).slice(0, 6);
   const unassignedOpen = allTickets.filter((t) => !t.assignedTo && ['open', 'in_progress', 'waiting'].includes(t.status));
-
-  const maxCat = Math.max(1, ...Object.values(stats.byCategory));
-  const catBars = Object.entries(stats.byCategory)
-    .sort((a, b) => b[1] - a[1])
-    .map(([cat, count]) => `
-      <div class="bar-row">
-        <div class="bar-label">${escapeHtml(cat)}</div>
-        <div class="bar-track"><div class="bar-fill" style="width:${(count / maxCat) * 100}%"></div></div>
-        <div class="bar-count">${count}</div>
-      </div>
-    `).join('') || '<div class="empty">Niciun tichet încă.</div>';
-
-  const workload = Object.entries(stats.byAgentOpenCount).sort((a, b) => b[1] - a[1]);
-  const maxWork = Math.max(1, ...workload.map((w) => w[1]));
-  const workloadBars = workload.map(([agentId, count]) => `
-      <div class="bar-row">
-        <div class="bar-label">${escapeHtml(agentName(agentId))}</div>
-        <div class="bar-track"><div class="bar-fill" style="width:${(count / maxWork) * 100}%"></div></div>
-        <div class="bar-count">${count}</div>
-      </div>
-  `).join('') || '<div class="empty">Nimic asignat momentan.</div>';
-
-  const queueItems = openish.map((t) => `
-    <div class="queue-item" data-id="${t.id}">
-      <span class="badge badge-priority-${t.priority}">${PRIORITY_LABELS[t.priority]}</span>
-      <span class="qid">${t.id.replace('TCK_', '#')}</span>
-      <span class="qsubject">${escapeHtml(t.subject)}</span>
-      <span class="badge badge-status-${t.status}">${STATUS_LABELS[t.status]}</span>
-    </div>
-  `).join('') || '<div class="empty">Coada e goală — bravo echipei!</div>';
 
   // ---- feed unificat "Necesita atentie azi" ----
   const attentionRows = [
@@ -863,27 +832,78 @@ async function renderDashboard() {
       <div>${attentionHtml}</div>
     </div>
 
-    <div class="dash-grid">
-      <div class="panel">
-        <h2>Coadă prioritară — tichete suport</h2>
-        <div>${queueItems}</div>
+    <div class="panel">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:14px;">
+        <h2 style="margin:0;">Analiză Service / Retur / Colet la Schimb</h2>
+        <div id="analyticsPeriodPicker"></div>
       </div>
-      <div>
-        <div class="panel" style="margin-bottom:16px;">
-          <h2>Tichete pe categorie</h2>
-          ${catBars}
-        </div>
-        <div class="panel">
-          <h2>Volum activ pe agent</h2>
-          ${workloadBars}
-        </div>
-      </div>
+      <div id="analyticsBody">Se încarcă…</div>
     </div>
   `;
 
   body.querySelectorAll('.queue-item').forEach((item) => {
     item.addEventListener('click', () => openTicketDrawerCrossLink(item.dataset.id));
   });
+
+  await renderProductAnalytics(body.querySelector('#analyticsPeriodPicker'), body.querySelector('#analyticsBody'));
+}
+
+async function renderProductAnalytics(pickerContainer, analyticsBody) {
+  let filters = { dateFrom: '', dateTo: '' }; // implicit: "Toate" (fara filtrare de data)
+
+  async function loadAnalytics() {
+    analyticsBody.innerHTML = 'Se încarcă…';
+    try {
+      const params = new URLSearchParams();
+      if (filters.dateFrom) params.set('dateFrom', filters.dateFrom);
+      if (filters.dateTo) params.set('dateTo', filters.dateTo);
+      const data = await api(`/api/product-analytics?${params.toString()}`);
+
+      const topList = (items, emptyMsg) => {
+        if (!items.length) return `<div class="empty">${emptyMsg}</div>`;
+        const max = Math.max(1, ...items.map((p) => p.count));
+        return items.map((p) => `
+          <div class="bar-row">
+            <div class="bar-label">${escapeHtml(p.name)}</div>
+            <div class="bar-track"><div class="bar-fill" style="width:${(p.count / max) * 100}%"></div></div>
+            <div class="bar-count">${p.count}</div>
+          </div>
+        `).join('');
+      };
+
+      analyticsBody.innerHTML = `
+        <div class="stat-grid" style="grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));margin-bottom:20px;">
+          <div class="stat-tile"><span class="corner-dot" style="background:var(--status-in_progress);"></span><div class="label">Retururi</div><div class="value">${data.counts.retur}</div></div>
+          <div class="stat-tile"><span class="corner-dot" style="background:var(--status-waiting);"></span><div class="label">Colete la Schimb</div><div class="value">${data.counts.schimb}</div></div>
+          <div class="stat-tile"><span class="corner-dot" style="background:var(--status-open);"></span><div class="label">Colete în Service</div><div class="value">${data.counts.service}</div></div>
+        </div>
+        <div class="dash-grid">
+          <div class="panel">
+            <h2>Produse cel mai des returnate</h2>
+            ${topList(data.topReturProducts, 'Niciun retur în această perioadă.')}
+          </div>
+          <div>
+            <div class="panel" style="margin-bottom:16px;">
+              <h2>Produse cel mai des la Schimb</h2>
+              ${topList(data.topSchimbProducts, 'Niciun colet la schimb în această perioadă.')}
+            </div>
+            <div class="panel">
+              <h2>Produse care revin cel mai des în Service</h2>
+              ${topList(data.topServiceProducts, 'Niciun tichet de service în această perioadă.')}
+            </div>
+          </div>
+        </div>
+      `;
+    } catch (e) {
+      analyticsBody.innerHTML = `<div class="error-msg">${escapeHtml(e.message)}</div>`;
+    }
+  }
+
+  renderPeriodPicker(pickerContainer, filters, (range) => {
+    filters = range;
+    loadAnalytics();
+  });
+  await loadAnalytics();
 }
 
 // ---------------- Listă tichete ----------------

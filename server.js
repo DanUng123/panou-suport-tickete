@@ -528,6 +528,10 @@ async function handleApi(req, res, pathname, query) {
       return sendJSON(res, 200, db.getOrderStats(currentAgent.companyId, { dateFrom: query.dateFrom || undefined, dateTo: query.dateTo || undefined }));
     }
 
+    if (pathname === '/api/product-analytics' && req.method === 'GET') {
+      return sendJSON(res, 200, db.getProductAnalytics(currentAgent.companyId, { dateFrom: query.dateFrom || undefined, dateTo: query.dateTo || undefined }));
+    }
+
     if (pathname === '/api/orders' && req.method === 'GET') {
       const filters = {
         shippingStatus: query.shippingStatus || undefined,
