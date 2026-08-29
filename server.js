@@ -40,8 +40,51 @@ function getAgentFromRequest(req) {
     sessions.delete(token);
     return null;
   }
-  return db.findAgentById(entry.agentId);
+  const agent = db.findAgentById(entry.agentId);
+  if (!agent) return null;
+  // daca intre timp compania a fost dezactivata (din panoul de administrare
+  // al platformei), blocam si sesiunile deja active, nu doar login-urile noi
+  if (!db.isCompanyActive(agent.companyId)) {
+    sessions.delete(token);
+    return null;
+  }
+  return agent;
 }
+
+// ---------- sesiuni SEPARATE pentru panoul de administrare al platformei ----------
+// Complet distincte de sesiunile agentilor -- cookie diferit, nicio legatura
+// cu vreo companie. Autentificare cu o parola unica, din variabila de mediu
+// PLATFORM_ADMIN_PASSWORD (setata pe Render, nu stocata in baza de date).
+const platformAdminSessions = new Map();
+const PLATFORM_ADMIN_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+
+function createPlatformAdminSession() {
+  const token = crypto.randomBytes(24).toString('hex');
+  platformAdminSessions.set(token, { expiresAt: Date.now() + PLATFORM_ADMIN_SESSION_TTL_MS });
+  return token;
+}
+
+function isPlatformAdminRequest(req) {
+  const cookie = req.headers.cookie || '';
+  const match = cookie.match(/(?:^|;\s*)platformAdminSession=([^;]+)/);
+  if (!match) return false;
+  const token = match[1];
+  const entry = platformAdminSessions.get(token);
+  if (!entry) return false;
+  if (Date.now() > entry.expiresAt) {
+    platformAdminSessions.delete(token);
+    return false;
+  }
+  return true;
+}
+
+// curatare periodica a sesiunilor de admin expirate
+setInterval(() => {
+  const now = Date.now();
+  for (const [token, s] of platformAdminSessions) {
+    if (now > s.expiresAt) platformAdminSessions.delete(token);
+  }
+}, 60 * 60 * 1000);
 
 // ---------- protectie brute-force la login ----------
 // Blocheaza temporar un cont dupa prea multe incercari esuate consecutive.
@@ -284,6 +327,52 @@ async function handleApi(req, res, pathname, query) {
       if (!agent || !agent.active) return sendJSON(res, 401, { error: 'Neautentificat' });
       const { passwordHash, password, ...safe } = agent;
       return sendJSON(res, 200, { ...safe, active: !!safe.active });
+    }
+
+    // ---- panoul de administrare al platformei (creatorul platformei, nu un manager de companie) ----
+
+    if (pathname === '/api/platform-admin/login' && req.method === 'POST') {
+      if (isRateLimited('platform-admin-login', req, 5, 10 * 60 * 1000)) {
+        return sendJSON(res, 429, { error: 'Prea multe încercări. Încearcă din nou peste câteva minute.' });
+      }
+      const adminPassword = process.env.PLATFORM_ADMIN_PASSWORD;
+      if (!adminPassword) {
+        return sendJSON(res, 503, { error: 'Panoul de administrare nu este configurat pe server (lipsește PLATFORM_ADMIN_PASSWORD).' });
+      }
+      const body = await readBody(req);
+      if (body.password !== adminPassword) {
+        return sendJSON(res, 401, { error: 'Parolă incorectă.' });
+      }
+      const token = createPlatformAdminSession();
+      res.setHeader('Set-Cookie', `platformAdminSession=${token}; HttpOnly; Secure; Path=/; SameSite=Lax`);
+      return sendJSON(res, 200, { ok: true });
+    }
+
+    if (pathname === '/api/platform-admin/session' && req.method === 'GET') {
+      if (!isPlatformAdminRequest(req)) return sendJSON(res, 401, { error: 'Neautentificat' });
+      return sendJSON(res, 200, { ok: true });
+    }
+
+    if (pathname === '/api/platform-admin/logout' && req.method === 'POST') {
+      const cookieHeader = req.headers.cookie || '';
+      const match = cookieHeader.match(/(?:^|;\s*)platformAdminSession=([^;]+)/);
+      if (match) platformAdminSessions.delete(match[1]);
+      res.setHeader('Set-Cookie', 'platformAdminSession=; HttpOnly; Secure; Path=/; Max-Age=0');
+      return sendJSON(res, 200, { ok: true });
+    }
+
+    if (pathname === '/api/platform-admin/companies' && req.method === 'GET') {
+      if (!isPlatformAdminRequest(req)) return sendJSON(res, 401, { error: 'Neautentificat' });
+      return sendJSON(res, 200, db.listAllCompaniesForAdmin());
+    }
+
+    const toggleCompanyMatch = pathname.match(/^\/api\/platform-admin\/companies\/([^/]+)\/active$/);
+    if (toggleCompanyMatch && req.method === 'POST') {
+      if (!isPlatformAdminRequest(req)) return sendJSON(res, 401, { error: 'Neautentificat' });
+      const body = await readBody(req);
+      const ok = db.setCompanyActive(toggleCompanyMatch[1], Boolean(body.active));
+      if (!ok) return sendJSON(res, 404, { error: 'Companie negăsită' });
+      return sendJSON(res, 200, { ok: true });
     }
 
     // toate rutele de mai jos necesită autentificare

@@ -567,6 +567,142 @@ function renderMarketingContact() {
   });
 }
 
+// ---------------- Panoul de administrare al platformei (creatorul platformei) ----------------
+// Complet separat de autentificarea normala de agent/companie -- propria
+// sesiune, propriul cookie, propria parola (din PLATFORM_ADMIN_PASSWORD).
+
+async function renderPlatformAdminGate() {
+  try {
+    await api('/api/platform-admin/session');
+    renderPlatformAdminPanel();
+  } catch (e) {
+    renderPlatformAdminLogin();
+  }
+}
+
+function renderPlatformAdminLogin(errorMsg) {
+  app.innerHTML = '';
+  const card = el(`
+    <div class="auth-screen">
+      <div class="auth-card">
+        <div class="auth-brand">
+          <div class="mark">⚙</div>
+          <div class="name">Administrare Platformă</div>
+        </div>
+        <h1>Autentificare</h1>
+        <p class="sub">Acces rezervat creatorului platformei.</p>
+        ${errorMsg ? `<div class="error-msg">${escapeHtml(errorMsg)}</div>` : ''}
+        <form id="platform-admin-login-form">
+          <div class="field">
+            <label for="paPassword">Parolă</label>
+            <input type="password" id="paPassword" placeholder="••••••••" required autofocus />
+          </div>
+          <button class="btn btn-primary btn-block" type="submit">Autentificare</button>
+        </form>
+      </div>
+    </div>
+  `);
+  app.appendChild(card);
+
+  card.querySelector('#platform-admin-login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const password = card.querySelector('#paPassword').value;
+    try {
+      await api('/api/platform-admin/login', { method: 'POST', body: JSON.stringify({ password }) });
+      renderPlatformAdminPanel();
+    } catch (err) {
+      renderPlatformAdminLogin(err.message);
+    }
+  });
+}
+
+async function renderPlatformAdminPanel() {
+  app.innerHTML = '';
+  const page = el(`
+    <div style="min-height:100vh;width:100%;background:var(--bg);">
+      <header style="display:flex;align-items:center;justify-content:space-between;padding:16px 28px;border-bottom:1px solid var(--border);">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="width:30px;height:30px;border-radius:8px;background:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;">⚙</div>
+          <div style="font-weight:700;font-size:15px;">Administrare Platformă</div>
+        </div>
+        <button class="btn btn-sm" id="platformAdminLogoutBtn">Ieși din cont</button>
+      </header>
+      <main style="padding:28px 32px;">
+        <div class="page-header">
+          <div>
+            <h1>Toate companiile</h1>
+            <div class="sub">Activează sau dezactivează accesul oricărei companii de pe platformă.</div>
+          </div>
+        </div>
+        <div class="panel">
+          <div id="companiesListArea">Se încarcă…</div>
+        </div>
+      </main>
+    </div>
+  `);
+  app.appendChild(page);
+
+  page.querySelector('#platformAdminLogoutBtn').addEventListener('click', async () => {
+    await api('/api/platform-admin/logout', { method: 'POST' });
+    window.location.hash = '#/platform-admin';
+    render();
+  });
+
+  async function loadCompanies() {
+    const listArea = page.querySelector('#companiesListArea');
+    try {
+      const companies = await api('/api/platform-admin/companies');
+      if (!companies.length) {
+        listArea.innerHTML = '<div class="hint">Nicio companie înregistrată încă.</div>';
+        return;
+      }
+      const headerHtml = `
+        <div style="display:flex;align-items:center;gap:12px;padding:6px 0 8px;border-bottom:2px solid var(--border);font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.03em;">
+          <div style="flex:1.5;min-width:0;">Companie</div>
+          <div style="flex:1;min-width:0;">Înregistrată</div>
+          <div style="flex:0.7;min-width:0;">Agenți</div>
+          <div style="flex:0.8;min-width:0;">Status</div>
+          <div style="flex-shrink:0;width:110px;"></div>
+        </div>
+      `;
+      const rowsHtml = companies.map((c) => `
+        <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);font-size:13px;">
+          <div style="flex:1.5;min-width:0;font-weight:500;">${escapeHtml(c.name)}</div>
+          <div style="flex:1;min-width:0;color:var(--text-secondary);">${escapeHtml(fmtDate(c.createdAt))}</div>
+          <div style="flex:0.7;min-width:0;color:var(--text-secondary);">${c.agentCount}</div>
+          <div style="flex:0.8;min-width:0;">
+            <span class="badge" style="background:${c.active ? 'rgba(107,196,130,0.18)' : 'rgba(232,92,76,0.18)'};color:${c.active ? 'var(--status-resolved)' : 'var(--priority-urgent)'};">${c.active ? '✓ Activă' : '✕ Dezactivată'}</span>
+          </div>
+          <button class="btn btn-sm company-toggle-btn" data-id="${c.id}" data-active="${c.active}" style="flex-shrink:0;width:110px;${c.active ? 'color:var(--priority-urgent);' : 'color:var(--status-resolved);'}">${c.active ? 'Dezactivează' : 'Activează'}</button>
+        </div>
+      `).join('');
+      listArea.innerHTML = '';
+      listArea.appendChild(el(`<div>${headerHtml}${rowsHtml}</div>`));
+
+      listArea.querySelectorAll('.company-toggle-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const isActive = btn.dataset.active === 'true';
+          const newActive = !isActive;
+          const label = newActive ? 'activezi' : 'dezactivezi';
+          if (!confirm(`Ești sigur că ${label} această companie? ${!newActive ? 'Toți agenții ei vor fi deconectați imediat și nu se vor mai putea autentifica.' : ''}`)) return;
+          btn.disabled = true;
+          try {
+            await api(`/api/platform-admin/companies/${btn.dataset.id}/active`, { method: 'POST', body: JSON.stringify({ active: newActive }) });
+            showToast(newActive ? 'Companie activată' : 'Companie dezactivată');
+            loadCompanies();
+          } catch (e) {
+            showToast('Eroare: ' + e.message);
+            btn.disabled = false;
+          }
+        });
+      });
+    } catch (e) {
+      listArea.innerHTML = `<div class="error-msg">${escapeHtml(e.message)}</div>`;
+    }
+  }
+  loadCompanies();
+}
+
 function renderLogin(errorMsg) {
   app.innerHTML = '';
   const card = el(`
@@ -3663,6 +3799,13 @@ function paintClientMapping(content, getRows, getHeaders, onImported, onLastImpo
 // ---------------- router principal ----------------
 
 function render() {
+  // panoul de administrare al platformei -- complet separat de autentificarea
+  // normala de agent/companie, verificat inaintea oricarei alte logici
+  if ((window.location.hash || '').split('?')[0] === '#/platform-admin') {
+    renderPlatformAdminGate();
+    return;
+  }
+
   if (!currentAgent) {
     const publicHash = window.location.hash || '#/acasa';
     const publicPath = publicHash.split('?')[0];
