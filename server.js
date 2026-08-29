@@ -1254,17 +1254,17 @@ server.listen(PORT, () => {
   setInterval(runAwbLabelCleanup, 24 * 60 * 60 * 1000);
 
   // backup complet, garantat corect, al bazei de date -- o data la pornire,
-  // apoi o data pe zi. Pastreaza ultimele 14 fisiere, pe disc, langa baza de
-  // date. Un manager poate oricand descarca cel mai recent backup, ca sa
-  // pastreze si o copie IN AFARA discului Render (vezi ruta de mai jos).
-  function runDailyBackup() {
+  // apoi la fiecare 6 ore (limiteaza fereastra maxima de pierdere posibila,
+  // in caz de coruptie reala a bazei de date, la 6 ore, nu 24). Pastreaza
+  // ultimele 28 de fisiere (4/zi x 7 zile = o saptamana de istoric).
+  function runFrequentBackup() {
     try {
-      const backupPath = db.createBackup(14);
+      const backupPath = db.createBackup(28);
       console.log(`Backup creat: ${backupPath}`);
     } catch (e) {
       console.error('Eroare la crearea backup-ului:', e.message);
     }
   }
-  runDailyBackup();
-  setInterval(runDailyBackup, 24 * 60 * 60 * 1000);
+  runFrequentBackup();
+  setInterval(runFrequentBackup, 6 * 60 * 60 * 1000);
 });
