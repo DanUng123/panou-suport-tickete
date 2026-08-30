@@ -608,11 +608,20 @@ async function handleApi(req, res, pathname, query) {
     if (pathname === '/api/orders/sync-status' && req.method === 'GET') {
       const status = orderSync.getSyncStatus(company);
       let platformLabel = 'MERCHANTPRO';
-      try {
-        const host = new URL(company.merchantProShopUrl || '').hostname;
-        const bareHost = host.replace(/^www\./, '').split('.')[0];
-        if (bareHost) platformLabel = bareHost.toUpperCase();
-      } catch (e) { /* URL lipsa/invalida, pastram implicitul */ }
+      const urlToLabel = (url) => {
+        try {
+          const host = new URL(url || '').hostname;
+          const bareHost = host.replace(/^www\./, '').split('.')[0];
+          return bareHost ? bareHost.toUpperCase() : null;
+        } catch (e) { return null; }
+      };
+      // preferam sursa care e chiar configurata -- daca ambele sunt setate
+      // (rar), MerchantPro ramane implicit, pentru compatibilitate
+      if (mp.isConfigured(company)) {
+        platformLabel = urlToLabel(company.merchantProShopUrl) || platformLabel;
+      } else if (gomag.isConfigured(company)) {
+        platformLabel = urlToLabel(company.gomagShopUrl) || 'GOMAG';
+      }
       return sendJSON(res, 200, { ...status, platformLabel });
     }
 

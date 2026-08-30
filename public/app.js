@@ -2646,9 +2646,10 @@ async function renderOrdersList() {
   const rows = orders.map((o) => {
     const thumbs = (o.lineItems || []).slice(0, 3).map((it) => {
       const qtyBadge = it.quantity > 1 ? `<span class="thumb-qty-badge">×${it.quantity}</span>` : '';
+      const productName = it.product_name || '';
       const img = it.product_image_url
-        ? `<img class="order-thumb" src="${escapeHtml(it.product_image_url)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'order-thumb order-thumb-placeholder',textContent:'—'}))" />`
-        : `<div class="order-thumb order-thumb-placeholder">—</div>`;
+        ? `<img class="order-thumb" src="${escapeHtml(it.product_image_url)}" alt="" title="${escapeHtml(productName)}" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'order-thumb order-thumb-placeholder',textContent:'—'}))" />`
+        : `<div class="order-thumb order-thumb-placeholder" title="${escapeHtml(productName)}">—</div>`;
       return `<span class="order-thumb-wrap">${img}${qtyBadge}</span>`;
     }).join('');
     const extraCount = (o.lineItems || []).length - 3;
@@ -2669,7 +2670,7 @@ async function renderOrdersList() {
       </div>
       <div class="order-awb-status">
         <div class="awb-status-line"><span class="awb-status-dot ${o.awbNumber || o.shippingAwb ? 'has-awb' : ''}"></span>${o.awbNumber || o.shippingAwb ? 'AWB emis' : 'Fără AWB'}</div>
-        <div class="awb-status-sub">site: ${escapeHtml(SHIPPING_STATUS_LABELS_MP[o.shippingStatus] || o.shippingStatus || '—')}</div>
+        <div class="awb-status-sub">${escapeHtml(SHIPPING_STATUS_LABELS_MP[o.shippingStatus] || o.shippingStatusText || o.shippingStatus || '—')}</div>
       </div>
       <div class="order-invoice">${o.invoice && !o.invoice.cancelled ? `<span class="invoice-badge">${escapeHtml(o.invoice.prefix || '')}.${escapeHtml(o.invoice.number || '')}</span>` : '<span style="color:var(--text-dim);">—</span>'}</div>
       <div class="ticket-date">${fmtDate(o.dateCreated)}</div>
@@ -2741,7 +2742,7 @@ async function openOrderDrawer(orderId) {
         <span class="badge"><span class="platform-dot"></span>${escapeHtml(platformLabel)}</span>
         <span class="badge badge-status-closed">${escapeHtml(paymentMethodLabel(order))}</span>
         <span class="badge ${paymentBadgeClass(order.paymentStatus)}">${PAYMENT_STATUS_LABELS_MP[order.paymentStatus] || order.paymentStatus || '—'}</span>
-        <span class="badge ${shippingBadgeClass(order.shippingStatus)}">${SHIPPING_STATUS_LABELS_MP[order.shippingStatus] || order.shippingStatus || '—'}</span>
+        <span class="badge ${shippingBadgeClass(order.shippingStatus)}">${SHIPPING_STATUS_LABELS_MP[order.shippingStatus] || order.shippingStatusText || order.shippingStatus || '—'}</span>
         <div style="flex:1;"></div>
         <div style="font-size:22px;font-weight:700;">${fmtMoney(order.totalAmount, order.currency)}</div>
       </div>
@@ -2973,7 +2974,7 @@ async function openClientProfileDrawer({ phone, email, name }) {
             <strong>#${o.mpId}</strong>
             <span style="font-family:var(--font-mono);">${fmtMoney(o.totalAmount, o.currency)}</span>
           </div>
-          <div class="hint">${SHIPPING_STATUS_LABELS_MP[o.shippingStatus] || o.shippingStatus || '—'} · ${fmtDate(o.dateCreated)}</div>
+          <div class="hint">${SHIPPING_STATUS_LABELS_MP[o.shippingStatus] || o.shippingStatusText || o.shippingStatus || '—'} · ${fmtDate(o.dateCreated)}</div>
         </div>
       `).join('') : '<div class="hint">Nicio comandă găsită pentru acest client.</div>'}
     </div>
