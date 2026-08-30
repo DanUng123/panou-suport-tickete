@@ -504,6 +504,19 @@ async function handleApi(req, res, pathname, query) {
       });
     }
 
+    const toggleIntegrationMatch = pathname.match(/^\/api\/company\/integrations\/([^/]+)\/active$/);
+    if (toggleIntegrationMatch && req.method === 'POST') {
+      if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot activa/dezactiva integrările.' });
+      const integration = toggleIntegrationMatch[1];
+      if (!['merchantpro', 'gomag', 'gls', 'sameday'].includes(integration)) {
+        return sendJSON(res, 400, { error: 'Integrare necunoscută.' });
+      }
+      const body = await readBody(req);
+      const updated = db.setIntegrationActive(currentAgent.companyId, integration, Boolean(body.active));
+      const { merchantProApiSecret, glsPassword, samedayPassword, gomagApiKey, ...rest } = updated;
+      return sendJSON(res, 200, rest);
+    }
+
     if (pathname === '/api/company/settings/sameday-autofill' && req.method === 'POST') {
       if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot accesa setările companiei' });
       const body = await readBody(req);

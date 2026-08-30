@@ -3137,6 +3137,7 @@ async function renderAdmin() {
       <div class="admin-tabs">
         <button class="admin-tab active" data-tab="agents">Agenți</button>
         <button class="admin-tab" data-tab="categories">Categorii</button>
+        <button class="admin-tab" data-tab="integrations">Integrări</button>
       </div>
       <div id="admin-body">Se încarcă…</div>
 
@@ -3178,7 +3179,8 @@ async function renderAdmin() {
 
   async function paintTab() {
     if (activeTab === 'agents') await paintAgents();
-    else await paintCategories();
+    else if (activeTab === 'categories') await paintCategories();
+    else await paintIntegrations();
   }
 
   async function paintAgents() {
@@ -3343,6 +3345,56 @@ async function renderAdmin() {
           paintCategories();
         } catch (err) {
           showToast('Eroare: ' + err.message);
+        }
+      });
+    });
+  }
+
+  async function paintIntegrations() {
+    body.innerHTML = 'Se încarcă…';
+    let s;
+    try {
+      s = await api('/api/company/settings');
+    } catch (e) {
+      body.innerHTML = `<div class="panel">Eroare: ${escapeHtml(e.message)}</div>`;
+      return;
+    }
+
+    const INTEGRATIONS = [
+      { key: 'merchantpro', label: 'MerchantPro', activeField: 'merchantProActive', configured: Boolean(s.merchantProShopUrl && s.merchantProApiKey && s.merchantProApiSecretSet) },
+      { key: 'gomag', label: 'GoMag', activeField: 'gomagActive', configured: Boolean(s.gomagShopUrl && s.gomagApiKeySet) },
+      { key: 'gls', label: 'GLS', activeField: 'glsActive', configured: Boolean(s.glsUsername && s.glsPasswordSet) },
+      { key: 'sameday', label: 'Sameday', activeField: 'samedayActive', configured: Boolean(s.samedayUsername && s.samedayPasswordSet) },
+    ];
+
+    body.innerHTML = `
+      <div class="panel">
+        <h2>Integrări active</h2>
+        <div class="hint" style="margin-bottom:14px;">Oprește temporar o integrare, fără să ștergi datele de conectare — util dacă vrei să pui pauză unei platforme sau unui curier, fără să reconfigurezi totul mai târziu.</div>
+        ${INTEGRATIONS.map((i) => `
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);">
+            <div>
+              <div style="font-weight:500;">${i.label}</div>
+              <div class="hint" style="margin-top:2px;">${i.configured ? `<span style="color:${s[i.activeField] ? 'var(--status-resolved)' : 'var(--priority-urgent)'};">${s[i.activeField] ? '✓ Activă' : '✕ Dezactivată'}</span>` : 'Necompletată încă, în Setări'}</div>
+            </div>
+            <button class="btn btn-sm integration-toggle-btn" data-key="${i.key}" data-active="${s[i.activeField] ? 'true' : 'false'}" style="width:120px;${!i.configured ? 'opacity:0.5;pointer-events:none;' : ''}${s[i.activeField] ? 'color:var(--priority-urgent);' : 'color:var(--status-resolved);'}">${s[i.activeField] ? 'Dezactivează' : 'Activează'}</button>
+          </div>
+        `).join('')}
+      </div>
+    `;
+
+    body.querySelectorAll('.integration-toggle-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const key = btn.dataset.key;
+        const newActive = btn.dataset.active !== 'true';
+        btn.disabled = true;
+        try {
+          await api(`/api/company/integrations/${key}/active`, { method: 'POST', body: JSON.stringify({ active: newActive }) });
+          showToast(newActive ? 'Integrare activată' : 'Integrare dezactivată');
+          paintIntegrations();
+        } catch (e) {
+          showToast('Eroare: ' + e.message);
+          btn.disabled = false;
         }
       });
     });
