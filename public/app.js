@@ -668,13 +668,15 @@ async function renderPlatformAdminPanel() {
       `;
       const rowsHtml = companies.map((c) => `
         <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);font-size:13px;">
-          <div style="flex:1.5;min-width:0;font-weight:500;">${escapeHtml(c.name)}</div>
+          <div style="flex:1.5;min-width:0;font-weight:500;">${escapeHtml(c.name)}${c.isTestAccount ? ' <span class="badge" style="background:rgba(47,111,237,0.15);color:var(--accent);font-size:10.5px;">contul tău</span>' : ''}</div>
           <div style="flex:1;min-width:0;color:var(--text-secondary);">${escapeHtml(fmtDate(c.createdAt))}</div>
           <div style="flex:0.7;min-width:0;color:var(--text-secondary);">${c.agentCount}</div>
           <div style="flex:0.8;min-width:0;">
             <span class="badge" style="background:${c.active ? 'rgba(107,196,130,0.18)' : 'rgba(232,92,76,0.18)'};color:${c.active ? 'var(--status-resolved)' : 'var(--priority-urgent)'};">${c.active ? '✓ Activă' : '✕ Dezactivată'}</span>
           </div>
-          <button class="btn btn-sm company-toggle-btn" data-id="${c.id}" data-active="${c.active}" style="flex-shrink:0;width:110px;${c.active ? 'color:var(--priority-urgent);' : 'color:var(--status-resolved);'}">${c.active ? 'Dezactivează' : 'Activează'}</button>
+          ${c.isTestAccount
+            ? '<div style="flex-shrink:0;width:110px;font-size:11px;color:var(--text-dim);">protejat</div>'
+            : `<button class="btn btn-sm company-toggle-btn" data-id="${c.id}" data-active="${c.active}" style="flex-shrink:0;width:110px;${c.active ? 'color:var(--priority-urgent);' : 'color:var(--status-resolved);'}">${c.active ? 'Dezactivează' : 'Activează'}</button>`}
         </div>
       `).join('');
       listArea.innerHTML = '';
