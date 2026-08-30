@@ -375,6 +375,16 @@ async function handleApi(req, res, pathname, query) {
       return sendJSON(res, 200, { ok: true });
     }
 
+    if (pathname === '/api/platform-admin/enter-test-account' && req.method === 'POST') {
+      if (!isPlatformAdminRequest(req)) return sendJSON(res, 401, { error: 'Neautentificat' });
+      const testAgent = db.getOrCreatePlatformTestCompany();
+      // sesiune NORMALA de agent (nu cea de admin platforma) -- ca sa poata
+      // folosi toata aplicatia obisnuita, exact ca orice manager de companie
+      const token = createSession(testAgent.id);
+      res.setHeader('Set-Cookie', `session=${token}; HttpOnly; Secure; Path=/; SameSite=Lax`);
+      return sendJSON(res, 200, { ok: true });
+    }
+
     // toate rutele de mai jos necesită autentificare
     const currentAgent = getAgentFromRequest(req);
     if (!currentAgent || !currentAgent.active) return sendJSON(res, 401, { error: 'Neautentificat' });

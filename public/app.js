@@ -625,7 +625,10 @@ async function renderPlatformAdminPanel() {
           <div style="width:30px;height:30px;border-radius:8px;background:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;">⚙</div>
           <div style="font-weight:700;font-size:15px;">Administrare Platformă</div>
         </div>
-        <button class="btn btn-sm" id="platformAdminLogoutBtn">Ieși din cont</button>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-sm btn-primary" id="enterTestAccountBtn">🧪 Deschide platforma (cont de test)</button>
+          <button class="btn btn-sm" id="platformAdminLogoutBtn">Ieși din cont</button>
+        </div>
       </header>
       <main style="padding:28px 32px;">
         <div class="page-header">
@@ -641,6 +644,23 @@ async function renderPlatformAdminPanel() {
     </div>
   `);
   app.appendChild(page);
+
+  page.querySelector('#enterTestAccountBtn').addEventListener('click', async () => {
+    const btn = page.querySelector('#enterTestAccountBtn');
+    btn.disabled = true;
+    btn.textContent = 'Se deschide…';
+    try {
+      await api('/api/platform-admin/enter-test-account', { method: 'POST' });
+      currentAgent = await api('/api/session');
+      await loadReferenceData();
+      window.location.hash = '#/dashboard';
+      render();
+    } catch (e) {
+      showToast('Eroare: ' + e.message);
+      btn.disabled = false;
+      btn.textContent = '🧪 Deschide platforma (cont de test)';
+    }
+  });
 
   page.querySelector('#platformAdminLogoutBtn').addEventListener('click', async () => {
     await api('/api/platform-admin/logout', { method: 'POST' });
