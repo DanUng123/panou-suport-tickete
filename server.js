@@ -1276,38 +1276,6 @@ async function handleApi(req, res, pathname, query) {
 
     // ---- clienti importati (Excel) ----
 
-    if (pathname === '/api/clients' && req.method === 'GET') {
-      const page = Math.max(1, Number(query.page) || 1);
-      const pageSize = Math.min(20000, Math.max(1, Number(query.pageSize) || 100));
-      return sendJSON(res, 200, db.listClients(currentAgent.companyId, { page, pageSize, q: query.q || '' }));
-    }
-
-    if (pathname === '/api/clients/import' && req.method === 'POST') {
-      const body = await readBody(req, 60_000_000); // pana la ~60MB (fisiere Excel mari, zeci de mii de randuri)
-      if (!Array.isArray(body.rows) || !body.rows.length) {
-        return sendJSON(res, 400, { error: 'Niciun rând de importat.' });
-      }
-      const result = db.importClients(currentAgent.companyId, body.rows);
-      return sendJSON(res, 200, result);
-    }
-
-    const deleteClientMatch = pathname.match(/^\/api\/clients\/([^/]+)$/);
-    if (deleteClientMatch && req.method === 'DELETE') {
-      const ok = db.deleteClient(currentAgent.companyId, deleteClientMatch[1]);
-      if (!ok) return sendJSON(res, 404, { error: 'Client negăsit' });
-      return sendJSON(res, 200, { ok: true });
-    }
-
-    if (pathname === '/api/clients/delete-all' && req.method === 'POST') {
-      if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot șterge toți clienții.' });
-      const body = await readBody(req);
-      if (body.confirm !== 'STERGE TOTI CLIENTII') {
-        return sendJSON(res, 400, { error: 'Confirmare lipsă sau incorectă.' });
-      }
-      const result = db.deleteAllClients(currentAgent.companyId);
-      return sendJSON(res, 200, result);
-    }
-
     return sendJSON(res, 404, { error: 'Rută necunoscută' });
   } catch (e) {
     return sendJSON(res, 500, { error: e.message || 'Eroare internă' });
