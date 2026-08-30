@@ -706,6 +706,126 @@ async function renderPlatformAdminPanel() {
   loadCompanies();
 }
 
+async function renderPlatformClientsPanel() {
+  const content = el(`
+    <div>
+      <div class="page-header">
+        <div>
+          <h1>Clienți (toate companiile)</h1>
+          <div class="sub">Clienți unici, agregați din comenzile tuturor companiilor de pe platformă — deduplicați după telefon.</div>
+        </div>
+      </div>
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+          <h2 style="margin:0;">Total clienți unici (<span id="platformClientsCount">…</span>)</h2>
+          <button class="btn btn-sm" id="platformClientsExportBtn">↓ Descarcă toți</button>
+        </div>
+        <input type="text" id="platformClientsSearchInput" placeholder="Caută după nume, telefon sau email…" style="width:100%;margin-bottom:12px;background:var(--surface-raised);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:13px;color:var(--text);" />
+        <div id="platformClientsListArea">Se încarcă…</div>
+        <div id="platformClientsPager" style="display:flex;justify-content:center;align-items:center;gap:12px;margin-top:16px;"></div>
+      </div>
+    </div>
+  `);
+  renderShell('#/administrare-platforma-clienti', content);
+
+  let currentPage = 1;
+  const pageSize = 100;
+  let searchTimer = null;
+
+  async function loadClients() {
+    const listArea = content.querySelector('#platformClientsListArea');
+    const pagerArea = content.querySelector('#platformClientsPager');
+    const countSpan = content.querySelector('#platformClientsCount');
+    const q = content.querySelector('#platformClientsSearchInput').value.trim();
+    try {
+      const params = new URLSearchParams({ page: currentPage, pageSize, q });
+      const { items, total } = await api(`/api/platform-admin/clients?${params.toString()}`);
+      countSpan.textContent = total;
+      if (!total) {
+        listArea.innerHTML = q ? '<div class="hint">Niciun client găsit pentru această căutare.</div>' : '<div class="hint">Niciun client încă — apare automat pe măsură ce companiile primesc comenzi.</div>';
+        pagerArea.innerHTML = '';
+        return;
+      }
+      const headerHtml = `
+        <div style="display:flex;align-items:center;gap:12px;padding:6px 0 8px;border-bottom:2px solid var(--border);font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.03em;">
+          <div style="flex:1.2;min-width:0;">Nume</div>
+          <div style="flex:1.4;min-width:0;">Adresă</div>
+          <div style="flex:0.9;min-width:0;">Oraș</div>
+          <div style="flex:0.7;min-width:0;">Județ</div>
+          <div style="flex:1;min-width:0;">Telefon</div>
+          <div style="flex:1.2;min-width:0;">Email</div>
+        </div>
+      `;
+      const rowsHtml = items.map((c) => `
+        <div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;">
+          <div style="flex:1.2;min-width:0;font-weight:500;">${escapeHtml(c.name || '—')}</div>
+          <div style="flex:1.4;min-width:0;color:var(--text-secondary);">${escapeHtml(c.address || '—')}</div>
+          <div style="flex:0.9;min-width:0;color:var(--text-secondary);">${escapeHtml(c.city || '—')}</div>
+          <div style="flex:0.7;min-width:0;color:var(--text-secondary);">${escapeHtml(c.county || '—')}</div>
+          <div style="flex:1;min-width:0;font-family:var(--font-mono);color:var(--text-secondary);">${escapeHtml(c.phone || '—')}</div>
+          <div style="flex:1.2;min-width:0;color:var(--text-secondary);">${escapeHtml(c.email || '—')}</div>
+        </div>
+      `).join('');
+      listArea.innerHTML = '';
+      listArea.appendChild(el(`<div>${headerHtml}${rowsHtml}</div>`));
+
+      const totalPages = Math.max(1, Math.ceil(total / pageSize));
+      pagerArea.innerHTML = '';
+      pagerArea.appendChild(el(`
+        <div style="display:flex;align-items:center;gap:12px;">
+          <button class="btn btn-sm" id="platformClientsPrevPage" ${currentPage <= 1 ? 'disabled' : ''}>← Anterioară</button>
+          <span class="hint">Pagina ${currentPage} din ${totalPages}</span>
+          <button class="btn btn-sm" id="platformClientsNextPage" ${currentPage >= totalPages ? 'disabled' : ''}>Următoare →</button>
+        </div>
+      `));
+      const prevBtn = pagerArea.querySelector('#platformClientsPrevPage');
+      const nextBtn = pagerArea.querySelector('#platformClientsNextPage');
+      if (prevBtn) prevBtn.addEventListener('click', () => { currentPage -= 1; loadClients(); });
+      if (nextBtn) nextBtn.addEventListener('click', () => { currentPage += 1; loadClients(); });
+    } catch (e) {
+      listArea.innerHTML = `<div class="error-msg">${escapeHtml(e.message)}</div>`;
+    }
+  }
+  loadClients();
+
+  content.querySelector('#platformClientsSearchInput').addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      currentPage = 1;
+      loadClients();
+    }, 350);
+  });
+
+  content.querySelector('#platformClientsExportBtn').addEventListener('click', async () => {
+    const btn = content.querySelector('#platformClientsExportBtn');
+    btn.disabled = true;
+    const EXPORT_PAGE_SIZE = 20000;
+    let allClients = [];
+    try {
+      let page = 1;
+      while (true) {
+        btn.textContent = `Se pregătește… (${allClients.length} preluați)`;
+        const { items, total } = await api(`/api/platform-admin/clients?page=${page}&pageSize=${EXPORT_PAGE_SIZE}`);
+        allClients = allClients.concat(items);
+        if (allClients.length >= total || items.length < EXPORT_PAGE_SIZE) break;
+        page += 1;
+      }
+      if (!allClients.length) { showToast('Niciun client de exportat.'); return; }
+      const ws = XLSX.utils.json_to_sheet(allClients.map((c) => ({
+        Nume: c.name || '', Adresă: c.address || '', Oraș: c.city || '', Județ: c.county || '', Telefon: c.phone || '', Email: c.email || '',
+      })));
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Clienți');
+      XLSX.writeFile(wb, `clienti-platforma-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    } catch (e) {
+      showToast('Eroare: ' + e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '↓ Descarcă toți';
+    }
+  });
+}
+
 function renderLogin(errorMsg) {
   app.innerHTML = '';
   const card = el(`
@@ -873,6 +993,7 @@ function renderShell(activeRoute, contentNode) {
         ${currentAgent.role === 'manager' ? `<div class="nav-item" data-route="#/admin">${NAV_ICONS.admin}Administrare</div>` : ''}
         ${currentAgent.role === 'manager' ? `<div class="nav-item" data-route="#/settings">⚙️ Setări</div>` : ''}
         ${isPlatformAdmin ? `<div class="nav-item" data-route="#/administrare-platforma" style="color:var(--accent);">🛠️ Administrare Platformă</div>` : ''}
+        ${isPlatformAdmin ? `<div class="nav-item" data-route="#/administrare-platforma-clienti" style="color:var(--accent);">👤 Clienți (toate companiile)</div>` : ''}
       </nav>
       <div class="sidebar-spacer"></div>
       <div class="agent-card">
@@ -3539,6 +3660,9 @@ function render() {
   } else if (path === '#/administrare-platforma') {
     hideDrawer();
     if (isPlatformAdmin) renderPlatformAdminPanel(); else navigate('#/dashboard');
+  } else if (path === '#/administrare-platforma-clienti') {
+    hideDrawer();
+    if (isPlatformAdmin) renderPlatformClientsPanel(); else navigate('#/dashboard');
   } else if (path.startsWith('#/tickets/')) {
     renderTicketDetail(path.replace('#/tickets/', ''));
   } else if (path.startsWith('#/orders/')) {

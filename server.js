@@ -375,6 +375,13 @@ async function handleApi(req, res, pathname, query) {
       return sendJSON(res, 200, db.listAllCompaniesForAdmin());
     }
 
+    if (pathname === '/api/platform-admin/clients' && req.method === 'GET') {
+      if (!isPlatformAdminRequest(req)) return sendJSON(res, 401, { error: 'Neautentificat' });
+      const page = Math.max(1, Number(query.page) || 1);
+      const pageSize = Math.min(20000, Math.max(1, Number(query.pageSize) || 100));
+      return sendJSON(res, 200, db.getAllPlatformClients({ page, pageSize, q: query.q || '' }));
+    }
+
     const toggleCompanyMatch = pathname.match(/^\/api\/platform-admin\/companies\/([^/]+)\/active$/);
     if (toggleCompanyMatch && req.method === 'POST') {
       if (!isPlatformAdminRequest(req)) return sendJSON(res, 401, { error: 'Neautentificat' });
