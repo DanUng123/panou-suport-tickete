@@ -44,6 +44,7 @@ function internalOrderBadgeClass(s) {
 }
 
 let currentAgent = null;
+let isPlatformAdmin = false; // adevarat doar daca s-a logat prin poarta separata #/platform-admin
 let agentsCache = [];
 let categoriesCache = [];
 let glsConfigured = false;
@@ -333,10 +334,12 @@ function closeModal() {
 async function boot() {
   try {
     currentAgent = await api('/api/session');
+    isPlatformAdmin = Boolean(currentAgent.isPlatformAdmin);
     await loadReferenceData();
     render();
   } catch (e) {
     currentAgent = null;
+    isPlatformAdmin = false;
     render();
   }
 }
@@ -572,12 +575,23 @@ function renderMarketingContact() {
 // sesiune, propriul cookie, propria parola (din PLATFORM_ADMIN_PASSWORD).
 
 async function renderPlatformAdminGate() {
-  try {
-    await api('/api/platform-admin/session');
-    renderPlatformAdminPanel();
-  } catch (e) {
-    renderPlatformAdminLogin();
+  // daca esti deja logat (ca admin platforma SAU ca agent normal), du-te direct in aplicatie
+  if (currentAgent) {
+    window.location.hash = '#/dashboard';
+    render();
+    return;
   }
+  try {
+    currentAgent = await api('/api/session');
+    isPlatformAdmin = Boolean(currentAgent.isPlatformAdmin);
+    if (isPlatformAdmin) {
+      await loadReferenceData();
+      window.location.hash = '#/dashboard';
+      render();
+      return;
+    }
+  } catch (e) { /* nu esti logat inca -- aratam poarta de mai jos */ }
+  renderPlatformAdminLogin();
 }
 
 function renderPlatformAdminLogin(errorMsg) {
@@ -590,7 +604,7 @@ function renderPlatformAdminLogin(errorMsg) {
           <div class="name">Administrare Platformă</div>
         </div>
         <h1>Autentificare</h1>
-        <p class="sub">Acces rezervat creatorului platformei.</p>
+        <p class="sub">Acces rezervat creatorului platformei — te duce direct în aplicația completă.</p>
         ${errorMsg ? `<div class="error-msg">${escapeHtml(errorMsg)}</div>` : ''}
         <form id="platform-admin-login-form">
           <div class="field">
@@ -608,8 +622,11 @@ function renderPlatformAdminLogin(errorMsg) {
     e.preventDefault();
     const password = card.querySelector('#paPassword').value;
     try {
-      await api('/api/platform-admin/login', { method: 'POST', body: JSON.stringify({ password }) });
-      renderPlatformAdminPanel();
+      currentAgent = await api('/api/platform-admin/login', { method: 'POST', body: JSON.stringify({ password }) });
+      isPlatformAdmin = true;
+      await loadReferenceData();
+      window.location.hash = '#/dashboard';
+      render();
     } catch (err) {
       renderPlatformAdminLogin(err.message);
     }
@@ -617,59 +634,23 @@ function renderPlatformAdminLogin(errorMsg) {
 }
 
 async function renderPlatformAdminPanel() {
-  app.innerHTML = '';
-  const page = el(`
-    <div style="min-height:100vh;width:100%;background:var(--bg);">
-      <header style="display:flex;align-items:center;justify-content:space-between;padding:16px 28px;border-bottom:1px solid var(--border);">
-        <div style="display:flex;align-items:center;gap:10px;">
-          <div style="width:30px;height:30px;border-radius:8px;background:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;">⚙</div>
-          <div style="font-weight:700;font-size:15px;">Administrare Platformă</div>
+  const content = el(`
+    <div>
+      <div class="page-header">
+        <div>
+          <h1>Administrare Platformă</h1>
+          <div class="sub">Toate companiile de pe platformă — activează sau dezactivează accesul oricăreia dintre ele.</div>
         </div>
-        <div style="display:flex;gap:8px;">
-          <button class="btn btn-sm btn-primary" id="enterTestAccountBtn">🧪 Deschide platforma (cont de test)</button>
-          <button class="btn btn-sm" id="platformAdminLogoutBtn">Ieși din cont</button>
-        </div>
-      </header>
-      <main style="padding:28px 32px;">
-        <div class="page-header">
-          <div>
-            <h1>Toate companiile</h1>
-            <div class="sub">Activează sau dezactivează accesul oricărei companii de pe platformă.</div>
-          </div>
-        </div>
-        <div class="panel">
-          <div id="companiesListArea">Se încarcă…</div>
-        </div>
-      </main>
+      </div>
+      <div class="panel">
+        <div id="companiesListArea">Se încarcă…</div>
+      </div>
     </div>
   `);
-  app.appendChild(page);
-
-  page.querySelector('#enterTestAccountBtn').addEventListener('click', async () => {
-    const btn = page.querySelector('#enterTestAccountBtn');
-    btn.disabled = true;
-    btn.textContent = 'Se deschide…';
-    try {
-      await api('/api/platform-admin/enter-test-account', { method: 'POST' });
-      currentAgent = await api('/api/session');
-      await loadReferenceData();
-      window.location.hash = '#/dashboard';
-      render();
-    } catch (e) {
-      showToast('Eroare: ' + e.message);
-      btn.disabled = false;
-      btn.textContent = '🧪 Deschide platforma (cont de test)';
-    }
-  });
-
-  page.querySelector('#platformAdminLogoutBtn').addEventListener('click', async () => {
-    await api('/api/platform-admin/logout', { method: 'POST' });
-    window.location.hash = '#/platform-admin';
-    render();
-  });
+  renderShell('#/administrare-platforma', content);
 
   async function loadCompanies() {
-    const listArea = page.querySelector('#companiesListArea');
+    const listArea = content.querySelector('#companiesListArea');
     try {
       const companies = await api('/api/platform-admin/companies');
       if (!companies.length) {
@@ -843,7 +824,11 @@ function renderSignup(errorMsg) {
 
 async function logout() {
   await api('/api/logout', { method: 'POST' });
+  if (isPlatformAdmin) {
+    try { await api('/api/platform-admin/logout', { method: 'POST' }); } catch (e) { /* ignoram */ }
+  }
   currentAgent = null;
+  isPlatformAdmin = false;
   window.location.hash = '#/login';
   render();
 }
@@ -886,6 +871,7 @@ function renderShell(activeRoute, contentNode) {
         <div class="nav-item" data-route="#/clients">👤 Clienți</div>
         ${currentAgent.role === 'manager' ? `<div class="nav-item" data-route="#/admin">${NAV_ICONS.admin}Administrare</div>` : ''}
         ${currentAgent.role === 'manager' ? `<div class="nav-item" data-route="#/settings">⚙️ Setări</div>` : ''}
+        ${isPlatformAdmin ? `<div class="nav-item" data-route="#/administrare-platforma" style="color:var(--accent);">🛠️ Administrare Platformă</div>` : ''}
       </nav>
       <div class="sidebar-spacer"></div>
       <div class="agent-card">
@@ -3867,6 +3853,9 @@ function render() {
   } else if (path === '#/settings') {
     hideDrawer();
     renderSettings();
+  } else if (path === '#/administrare-platforma') {
+    hideDrawer();
+    if (isPlatformAdmin) renderPlatformAdminPanel(); else navigate('#/dashboard');
   } else if (path === '#/clients') {
     hideDrawer();
     renderClients();

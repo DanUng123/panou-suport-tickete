@@ -326,7 +326,7 @@ async function handleApi(req, res, pathname, query) {
       const agent = getAgentFromRequest(req);
       if (!agent || !agent.active) return sendJSON(res, 401, { error: 'Neautentificat' });
       const { passwordHash, password, ...safe } = agent;
-      return sendJSON(res, 200, { ...safe, active: !!safe.active });
+      return sendJSON(res, 200, { ...safe, active: !!safe.active, isPlatformAdmin: isPlatformAdminRequest(req) });
     }
 
     // ---- panoul de administrare al platformei (creatorul platformei, nu un manager de companie) ----
@@ -343,9 +343,17 @@ async function handleApi(req, res, pathname, query) {
       if (body.password !== adminPassword) {
         return sendJSON(res, 401, { error: 'Parolă incorectă.' });
       }
-      const token = createPlatformAdminSession();
-      res.setHeader('Set-Cookie', `platformAdminSession=${token}; HttpOnly; Secure; Path=/; SameSite=Lax`);
-      return sendJSON(res, 200, { ok: true });
+      // sesiunea de admin platforma (pentru rutele de administrare companii)...
+      const adminToken = createPlatformAdminSession();
+      const testAgent = db.getOrCreatePlatformTestCompany();
+      res.setHeader('Set-Cookie', [
+        `platformAdminSession=${adminToken}; HttpOnly; Secure; Path=/; SameSite=Lax`,
+        // ...SI, in aceeasi logare, o sesiune normala de agent (compania de test
+        // dedicata), ca sa poata folosi imediat toata platforma, din acelasi cont
+        `session=${createSession(testAgent.id)}; HttpOnly; Secure; Path=/; SameSite=Lax`,
+      ]);
+      const { passwordHash, password, ...safeAgent } = testAgent;
+      return sendJSON(res, 200, { ...safeAgent, active: !!safeAgent.active, isPlatformAdmin: true });
     }
 
     if (pathname === '/api/platform-admin/session' && req.method === 'GET') {
@@ -372,16 +380,6 @@ async function handleApi(req, res, pathname, query) {
       const body = await readBody(req);
       const ok = db.setCompanyActive(toggleCompanyMatch[1], Boolean(body.active));
       if (!ok) return sendJSON(res, 404, { error: 'Companie negăsită' });
-      return sendJSON(res, 200, { ok: true });
-    }
-
-    if (pathname === '/api/platform-admin/enter-test-account' && req.method === 'POST') {
-      if (!isPlatformAdminRequest(req)) return sendJSON(res, 401, { error: 'Neautentificat' });
-      const testAgent = db.getOrCreatePlatformTestCompany();
-      // sesiune NORMALA de agent (nu cea de admin platforma) -- ca sa poata
-      // folosi toata aplicatia obisnuita, exact ca orice manager de companie
-      const token = createSession(testAgent.id);
-      res.setHeader('Set-Cookie', `session=${token}; HttpOnly; Secure; Path=/; SameSite=Lax`);
       return sendJSON(res, 200, { ok: true });
     }
 
