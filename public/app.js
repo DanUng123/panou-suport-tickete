@@ -3284,6 +3284,20 @@ async function renderSettings() {
       </div>
 
       <div class="panel" style="margin-bottom:20px;">
+        <h2>GoMag</h2>
+        <div class="form-row">
+          <div class="field">
+            <label>URL magazin</label>
+            <input type="text" id="s-gomag-url" placeholder="https://magazinul-tau.gomag.ro" value="${v(s.gomagShopUrl)}" />
+          </div>
+          <div class="field">
+            <label>Cheie API${s.gomagApiKeySet ? ' — setată ✓' : ''}</label>
+            <input type="password" id="s-gomag-key" placeholder="${s.gomagApiKeySet ? '••••••••  (lasă gol ca să păstrezi)' : 'Introdu cheia API'}" />
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-bottom:20px;">
         <h2>GLS</h2>
         <div class="form-row">
           <div class="field">
@@ -3431,6 +3445,8 @@ async function renderSettings() {
       merchantProShopUrl: q('#s-mp-url'),
       merchantProApiKey: q('#s-mp-key'),
       merchantProApiSecret: q('#s-mp-secret'),
+      gomagShopUrl: q('#s-gomag-url'),
+      gomagApiKey: q('#s-gomag-key'),
       glsUsername: q('#s-gls-user'),
       glsPassword: q('#s-gls-pass'),
       glsClientNumber: q('#s-gls-client'),

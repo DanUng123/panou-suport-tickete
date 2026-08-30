@@ -13,6 +13,7 @@ const orderSync = require('./lib/order-sync');
 const gls = require('./lib/gls');
 const sameday = require('./lib/sameday');
 const mp = require('./lib/merchantpro');
+const gomag = require('./lib/gomag');
 const pdf = require('./lib/pdf');
 
 const PORT = process.env.PORT || 3000;
@@ -465,12 +466,13 @@ async function handleApi(req, res, pathname, query) {
       const company = db.getCompany(currentAgent.companyId);
       if (!company) return sendJSON(res, 404, { error: 'Companie negăsită' });
       // secretele nu se trimit niciodata in clar catre browser -- doar daca sunt setate sau nu
-      const { merchantProApiSecret, glsPassword, samedayPassword, ...rest } = company;
+      const { merchantProApiSecret, glsPassword, samedayPassword, gomagApiKey, ...rest } = company;
       return sendJSON(res, 200, {
         ...rest,
         merchantProApiSecretSet: Boolean(merchantProApiSecret),
         glsPasswordSet: Boolean(glsPassword),
         samedayPasswordSet: Boolean(samedayPassword),
+        gomagApiKeySet: Boolean(gomagApiKey),
       });
     }
 
@@ -483,13 +485,15 @@ async function handleApi(req, res, pathname, query) {
       if (patch.merchantProApiSecret === '') delete patch.merchantProApiSecret;
       if (patch.glsPassword === '') delete patch.glsPassword;
       if (patch.samedayPassword === '') delete patch.samedayPassword;
+      if (patch.gomagApiKey === '') delete patch.gomagApiKey;
       const updated = db.updateCompanyCredentials(currentAgent.companyId, patch);
-      const { merchantProApiSecret, glsPassword, samedayPassword, ...rest } = updated;
+      const { merchantProApiSecret, glsPassword, samedayPassword, gomagApiKey, ...rest } = updated;
       return sendJSON(res, 200, {
         ...rest,
         merchantProApiSecretSet: Boolean(merchantProApiSecret),
         glsPasswordSet: Boolean(glsPassword),
         samedayPasswordSet: Boolean(samedayPassword),
+        gomagApiKeySet: Boolean(gomagApiKey),
       });
     }
 
@@ -614,8 +618,9 @@ async function handleApi(req, res, pathname, query) {
 
     if (pathname === '/api/orders/sync' && req.method === 'POST') {
       try {
-        const result = await orderSync.runSyncForCompany(company);
-        return sendJSON(res, 200, result);
+        const result = mp.isConfigured(company) ? await orderSync.runSyncForCompany(company) : null;
+        const gomagResult = gomag.isConfigured(company) ? await orderSync.runGomagSyncForCompany(company) : null;
+        return sendJSON(res, 200, { ...result, gomag: gomagResult });
       } catch (e) {
         return sendJSON(res, 502, { error: e.message });
       }
