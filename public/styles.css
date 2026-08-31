@@ -5,17 +5,17 @@
    =========================================================== */
 
 :root {
-  --bg: #0a0d13;
-  --surface: #12161e;
-  --surface-raised: #1a1f2a;
-  --surface-hover: #212836;
-  --border: #232a37;
-  --border-light: #323b4a;
+  --bg: #0a0e1a;
+  --surface: #0f1729;
+  --surface-raised: #172038;
+  --surface-hover: #1f2a47;
+  --border: #263254;
+  --border-light: #34456e;
   --text: #eef0f4;
   --text-secondary: #8d96a6;
   --text-dim: #5f6878;
   --accent: #2f6fed;
-  --accent-dim: #0f2138;
+  --accent-dim: #16305a;
   --accent-text: #ffffff;
   --accent-glow: rgba(47,111,237,0.10);
 
