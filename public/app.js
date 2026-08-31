@@ -2628,12 +2628,7 @@ async function renderOrdersList() {
     const syncStatus = syncStatusResult.value;
     platformLabel = syncStatus.platformLabel || 'MERCHANTPRO';
     const banner = content.querySelector('#sync-banner');
-    if (!syncStatus.configured) {
-      banner.innerHTML = `<div class="panel" style="margin-bottom:16px;border-color:var(--priority-high);">
-        <strong style="color:var(--priority-high);">Integrarea MerchantPro nu e configurată.</strong>
-        <div style="color:var(--text-secondary);font-size:12.5px;margin-top:4px;">Adaugă variabilele de mediu MERCHANTPRO_SHOP_URL, MERCHANTPRO_API_KEY, MERCHANTPRO_API_SECRET pe server.</div>
-      </div>`;
-    } else if (syncStatus.lastSyncResult) {
+    if (syncStatus.lastSyncResult) {
       const r = syncStatus.lastSyncResult;
       banner.innerHTML = `<div style="color:var(--text-dim);font-size:12px;margin-bottom:14px;">Ultima sincronizare: ${fmtDate(r.at)} · ${r.created} noi, ${r.updated} actualizate</div>`;
     }
@@ -2858,63 +2853,48 @@ async function openOrderDrawer(orderId) {
         </div>
       </div>
 
-      <div class="badges-row" style="align-items:center;margin-bottom:22px;">
+      <div class="badges-row" style="align-items:center;margin-bottom:16px;flex-wrap:wrap;">
         <span class="badge"><span class="platform-dot"></span>${escapeHtml(platformLabel)}</span>
         <span class="badge badge-status-closed">${escapeHtml(paymentMethodLabel(order))}</span>
         <span class="badge ${paymentBadgeClass(order.paymentStatus)}">${PAYMENT_STATUS_LABELS_MP[order.paymentStatus] || order.paymentStatus || '—'}</span>
         <span class="badge ${shippingBadgeClass(order.shippingStatus)}">${SHIPPING_STATUS_LABELS_MP[order.shippingStatus] || order.shippingStatusText || order.shippingStatus || '—'}</span>
+        ${order.shippingAwb ? `<span class="badge" id="awbCopyBadge" style="cursor:pointer;" title="Click pentru a copia numărul AWB">📦 ${escapeHtml(order.shippingAwb)}</span>` : ''}
+        ${order.invoice && !order.invoice.cancelled
+          ? (order.invoice.url
+              ? `<a href="${escapeHtml(order.invoice.url)}" target="_blank" rel="noopener" class="badge" style="text-decoration:none;">📄 ${escapeHtml(order.invoice.prefix || '')} ${escapeHtml(order.invoice.number || '')}</a>`
+              : `<span class="badge">📄 ${escapeHtml(order.invoice.prefix || '')} ${escapeHtml(order.invoice.number || '')}</span>`)
+          : `<button class="btn btn-sm" id="issueInvoiceBtn">Emite factură</button>`}
         <div style="flex:1;"></div>
         <div style="font-size:22px;font-weight:700;">${fmtMoney(order.totalAmount, order.currency)}</div>
       </div>
 
+      <div class="comments-panel" style="margin-bottom:16px;">
+        <h2 style="font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary);margin:0 0 10px;">Produse comandate</h2>
+        <div class="line-items-list">${items}</div>
+      </div>
+
       <div class="order-two-col">
         <div class="order-col-left">
-          <div class="side-panel" style="margin-bottom:16px;">
-            <h2>Client</h2>
-            <div class="form-row">
-              <div class="side-field"><label>Nume</label><div style="padding:8px 0;font-size:14px;">${escapeHtml(order.shippingName || order.billingName || '—')}</div></div>
-              <div class="side-field"><label>Telefon</label><div style="padding:8px 0;font-size:14px;">${escapeHtml(order.shippingPhone || '—')}</div></div>
-            </div>
-            <div class="side-field"><label>Email</label><div style="padding:8px 0;font-size:14px;">${escapeHtml(order.customerEmail || '—')}</div></div>
-            <button class="btn" id="clientProfileBtn" style="margin-top:4px;">👤 Profil client</button>
-          </div>
-
-          <div class="side-panel" style="margin-bottom:16px;">
-            <h2>Livrare</h2>
-            <div class="form-row">
-              <div class="side-field"><label>Metodă</label><div style="padding:8px 0;font-size:14px;">${escapeHtml(order.shippingMethodName || '—')}</div></div>
-              <div class="side-field"><label>Creat</label><div style="padding:8px 0;font-size:14px;">${fmtDate(order.dateCreated)}</div></div>
-            </div>
-            <div class="side-field"><label>Adresă</label><div style="padding:8px 0;font-size:14px;">${escapeHtml(order.shippingAddress || '—')}</div></div>
-            <div class="form-row">
-              <div class="side-field"><label>Localitate</label><div style="padding:8px 0;font-size:14px;">${escapeHtml(order.shippingCity || '—')}</div></div>
-              <div class="side-field"><label>Județ</label><div style="padding:8px 0;font-size:14px;">${escapeHtml(order.shippingState || '—')}</div></div>
-            </div>
-            <div class="side-field"><label>Cod poștal</label><div style="padding:8px 0;font-size:14px;">${escapeHtml(order.shippingPostalCode || '—')}</div></div>
-          </div>
-
           <div class="side-panel">
-            <h2>MerchantPro — AWB &amp; Factură</h2>
+            <h2>Client &amp; Livrare</h2>
             <div class="form-row">
-              <div class="side-field">
-                <label>AWB (din MerchantPro)</label>
-                <div style="font-size:13px;color:${order.shippingAwb ? 'var(--text)' : 'var(--text-dim)'};padding:8px 0;">${order.shippingAwb ? escapeHtml(order.shippingAwb) : 'Neînregistrat'}</div>
-              </div>
-              <div class="side-field">
-                <label>Factură</label>
-                ${order.invoice && !order.invoice.cancelled ? `
-                  <div style="font-size:13px;color:var(--text);padding:8px 0;">${escapeHtml(order.invoice.prefix || '')} ${escapeHtml(order.invoice.number || '')}</div>
-                ` : `<div style="font-size:13px;color:var(--text-dim);padding:8px 0;">Neemisă</div>`}
-              </div>
+              <div class="side-field"><label>Nume</label><div style="padding:4px 0;font-size:13.5px;">${escapeHtml(order.shippingName || order.billingName || '—')}</div></div>
+              <div class="side-field"><label>Telefon</label><div style="padding:4px 0;font-size:13.5px;">${escapeHtml(order.shippingPhone || '—')}</div></div>
             </div>
-            ${order.invoice && !order.invoice.cancelled && order.invoice.url ? `
-              <a href="${escapeHtml(order.invoice.url)}" target="_blank" rel="noopener" class="btn btn-block" style="margin-bottom:8px;text-decoration:none;">↗ Deschide factura</a>
-            ` : `
-              <button class="btn btn-block btn-primary" id="issueInvoiceBtn">Emite factură în MerchantPro</button>
-              <div class="hint" style="margin-top:8px;">Factura se generează direct în MerchantPro, cu seria și numărătoarea configurate acolo.</div>
-            `}
-            ${order.proformaUrl ? `<a href="${escapeHtml(order.proformaUrl)}" target="_blank" rel="noopener" class="hint" style="display:block;margin-top:8px;color:var(--accent);">↗ Vezi proforma</a>` : ''}
+            <div class="form-row">
+              <div class="side-field"><label>Email</label><div style="padding:4px 0;font-size:13.5px;">${escapeHtml(order.customerEmail || '—')}</div></div>
+              <div class="side-field"><label>Metodă livrare</label><div style="padding:4px 0;font-size:13.5px;">${escapeHtml(order.shippingMethodName || '—')}</div></div>
+            </div>
+            <div class="side-field"><label>Adresă</label><div style="padding:4px 0;font-size:13.5px;">${escapeHtml(order.shippingAddress || '—')}</div></div>
+            <div class="form-row">
+              <div class="side-field"><label>Localitate</label><div style="padding:4px 0;font-size:13.5px;">${escapeHtml(order.shippingCity || '—')}</div></div>
+              <div class="side-field"><label>Județ</label><div style="padding:4px 0;font-size:13.5px;">${escapeHtml(order.shippingState || '—')}</div></div>
+              <div class="side-field"><label>Cod poștal</label><div style="padding:4px 0;font-size:13.5px;">${escapeHtml(order.shippingPostalCode || '—')}</div></div>
+            </div>
+            <div class="side-field" style="margin-bottom:10px;"><label>Comandă creată</label><div style="padding:4px 0;font-size:13.5px;">${fmtDate(order.dateCreated)}</div></div>
+            <button class="btn" id="clientProfileBtn">👤 Profil client</button>
           </div>
+          ${order.proformaUrl ? `<a href="${escapeHtml(order.proformaUrl)}" target="_blank" rel="noopener" class="hint" style="display:block;margin-top:8px;color:var(--accent);">↗ Vezi proforma</a>` : ''}
         </div>
 
         <div class="order-col-right">
@@ -2939,17 +2919,24 @@ async function openOrderDrawer(orderId) {
           </div>
         </div>
       </div>
-
-      <div class="comments-panel" style="margin-top:16px;">
-        <h2 style="font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary);margin:0 0 14px;">Produse comandate</h2>
-        <div class="line-items-list">${items}</div>
-      </div>
     `;
 
     content.querySelector('#openTicketBtn').addEventListener('click', () => openNewTicketDrawer(order.id));
     content.querySelectorAll('.activity-ticket-link[data-tid]').forEach((item) => {
       item.addEventListener('click', () => openTicketDrawerCrossLink(item.dataset.tid));
     });
+
+    const awbCopyBadge = content.querySelector('#awbCopyBadge');
+    if (awbCopyBadge) {
+      awbCopyBadge.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(order.shippingAwb);
+          showToast('Număr AWB copiat');
+        } catch (e) {
+          showToast('Nu am putut copia — copiază manual: ' + order.shippingAwb);
+        }
+      });
+    }
 
     content.querySelector('#clientProfileBtn').addEventListener('click', () => {
       openClientProfileDrawer({ phone: order.shippingPhone, email: order.customerEmail, name: order.shippingName || order.billingName });
@@ -2980,7 +2967,7 @@ async function openOrderDrawer(orderId) {
         } catch (err) {
           showToast('Eroare la emiterea facturii: ' + err.message);
           issueInvoiceBtn.disabled = false;
-          issueInvoiceBtn.textContent = 'Emite factură în MerchantPro';
+          issueInvoiceBtn.textContent = 'Emite factură';
         }
       });
     }
@@ -3140,12 +3127,6 @@ async function renderAdmin() {
         <button class="admin-tab" data-tab="integrations">Integrări</button>
       </div>
       <div id="admin-body">Se încarcă…</div>
-
-      <div class="panel" style="margin-top:24px;border-color:rgba(232,92,76,0.3);">
-        <h2 style="color:var(--priority-urgent);">Zonă periculoasă</h2>
-        <div class="hint" style="margin-bottom:12px;">Șterge definitiv toate tichetele (Suport, Service, Retur, Colet la Schimb) — comenzile nu sunt afectate. Acțiune ireversibilă.</div>
-        <button class="btn" id="deleteAllTicketsBtn" style="color:var(--priority-urgent);border-color:rgba(232,92,76,0.4);">Șterge toate tichetele</button>
-      </div>
     </div>
   `);
   renderShell('#/admin', content);
@@ -3160,21 +3141,6 @@ async function renderAdmin() {
       activeTab = btn.dataset.tab;
       paintTab();
     });
-  });
-
-  content.querySelector('#deleteAllTicketsBtn').addEventListener('click', async () => {
-    if (!confirm('Ești absolut sigur? Se șterg TOATE tichetele, din toate secțiunile (Suport, Service, Retur, Colet la Schimb), permanent, fără posibilitate de recuperare. Comenzile nu sunt afectate.')) return;
-    const typed = prompt('Pentru confirmare finală, scrie exact: STERGE TOATE TICHETELE');
-    if (typed !== 'STERGE TOATE TICHETELE') {
-      showToast('Text de confirmare incorect — nimic nu a fost șters.');
-      return;
-    }
-    try {
-      const result = await api('/api/admin/tickets/delete-all', { method: 'POST', body: JSON.stringify({ confirm: 'STERGE TOATE TICHETELE' }) });
-      showToast(`${result.deletedCount} tichete șterse.`);
-    } catch (e) {
-      showToast('Eroare: ' + e.message);
-    }
   });
 
   async function paintTab() {

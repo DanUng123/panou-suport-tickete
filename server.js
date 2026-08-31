@@ -1284,16 +1284,6 @@ async function handleApi(req, res, pathname, query) {
       return res.end(buffer);
     }
 
-    if (pathname === '/api/admin/tickets/delete-all' && req.method === 'POST') {
-      if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot șterge toate tichetele.' });
-      const body = await readBody(req);
-      if (body.confirm !== 'STERGE TOATE TICHETELE') {
-        return sendJSON(res, 400, { error: 'Confirmare lipsă sau incorectă.' });
-      }
-      const result = db.deleteAllTickets(currentAgent.companyId);
-      return sendJSON(res, 200, result);
-    }
-
     // ---- clienti importati (Excel) ----
 
     return sendJSON(res, 404, { error: 'Rută necunoscută' });
