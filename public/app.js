@@ -2861,8 +2861,8 @@ async function openOrderDrawer(orderId) {
         ${order.shippingAwb ? `<span class="badge" id="awbCopyBadge" style="cursor:pointer;" title="Click pentru a copia numărul AWB">📦 ${escapeHtml(order.shippingAwb)}</span>` : ''}
         ${order.invoice && !order.invoice.cancelled
           ? (order.invoice.url
-              ? `<a href="${escapeHtml(order.invoice.url)}" target="_blank" rel="noopener" class="badge" style="text-decoration:none;">📄 ${escapeHtml(order.invoice.prefix || '')} ${escapeHtml(order.invoice.number || '')}</a>`
-              : `<span class="badge">📄 ${escapeHtml(order.invoice.prefix || '')} ${escapeHtml(order.invoice.number || '')}</span>`)
+              ? `<a href="${escapeHtml(order.invoice.url)}" target="_blank" rel="noopener" class="btn btn-sm btn-solid-green" style="text-decoration:none;">📄 ${escapeHtml(order.invoice.prefix || '')} ${escapeHtml(order.invoice.number || '')}</a>`
+              : `<span class="btn btn-sm btn-solid-green">📄 ${escapeHtml(order.invoice.prefix || '')} ${escapeHtml(order.invoice.number || '')}</span>`)
           : `<button class="btn btn-sm" id="issueInvoiceBtn">Emite factură</button>`}
         <div style="flex:1;"></div>
         <div style="font-size:22px;font-weight:700;">${fmtMoney(order.totalAmount, order.currency)}</div>
@@ -2875,15 +2875,32 @@ async function openOrderDrawer(orderId) {
 
       <div class="order-two-col">
         <div class="order-col-left">
-          <div class="side-panel">
-            <h2>Client &amp; Livrare</h2>
+          <div class="side-panel" style="margin-bottom:16px;">
+            <h2>Client</h2>
             <div class="form-row">
               <div class="side-field"><label>Nume</label><div style="padding:4px 0;font-size:13.5px;">${escapeHtml(order.shippingName || order.billingName || '—')}</div></div>
               <div class="side-field"><label>Telefon</label><div style="padding:4px 0;font-size:13.5px;">${escapeHtml(order.shippingPhone || '—')}</div></div>
             </div>
+            <div class="side-field" style="margin-bottom:10px;"><label>Email</label><div style="padding:4px 0;font-size:13.5px;">${escapeHtml(order.customerEmail || '—')}</div></div>
+            <button class="btn" id="clientProfileBtn">👤 Profil client</button>
+          </div>
+
+          <div class="side-panel" style="margin-bottom:16px;">
+            <h2>Date facturare</h2>
+            <div class="side-field"><label>Nume</label><div style="padding:4px 0;font-size:13.5px;">${escapeHtml(order.billingName || '—')}</div></div>
+            <div class="side-field"><label>Adresă</label><div style="padding:4px 0;font-size:13.5px;">${escapeHtml(order.billingAddress || '—')}</div></div>
             <div class="form-row">
-              <div class="side-field"><label>Email</label><div style="padding:4px 0;font-size:13.5px;">${escapeHtml(order.customerEmail || '—')}</div></div>
-              <div class="side-field"><label>Metodă livrare</label><div style="padding:4px 0;font-size:13.5px;">${escapeHtml(order.shippingMethodName || '—')}</div></div>
+              <div class="side-field"><label>Localitate</label><div style="padding:4px 0;font-size:13.5px;">${escapeHtml(order.billingCity || '—')}</div></div>
+              <div class="side-field"><label>Județ</label><div style="padding:4px 0;font-size:13.5px;">${escapeHtml(order.billingState || '—')}</div></div>
+              <div class="side-field"><label>Cod poștal</label><div style="padding:4px 0;font-size:13.5px;">${escapeHtml(order.billingPostalCode || '—')}</div></div>
+            </div>
+          </div>
+
+          <div class="side-panel">
+            <h2>Date livrare</h2>
+            <div class="form-row">
+              <div class="side-field"><label>Metodă</label><div style="padding:4px 0;font-size:13.5px;">${escapeHtml(order.shippingMethodName || '—')}</div></div>
+              <div class="side-field"><label>Cost transport</label><div style="padding:4px 0;font-size:13.5px;">${order.shippingCost != null ? fmtMoney(order.shippingCost, order.currency) : '—'}</div></div>
             </div>
             <div class="side-field"><label>Adresă</label><div style="padding:4px 0;font-size:13.5px;">${escapeHtml(order.shippingAddress || '—')}</div></div>
             <div class="form-row">
@@ -2891,11 +2908,10 @@ async function openOrderDrawer(orderId) {
               <div class="side-field"><label>Județ</label><div style="padding:4px 0;font-size:13.5px;">${escapeHtml(order.shippingState || '—')}</div></div>
               <div class="side-field"><label>Cod poștal</label><div style="padding:4px 0;font-size:13.5px;">${escapeHtml(order.shippingPostalCode || '—')}</div></div>
             </div>
-            <div class="side-field" style="margin-bottom:10px;"><label>Comandă creată</label><div style="padding:4px 0;font-size:13.5px;">${fmtDate(order.dateCreated)}</div></div>
-            <button class="btn" id="clientProfileBtn">👤 Profil client</button>
+            <div class="side-field"><label>Comandă creată</label><div style="padding:4px 0;font-size:13.5px;">${fmtDate(order.dateCreated)}</div></div>
           </div>
-          ${order.proformaUrl ? `<a href="${escapeHtml(order.proformaUrl)}" target="_blank" rel="noopener" class="hint" style="display:block;margin-top:8px;color:var(--accent);">↗ Vezi proforma</a>` : ''}
         </div>
+
 
         <div class="order-col-right">
           <div class="side-panel">
