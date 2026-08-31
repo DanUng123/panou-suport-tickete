@@ -990,12 +990,14 @@ function renderShell(activeRoute, contentNode) {
         <div class="nav-item" data-route="#/service">${NAV_ICONS.service}Service</div>
         <div class="nav-item" data-route="#/retur">${NAV_ICONS.retur}Retur</div>
         <div class="nav-item" data-route="#/schimb">${NAV_ICONS.schimb}Colet la Schimb</div>
-        ${currentAgent.role === 'manager' ? `<div class="nav-item" data-route="#/admin">${NAV_ICONS.admin}Administrare</div>` : ''}
-        ${currentAgent.role === 'manager' ? `<div class="nav-item" data-route="#/settings">⚙️ Setări</div>` : ''}
         ${isPlatformAdmin ? `<div class="nav-item" data-route="#/administrare-platforma" style="color:var(--accent);">🛠️ Administrare Platformă</div>` : ''}
         ${isPlatformAdmin ? `<div class="nav-item" data-route="#/administrare-platforma-clienti" style="color:var(--accent);">👤 Clienți (toate companiile)</div>` : ''}
       </nav>
       <div class="sidebar-spacer"></div>
+      <nav class="nav" style="border-top:1px solid var(--border);padding-top:8px;margin-bottom:4px;">
+        ${currentAgent.role === 'manager' ? `<div class="nav-item" data-route="#/admin">${NAV_ICONS.admin}Administrare</div>` : ''}
+        ${currentAgent.role === 'manager' ? `<div class="nav-item" data-route="#/settings">⚙️ Setări</div>` : ''}
+      </nav>
       <div class="agent-card">
         <div class="avatar">${initials(currentAgent.name)}</div>
         <div class="info">
