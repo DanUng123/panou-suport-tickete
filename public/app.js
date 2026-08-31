@@ -2871,44 +2871,33 @@ async function openOrderDrawer(orderId) {
       <div class="comments-panel" style="margin-bottom:16px;">
         <h2 style="font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary);margin:0 0 10px;">Produse comandate</h2>
         <div class="line-items-list">${items}</div>
+        ${(order.shippingCost != null || order.totalAmount != null) ? `
+          <div style="border-top:1px solid var(--border);margin-top:10px;padding-top:10px;display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
+            ${order.shippingCost != null ? `<div style="font-size:13px;color:var(--text-secondary);">Transport: ${fmtMoney(order.shippingCost, order.currency)}</div>` : ''}
+            <div style="font-size:15px;font-weight:700;">Total comandă: ${fmtMoney(order.totalAmount, order.currency)}</div>
+          </div>
+        ` : ''}
       </div>
 
       <div class="order-two-col">
         <div class="order-col-left">
-          <div class="side-panel" style="margin-bottom:16px;">
-            <h2>Client</h2>
-            <div class="form-row">
-              <div class="side-field"><label>Nume</label><div style="padding:4px 0;font-size:13.5px;">${escapeHtml(order.shippingName || order.billingName || '—')}</div></div>
-              <div class="side-field"><label>Telefon</label><div style="padding:4px 0;font-size:13.5px;">${escapeHtml(order.shippingPhone || '—')}</div></div>
-            </div>
-            <div class="side-field" style="margin-bottom:10px;"><label>Email</label><div style="padding:4px 0;font-size:13.5px;">${escapeHtml(order.customerEmail || '—')}</div></div>
-            <button class="btn" id="clientProfileBtn">👤 Profil client</button>
-          </div>
-
-          <div class="side-panel" style="margin-bottom:16px;">
-            <h2>Date facturare</h2>
-            <div class="side-field"><label>Nume</label><div style="padding:4px 0;font-size:13.5px;">${escapeHtml(order.billingName || '—')}</div></div>
-            <div class="side-field"><label>Adresă</label><div style="padding:4px 0;font-size:13.5px;">${escapeHtml(order.billingAddress || '—')}</div></div>
-            <div class="form-row">
-              <div class="side-field"><label>Localitate</label><div style="padding:4px 0;font-size:13.5px;">${escapeHtml(order.billingCity || '—')}</div></div>
-              <div class="side-field"><label>Județ</label><div style="padding:4px 0;font-size:13.5px;">${escapeHtml(order.billingState || '—')}</div></div>
-              <div class="side-field"><label>Cod poștal</label><div style="padding:4px 0;font-size:13.5px;">${escapeHtml(order.billingPostalCode || '—')}</div></div>
-            </div>
-          </div>
-
           <div class="side-panel">
-            <h2>Date livrare</h2>
-            <div class="form-row">
-              <div class="side-field"><label>Metodă</label><div style="padding:4px 0;font-size:13.5px;">${escapeHtml(order.shippingMethodName || '—')}</div></div>
-              <div class="side-field"><label>Cost transport</label><div style="padding:4px 0;font-size:13.5px;">${order.shippingCost != null ? fmtMoney(order.shippingCost, order.currency) : '—'}</div></div>
-            </div>
-            <div class="side-field"><label>Adresă</label><div style="padding:4px 0;font-size:13.5px;">${escapeHtml(order.shippingAddress || '—')}</div></div>
-            <div class="form-row">
-              <div class="side-field"><label>Localitate</label><div style="padding:4px 0;font-size:13.5px;">${escapeHtml(order.shippingCity || '—')}</div></div>
-              <div class="side-field"><label>Județ</label><div style="padding:4px 0;font-size:13.5px;">${escapeHtml(order.shippingState || '—')}</div></div>
-              <div class="side-field"><label>Cod poștal</label><div style="padding:4px 0;font-size:13.5px;">${escapeHtml(order.shippingPostalCode || '—')}</div></div>
-            </div>
-            <div class="side-field"><label>Comandă creată</label><div style="padding:4px 0;font-size:13.5px;">${fmtDate(order.dateCreated)}</div></div>
+            <h2>Client</h2>
+            <div style="font-size:13px;padding:2px 0;"><span style="color:var(--text-dim);">Nume:</span> ${escapeHtml(order.shippingName || order.billingName || '—')}</div>
+            <div style="font-size:13px;padding:2px 0;"><span style="color:var(--text-dim);">Telefon:</span> ${escapeHtml(order.shippingPhone || '—')}</div>
+            <div style="font-size:13px;padding:2px 0 8px;"><span style="color:var(--text-dim);">Email:</span> ${escapeHtml(order.customerEmail || '—')}</div>
+            <button class="btn btn-sm" id="clientProfileBtn">👤 Profil client</button>
+
+            <div style="border-top:1px solid var(--border);margin:12px 0 8px;padding-top:10px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-dim);">Facturare</div>
+            <div style="font-size:13px;padding:2px 0;"><span style="color:var(--text-dim);">Nume:</span> ${escapeHtml(order.billingName || '—')}</div>
+            <div style="font-size:13px;padding:2px 0;"><span style="color:var(--text-dim);">Adresă:</span> ${escapeHtml(order.billingAddress || '—')}</div>
+            <div style="font-size:13px;padding:2px 0;"><span style="color:var(--text-dim);">Localitate:</span> ${escapeHtml(order.billingCity || '—')}${order.billingState ? `, ${escapeHtml(order.billingState)}` : ''}${order.billingPostalCode ? ` · ${escapeHtml(order.billingPostalCode)}` : ''}</div>
+
+            <div style="border-top:1px solid var(--border);margin:12px 0 8px;padding-top:10px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-dim);">Livrare</div>
+            <div style="font-size:13px;padding:2px 0;"><span style="color:var(--text-dim);">Metodă:</span> ${escapeHtml(order.shippingMethodName || '—')}</div>
+            <div style="font-size:13px;padding:2px 0;"><span style="color:var(--text-dim);">Adresă:</span> ${escapeHtml(order.shippingAddress || '—')}</div>
+            <div style="font-size:13px;padding:2px 0;"><span style="color:var(--text-dim);">Localitate:</span> ${escapeHtml(order.shippingCity || '—')}${order.shippingState ? `, ${escapeHtml(order.shippingState)}` : ''}${order.shippingPostalCode ? ` · ${escapeHtml(order.shippingPostalCode)}` : ''}</div>
+            <div style="font-size:13px;padding:2px 0;"><span style="color:var(--text-dim);">Comandă creată:</span> ${fmtDate(order.dateCreated)}</div>
           </div>
         </div>
 
