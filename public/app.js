@@ -2966,7 +2966,11 @@ async function openOrderDrawer(orderId) {
         <span class="badge badge-status-closed">${escapeHtml(paymentMethodLabel(order))}</span>
         <span class="badge ${paymentBadgeClass(order.paymentStatus)}">${PAYMENT_STATUS_LABELS_MP[order.paymentStatus] || order.paymentStatus || '—'}</span>
         <span class="badge ${shippingBadgeClass(order.shippingStatus)}">${SHIPPING_STATUS_LABELS_MP[order.shippingStatus] || order.shippingStatusText || order.shippingStatus || '—'}</span>
-        ${order.shippingAwb ? `<span class="badge" id="awbCopyBadge" style="cursor:pointer;" title="Click pentru a copia numărul AWB">📦 ${escapeHtml(order.shippingAwb)}</span>` : ''}
+        ${order.shippingAwb
+          ? (order.carrierTrackingUrl
+              ? `<a href="${escapeHtml(order.carrierTrackingUrl)}" target="_blank" rel="noopener" class="badge" style="text-decoration:none;" title="Urmărește coletul${order.carrierTrackingName ? ` — ${escapeHtml(order.carrierTrackingName)}` : ''}">📦 ${escapeHtml(order.shippingAwb)}</a>`
+              : `<span class="badge" id="awbCopyBadge" style="cursor:pointer;" title="Click pentru a copia numărul AWB">📦 ${escapeHtml(order.shippingAwb)}</span>`)
+          : ''}
         ${order.invoice && !order.invoice.cancelled
           ? (order.invoice.url
               ? `<a href="${escapeHtml(order.invoice.url)}" target="_blank" rel="noopener" class="btn btn-sm btn-solid-green" style="text-decoration:none;">📄 ${escapeHtml(order.invoice.prefix || '')} ${escapeHtml(order.invoice.number || '')}</a>`
