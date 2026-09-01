@@ -154,11 +154,12 @@ function stageDotColor(stage) {
   return map[stage] || 'var(--text-dim)';
 }
 
-/** Termenul de 7 zile, calculat de la generarea AWB-ului de ridicare. */
+/** Termenul de 10 zile (Service/Retur), calculat de la generarea AWB-ului de ridicare. Colet la Schimb nu are termen. */
 function computeDeadline(ticket) {
   if (!ticket.pickupAwbCreatedAt) return null;
+  if (ticket.section === 'schimb') return null; // Colet la Schimb nu are termen limita
   const d = new Date(ticket.pickupAwbCreatedAt);
-  d.setDate(d.getDate() + 7);
+  d.setDate(d.getDate() + 10);
   return d;
 }
 
@@ -1163,7 +1164,7 @@ async function renderDashboard() {
   const attentionRows = [
     ...overdueAll.map((t) => `
       <div class="queue-item" data-id="${t.id}">
-        <span class="badge badge-priority-urgent">Peste 7 zile</span>
+        <span class="badge badge-priority-urgent">Peste 10 zile</span>
         <span class="qid">${escapeHtml(t.sectionCode || t.id)}</span>
         <span class="qsubject">${escapeHtml(t.subject)} — ${escapeHtml(t.requesterName)}</span>
         <span class="badge" style="background:rgba(255,255,255,0.06);">${stageStatusLabel(t.stage, t.section)}</span>
@@ -1187,7 +1188,7 @@ async function renderDashboard() {
       <div class="stat-tile"><span class="corner-dot" style="background:var(--status-waiting);"></span><div class="label">Service activ</div><div class="value">${serviceActive.length}</div></div>
       <div class="stat-tile"><span class="corner-dot" style="background:var(--status-in_progress);"></span><div class="label">Retur activ</div><div class="value">${returActive.length}</div></div>
       <div class="stat-tile"><span class="corner-dot" style="background:var(--status-waiting);"></span><div class="label">Colet la Schimb</div><div class="value">${schimbActive.length}</div></div>
-      <div class="stat-tile"><span class="corner-dot glow-dot" style="background:var(--priority-urgent);"></span><div class="label">Peste 7 zile</div><div class="value" style="color:${overdueAll.length ? 'var(--priority-urgent)' : 'var(--text)'};">${overdueAll.length}</div></div>
+      <div class="stat-tile"><span class="corner-dot glow-dot" style="background:var(--priority-urgent);"></span><div class="label">Peste 10 zile</div><div class="value" style="color:${overdueAll.length ? 'var(--priority-urgent)' : 'var(--text)'};">${overdueAll.length}</div></div>
     </div>
 
     <div class="panel" style="margin-bottom:16px;">
@@ -1545,7 +1546,7 @@ async function renderServiceReturnList(route, section) {
     const tabs = [
       { key: 'open', label: 'Deschise' },
       { key: 'atelier', label: { service: 'La atelier', retur: 'La depozit', schimb: 'Finalizate' }[section] },
-      { key: 'overdue', label: 'Peste 7 zile' },
+      { key: 'overdue', label: 'Peste 10 zile' },
       { key: 'closed', label: 'Închise' },
       { key: 'all', label: 'Toate' },
     ];
@@ -1607,8 +1608,8 @@ async function renderServiceReturnList(route, section) {
         <div class="ticket-table">
           <div class="service-row header">
             ${isSchimb
-              ? '<div>COD</div><div>CANAL</div><div>STATUS TUR</div><div>STATUS RETUR</div><div>COMANDĂ</div><div>CLIENT</div><div>PRODUS</div><div>TERMEN 7 ZILE</div>'
-              : '<div>COD</div><div>CANAL</div><div>STATUS</div><div>UNDE E MARFA</div><div>COMANDĂ</div><div>CLIENT</div><div>PRODUS</div><div>TERMEN 7 ZILE</div>'}
+              ? '<div>COD</div><div>CANAL</div><div>STATUS TUR</div><div>STATUS RETUR</div><div>COMANDĂ</div><div>CLIENT</div><div>PRODUS</div><div></div>'
+              : '<div>COD</div><div>CANAL</div><div>STATUS</div><div>UNDE E MARFA</div><div>COMANDĂ</div><div>CLIENT</div><div>PRODUS</div><div>TERMEN 10 ZILE</div>'}
           </div>
           ${tableRows}
         </div>
