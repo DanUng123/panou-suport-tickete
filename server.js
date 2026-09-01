@@ -14,6 +14,7 @@ const gls = require('./lib/gls');
 const sameday = require('./lib/sameday');
 const mp = require('./lib/merchantpro');
 const gomag = require('./lib/gomag');
+const resend = require('./lib/resend');
 const pdf = require('./lib/pdf');
 
 const PORT = process.env.PORT || 3000;
@@ -320,6 +321,47 @@ async function handleApi(req, res, pathname, query) {
       const match = cookie.match(/(?:^|;\s*)session=([^;]+)/);
       if (match) sessions.delete(match[1]);
       res.setHeader('Set-Cookie', 'session=; HttpOnly; Secure; Path=/; Max-Age=0');
+      return sendJSON(res, 200, { ok: true });
+    }
+
+    if (pathname === '/api/forgot-password' && req.method === 'POST') {
+      if (isRateLimited('forgot-password', req, 5, 10 * 60 * 1000)) {
+        return sendJSON(res, 429, { error: 'Prea multe încercări. Încearcă din nou peste câteva minute.' });
+      }
+      const body = await readBody(req);
+      const email = (body.email || '').trim().toLowerCase();
+      // raspundem la fel, indiferent daca emailul exista sau nu -- altfel am
+      // dezvalui, prin timpul de raspuns sau mesaj, ce conturi sunt reale
+      const genericResponse = { ok: true, message: 'Dacă adresa există în sistem, vei primi un email cu instrucțiuni.' };
+      try {
+        const agent = db.findAgentByEmail(email);
+        if (agent && agent.active && resend.isConfigured()) {
+          const token = db.createPasswordResetToken(agent.id);
+          const resetUrl = `${process.env.APP_BASE_URL || 'https://www.easy-ticket.ro'}/#/reset-password?token=${token}`;
+          await resend.sendEmail({
+            to: email,
+            subject: 'Resetare parolă — SuportMaster',
+            html: `<p>Salut, ${agent.name ? agent.name.split(' ')[0] : ''}!</p><p>Cineva (probabil tu) a cerut resetarea parolei contului tău SuportMaster.</p><p><a href="${resetUrl}">Apasă aici ca să-ți alegi o parolă nouă</a> — linkul e valabil o oră.</p><p>Dacă nu ai cerut tu asta, poți ignora acest email — parola ta rămâne neschimbată.</p>`,
+          });
+        }
+      } catch (e) {
+        // nu dezvaluim eroarea exacta catre client (ar putea confirma existenta contului) -- doar logam
+        console.error('Eroare la trimiterea emailului de resetare:', e.message);
+      }
+      return sendJSON(res, 200, genericResponse);
+    }
+
+    if (pathname === '/api/reset-password' && req.method === 'POST') {
+      if (isRateLimited('reset-password', req, 10, 10 * 60 * 1000)) {
+        return sendJSON(res, 429, { error: 'Prea multe încercări. Încearcă din nou peste câteva minute.' });
+      }
+      const body = await readBody(req);
+      const token = (body.token || '').trim();
+      const password = body.password || '';
+      if (!token) return sendJSON(res, 400, { error: 'Token lipsă.' });
+      if (password.length < 8) return sendJSON(res, 400, { error: 'Parola trebuie să aibă minimum 8 caractere.' });
+      const agent = db.resetPasswordWithToken(token, password);
+      if (!agent) return sendJSON(res, 400, { error: 'Link invalid sau expirat. Cere un link nou.' });
       return sendJSON(res, 200, { ok: true });
     }
 

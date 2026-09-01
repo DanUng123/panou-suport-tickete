@@ -826,6 +826,94 @@ async function renderPlatformClientsPanel() {
   });
 }
 
+function renderForgotPassword(statusMsg, isError) {
+  app.innerHTML = '';
+  const card = el(`
+    <div class="auth-screen">
+      <div class="auth-card">
+        <div class="auth-brand">
+          <div class="mark">S</div>
+          <div class="name">Panou Suport</div>
+        </div>
+        <h1>Am uitat parola</h1>
+        <p class="sub">Introdu emailul contului tău — dacă există, primești un link de resetare.</p>
+        ${statusMsg ? `<div class="${isError ? 'error-msg' : 'hint'}" style="${isError ? '' : 'background:rgba(107,196,130,0.1);border:1px solid rgba(107,196,130,0.3);border-radius:8px;padding:10px 12px;margin-bottom:14px;'}">${escapeHtml(statusMsg)}</div>` : ''}
+        <form id="forgot-form">
+          <div class="field">
+            <label for="fpEmail">Email</label>
+            <input type="email" id="fpEmail" placeholder="tu@firma.ro" required autofocus />
+          </div>
+          <button class="btn btn-primary btn-block" type="submit">Trimite link de resetare</button>
+        </form>
+        <div class="hint" style="text-align:center;margin-top:16px;">
+          <a href="#" id="goLoginBack" style="color:var(--accent);">← Înapoi la autentificare</a>
+        </div>
+      </div>
+    </div>
+  `);
+  app.appendChild(card);
+
+  card.querySelector('#goLoginBack').addEventListener('click', (e) => {
+    e.preventDefault();
+    navigate('#/login');
+  });
+
+  card.querySelector('#forgot-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = card.querySelector('#fpEmail').value.trim();
+    const btn = card.querySelector('button[type="submit"]');
+    btn.disabled = true;
+    try {
+      const result = await api('/api/forgot-password', { method: 'POST', body: JSON.stringify({ email }) });
+      renderForgotPassword(result.message, false);
+    } catch (err) {
+      renderForgotPassword(err.message, true);
+    }
+  });
+}
+
+function renderResetPassword(token) {
+  app.innerHTML = '';
+  const card = el(`
+    <div class="auth-screen">
+      <div class="auth-card">
+        <div class="auth-brand">
+          <div class="mark">S</div>
+          <div class="name">Panou Suport</div>
+        </div>
+        <h1>Parolă nouă</h1>
+        <p class="sub">Alege o parolă nouă pentru contul tău.</p>
+        <div id="reset-error"></div>
+        <form id="reset-form">
+          <div class="field">
+            <label for="newPw">Parolă nouă</label>
+            <input type="password" id="newPw" placeholder="minimum 8 caractere" required minlength="8" />
+          </div>
+          <button class="btn btn-primary btn-block" type="submit">Salvează parola nouă</button>
+        </form>
+      </div>
+    </div>
+  `);
+  app.appendChild(card);
+
+  card.querySelector('#reset-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const password = card.querySelector('#newPw').value;
+    const btn = card.querySelector('button[type="submit"]');
+    const errorBox = card.querySelector('#reset-error');
+    btn.disabled = true;
+    try {
+      await api('/api/reset-password', { method: 'POST', body: JSON.stringify({ token, password }) });
+      showToast('Parolă schimbată cu succes — te poți autentifica acum.');
+      navigate('#/login');
+      render();
+    } catch (err) {
+      errorBox.innerHTML = `<div class="error-msg">${escapeHtml(err.message)}</div>`;
+      btn.disabled = false;
+    }
+  });
+}
+
 function renderLogin(errorMsg) {
   app.innerHTML = '';
   const card = el(`
@@ -846,6 +934,7 @@ function renderLogin(errorMsg) {
           <div class="field">
             <label for="pw">Parolă</label>
             <input type="password" id="pw" placeholder="••••••••" required />
+            <div style="text-align:right;margin-top:6px;"><a href="#" id="goForgotPassword" style="color:var(--text-secondary);font-size:12.5px;">Am uitat parola</a></div>
           </div>
           <button class="btn btn-primary btn-block" type="submit">Autentificare</button>
         </form>
@@ -856,6 +945,11 @@ function renderLogin(errorMsg) {
     </div>
   `);
   app.appendChild(card);
+
+  card.querySelector('#goForgotPassword').addEventListener('click', (e) => {
+    e.preventDefault();
+    navigate('#/forgot-password');
+  });
 
   card.querySelector('#goSignup').addEventListener('click', (e) => {
     e.preventDefault();
@@ -3646,6 +3740,13 @@ function render() {
     const publicPath = publicHash.split('?')[0];
     if (publicPath === '#/login') { renderLogin(); return; }
     if (publicPath === '#/signup') { renderSignup(); return; }
+    if (publicPath === '#/forgot-password') { renderForgotPassword(); return; }
+    if (publicPath === '#/reset-password') {
+      const queryPart = publicHash.split('?')[1] || '';
+      const params = new URLSearchParams(queryPart);
+      renderResetPassword(params.get('token') || '');
+      return;
+    }
     if (publicPath === '#/ce-este') { renderMarketingWhatIs(); return; }
     if (publicPath === '#/preturi') { renderMarketingPricing(); return; }
     if (publicPath === '#/despre') { renderMarketingAbout(); return; }
