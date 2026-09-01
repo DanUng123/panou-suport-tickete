@@ -1991,6 +1991,7 @@ async function paintTicketDrawer(ticket) {
                 <button class="btn btn-sm" id="refreshPickupStatusBtn">↻ Status</button>
                 <button class="btn btn-sm" id="viewPickupTrackingBtn">Traseu</button>
                 <button class="btn btn-sm" id="downloadPickupLabelBtn">↓ PDF</button>
+                ${!ARRIVED_STAGES.includes(ticket.stage) ? '<button class="btn btn-sm" id="reissuePickupAwbBtn" style="color:var(--status-open);">↻ Reemite AWB</button>' : ''}
                 ${!ARRIVED_STAGES.includes(ticket.stage) ? '<button class="btn btn-sm" id="cancelPickupAwbBtn" style="color:var(--priority-urgent);">Anulează</button>' : ''}
               </div>
               <div id="pickupTrackingBox" style="display:none;margin-top:10px;"></div>
@@ -2238,6 +2239,30 @@ async function paintTicketDrawer(ticket) {
         } catch (err) {
           showToast('Eroare la anulare: ' + err.message);
           cancelPickupBtn.disabled = false;
+        }
+      });
+    }
+
+    const reissuePickupBtn = content.querySelector('#reissuePickupAwbBtn');
+    if (reissuePickupBtn) {
+      reissuePickupBtn.addEventListener('click', async () => {
+        const courierLabel = ticket.pickupAwbCourier === 'sameday' ? 'Sameday' : 'GLS';
+        if (!confirm(`Coletul nu a fost ridicat? Se anulează automat AWB-ul curent (${ticket.pickupAwbNumber}, la ${courierLabel}) și se emite unul nou, cu aceleași date de ridicare.`)) return;
+        reissuePickupBtn.disabled = true;
+        reissuePickupBtn.textContent = 'Se reemite…';
+        try {
+          const result = await api(`/api/tickets/${ticket.id}/reissue-pickup-awb`, { method: 'POST' });
+          ticket = result;
+          if (result.reissued) {
+            showToast('AWB vechi anulat, unul nou a fost emis');
+          } else if (result.warning) {
+            showToast(result.warning);
+          }
+          paint();
+        } catch (err) {
+          showToast('Eroare: ' + err.message);
+          reissuePickupBtn.disabled = false;
+          reissuePickupBtn.textContent = '↻ Reemite AWB';
         }
       });
     }

@@ -946,6 +946,66 @@ async function handleApi(req, res, pathname, query) {
       }
     }
 
+    const reissuePickupMatch = pathname.match(/^\/api\/tickets\/([^/]+)\/reissue-pickup-awb$/);
+    if (reissuePickupMatch && req.method === 'POST') {
+      const ticket = db.getTicket(currentAgent.companyId, reissuePickupMatch[1]);
+      if (!ticket) return sendJSON(res, 404, { error: 'Tichet negăsit' });
+      if (!ticket.pickupAwbParcelId) return sendJSON(res, 400, { error: 'Tichetul nu are un AWB de ridicare de reemis.' });
+
+      const courier = ticket.pickupAwbCourier === 'sameday' ? 'sameday' : 'gls';
+      const courierClient = courier === 'sameday' ? sameday : gls;
+
+      // pas 1: anulam AWB-ul vechi (colet neridicat -- client negasit,
+      // curier neprezentat etc.), apoi curatam IMEDIAT starea tichetului --
+      // altfel, daca pasul 2 (generare) esueaza, tichetul ar ramane cu un
+      // AWB "activ" in interfata, desi de fapt a fost deja anulat la curier
+      try {
+        if (courier === 'sameday') {
+          await sameday.deleteAwb(company, ticket.pickupAwbParcelId);
+        } else {
+          await gls.deleteParcel(company, ticket.pickupAwbParcelId);
+        }
+        db.clearTicketPickupAwb(currentAgent.companyId, ticket.id, currentAgent);
+      } catch (e) {
+        return sendJSON(res, 502, { error: `Nu am putut anula AWB-ul vechi: ${e.message}` });
+      }
+
+      // pas 2: generam un AWB nou, cu exact aceleasi date de ridicare
+      // folosite prima data (deja salvate pe tichet)
+      const reason = ['retur', 'schimb'].includes(ticket.section) ? ticket.section : 'service';
+      const address = ticket.pickupAddress || '';
+      const city = ticket.pickupCity || '';
+      const postalCode = ticket.pickupPostalCode || '';
+      const phone = ticket.pickupPhone || '';
+      const customerName = ticket.requesterName;
+      const email = ticket.requesterEmail || '';
+
+      if (!address || !city || !postalCode || !phone) {
+        return sendJSON(res, 200, { ...db.getTicket(currentAgent.companyId, ticket.id), reissued: false, warning: 'AWB-ul vechi a fost anulat, dar datele de ridicare sunt incomplete pentru a genera automat unul nou -- completează manual formularul.' });
+      }
+
+      try {
+        const result = await courierClient.createPickupAwb(company, {
+          ticketId: ticket.id, reason, customerName, address, city, postalCode, phone, email,
+        });
+        const updated = db.setTicketPickupAwb(currentAgent.companyId, ticket.id, {
+          awbNumber: result.trackingNumber,
+          parcelId: result.parcelId,
+          labelPdf: result.labelPdf ? result.labelPdf.toString('base64') : null,
+          section: reason,
+          pickupAddress: address,
+          pickupCity: city,
+          pickupPostalCode: postalCode,
+          pickupPhone: phone,
+          courier,
+          secondaryAwbNumber: result.secondaryAwbNumber,
+        }, currentAgent);
+        return sendJSON(res, 200, { ...updated, labelAvailable: Boolean(result.labelPdf), reissued: true });
+      } catch (e) {
+        return sendJSON(res, 502, { error: `AWB-ul vechi a fost anulat, dar generarea celui nou a eșuat: ${e.message}. Generează manual unul nou, din formular.` });
+      }
+    }
+
     const pickupLabelMatch = pathname.match(/^\/api\/tickets\/([^/]+)\/pickup-awb-label$/);
     if (pickupLabelMatch && req.method === 'GET') {
       const ticket = db.getTicket(currentAgent.companyId, pickupLabelMatch[1]);
