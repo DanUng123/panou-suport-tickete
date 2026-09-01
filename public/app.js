@@ -1,4 +1,4 @@
-/* Panou Suport — front-end vanilla JS (fara framework), rutare pe hash. */
+/* Easy-Ticket — front-end vanilla JS (fara framework), rutare pe hash. */
 
 const app = document.getElementById('app');
 
@@ -376,7 +376,7 @@ function renderMarketingShell(activeRoute, innerHtml) {
       <header style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;padding:18px 32px;border-bottom:1px solid var(--border);">
         <div style="display:flex;align-items:center;gap:10px;cursor:pointer;" id="marketingLogo">
           <div style="width:32px;height:32px;border-radius:8px;background:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;">S</div>
-          <div style="font-weight:700;font-size:16px;">SuportMaster</div>
+          <div style="font-weight:700;font-size:16px;">Easy-Ticket</div>
         </div>
         <nav style="display:flex;gap:4px;flex-wrap:wrap;">
           ${MARKETING_NAV_LINKS.map((l) => `<a href="${l.route}" class="marketing-nav-link" data-route="${l.route}" style="padding:8px 14px;border-radius:6px;font-size:13.5px;text-decoration:none;color:${activeRoute === l.route ? 'var(--text)' : 'var(--text-secondary)'};background:${activeRoute === l.route ? 'var(--surface-raised)' : 'transparent'};">${l.label}</a>`).join('')}
@@ -388,7 +388,7 @@ function renderMarketingShell(activeRoute, innerHtml) {
       </header>
       <main style="flex:1;">${innerHtml}</main>
       <footer style="border-top:1px solid var(--border);padding:28px 32px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;color:var(--text-dim);font-size:12.5px;">
-        <div>© ${new Date().getFullYear()} SuportMaster. Toate drepturile rezervate.</div>
+        <div>© ${new Date().getFullYear()} Easy-Ticket. Toate drepturile rezervate.</div>
         <div style="display:flex;gap:16px;flex-wrap:wrap;">
           ${MARKETING_NAV_LINKS.map((l) => `<a href="${l.route}" class="marketing-nav-link" data-route="${l.route}" style="color:var(--text-dim);text-decoration:none;">${l.label}</a>`).join('')}
         </div>
@@ -414,7 +414,7 @@ function renderMarketingHome() {
     <section style="max-width:920px;margin:0 auto;padding:80px 24px 60px;text-align:center;">
       <div style="display:inline-block;padding:6px 14px;border-radius:20px;background:var(--surface-raised);color:var(--accent);font-size:12.5px;font-weight:600;margin-bottom:20px;">Platformă pentru magazine online din România</div>
       <h1 style="font-size:40px;line-height:1.15;margin-bottom:16px;">Suport clienți, comenzi și curieri — totul dintr-un singur loc</h1>
-      <p style="font-size:16px;color:var(--text-secondary);max-width:640px;margin:0 auto 32px;">SuportMaster unește tichetele de service, retur și schimb, sincronizarea automată a comenzilor din MerchantPro, și generarea AWB-urilor cu GLS și Sameday — într-o singură platformă, gândită pentru echipe reale.</p>
+      <p style="font-size:16px;color:var(--text-secondary);max-width:640px;margin:0 auto 32px;">Easy-Ticket unește tichetele de service, retur și schimb, sincronizarea automată a comenzilor din MerchantPro, și generarea AWB-urilor cu GLS și Sameday — într-o singură platformă, gândită pentru echipe reale.</p>
       <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
         <button class="btn btn-primary" id="heroSignupBtn" style="padding:12px 24px;font-size:14.5px;">Creează cont gratuit</button>
         <button class="btn" id="heroPricingBtn" style="padding:12px 24px;font-size:14.5px;">Vezi prețurile</button>
@@ -460,7 +460,7 @@ function renderMarketingWhatIs() {
   ];
   renderMarketingShell('#/ce-este', `
     <section style="max-width:760px;margin:0 auto;padding:60px 24px;">
-      <h1 style="font-size:32px;margin-bottom:12px;">Ce este SuportMaster</h1>
+      <h1 style="font-size:32px;margin-bottom:12px;">Ce este Easy-Ticket</h1>
       <p style="color:var(--text-secondary);margin-bottom:40px;font-size:15px;">O platformă construită special pentru echipele de suport ale magazinelor online — unde tichetele, comenzile și curierii lucrează împreună, nu separat.</p>
       ${sections.map((s) => `
         <div style="margin-bottom:32px;padding-bottom:32px;border-bottom:1px solid var(--border);">
@@ -514,8 +514,8 @@ function renderMarketingPricing() {
 function renderMarketingAbout() {
   renderMarketingShell('#/despre', `
     <section style="max-width:720px;margin:0 auto;padding:60px 24px;">
-      <h1 style="font-size:32px;margin-bottom:20px;">Despre SuportMaster</h1>
-      <p style="color:var(--text-secondary);font-size:15px;line-height:1.7;margin-bottom:20px;">SuportMaster s-a născut dintr-o nevoie simplă: echipele care gestionează suportul clienților pentru magazine online lucrează în prea multe locuri deodată — un panou pentru tichete, altul pentru curieri, altul pentru comenzi. Am construit o singură platformă care le aduce pe toate laolaltă.</p>
+      <h1 style="font-size:32px;margin-bottom:20px;">Despre Easy-Ticket</h1>
+      <p style="color:var(--text-secondary);font-size:15px;line-height:1.7;margin-bottom:20px;">Easy-Ticket s-a născut dintr-o nevoie simplă: echipele care gestionează suportul clienților pentru magazine online lucrează în prea multe locuri deodată — un panou pentru tichete, altul pentru curieri, altul pentru comenzi. Am construit o singură platformă care le aduce pe toate laolaltă.</p>
       <p style="color:var(--text-secondary);font-size:15px;line-height:1.7;margin-bottom:20px;">Fiecare funcționalitate a platformei — de la urmărirea automată a AWB-urilor, până la gestionarea rambursărilor — a plecat de la un proces real, folosit zilnic de o echipă de suport, nu de la o listă abstractă de funcții.</p>
       <p style="color:var(--text-secondary);font-size:15px;line-height:1.7;">Platforma e construită pentru magazine online din România, cu integrări directe către curierii și platforma de eCommerce pe care le folosești deja.</p>
     </section>
@@ -833,7 +833,7 @@ function renderForgotPassword(statusMsg, isError) {
       <div class="auth-card">
         <div class="auth-brand">
           <div class="mark">S</div>
-          <div class="name">Panou Suport</div>
+          <div class="name">Easy-Ticket</div>
         </div>
         <h1>Am uitat parola</h1>
         <p class="sub">Introdu emailul contului tău — dacă există, primești un link de resetare.</p>
@@ -879,7 +879,7 @@ function renderResetPassword(token) {
       <div class="auth-card">
         <div class="auth-brand">
           <div class="mark">S</div>
-          <div class="name">Panou Suport</div>
+          <div class="name">Easy-Ticket</div>
         </div>
         <h1>Parolă nouă</h1>
         <p class="sub">Alege o parolă nouă pentru contul tău.</p>
@@ -921,7 +921,7 @@ function renderLogin(errorMsg) {
       <div class="auth-card">
         <div class="auth-brand">
           <div class="mark">S</div>
-          <div class="name">Panou Suport</div>
+          <div class="name">Easy-Ticket</div>
         </div>
         <h1>Autentificare</h1>
         <p class="sub">Introdu emailul și parola contului tău.</p>
@@ -978,7 +978,7 @@ function renderSignup(errorMsg) {
       <div class="auth-card">
         <div class="auth-brand">
           <div class="mark">S</div>
-          <div class="name">Panou Suport</div>
+          <div class="name">Easy-Ticket</div>
         </div>
         <h1>Creează cont nou</h1>
         <p class="sub">Pornește contul companiei tale — devii automat manager.</p>
@@ -1075,7 +1075,7 @@ function renderShell(activeRoute, contentNode) {
     <div class="sidebar" id="sidebar">
       <div class="brand">
         <div class="eyebrow">Suport clienți</div>
-        <div class="name">Panou Suport</div>
+        <div class="name">Easy-Ticket</div>
       </div>
       <nav class="nav">
         <div class="nav-item" data-route="#/dashboard">${NAV_ICONS.dashboard}Panou Control</div>

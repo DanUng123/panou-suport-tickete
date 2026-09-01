@@ -340,8 +340,8 @@ async function handleApi(req, res, pathname, query) {
           const resetUrl = `${process.env.APP_BASE_URL || 'https://www.easy-ticket.ro'}/#/reset-password?token=${token}`;
           await resend.sendEmail({
             to: email,
-            subject: 'Resetare parolă — SuportMaster',
-            html: `<p>Salut, ${agent.name ? agent.name.split(' ')[0] : ''}!</p><p>Cineva (probabil tu) a cerut resetarea parolei contului tău SuportMaster.</p><p><a href="${resetUrl}">Apasă aici ca să-ți alegi o parolă nouă</a> — linkul e valabil o oră.</p><p>Dacă nu ai cerut tu asta, poți ignora acest email — parola ta rămâne neschimbată.</p>`,
+            subject: 'Resetare parolă — Easy-Ticket',
+            html: `<p>Salut, ${agent.name ? agent.name.split(' ')[0] : ''}!</p><p>Cineva (probabil tu) a cerut resetarea parolei contului tău Easy-Ticket.</p><p><a href="${resetUrl}">Apasă aici ca să-ți alegi o parolă nouă</a> — linkul e valabil o oră.</p><p>Dacă nu ai cerut tu asta, poți ignora acest email — parola ta rămâne neschimbată.</p>`,
           });
         }
       } catch (e) {
