@@ -1992,7 +1992,7 @@ async function paintTicketDrawer(ticket) {
                 <button class="btn btn-sm" id="refreshPickupStatusBtn">↻ Status</button>
                 <button class="btn btn-sm" id="viewPickupTrackingBtn">Traseu</button>
                 <button class="btn btn-sm" id="downloadPickupLabelBtn">↓ PDF</button>
-                ${!ARRIVED_STAGES.includes(ticket.stage) ? '<button class="btn btn-sm" id="reissuePickupAwbBtn" style="color:var(--status-open);">↻ Reemite AWB</button>' : ''}
+                ${!ARRIVED_STAGES.includes(ticket.stage) && ['service', 'retur'].includes(ticket.section) ? '<button class="btn btn-sm" id="reissuePickupAwbBtn" style="color:var(--status-open);">↻ Reemite AWB</button>' : ''}
                 ${!ARRIVED_STAGES.includes(ticket.stage) ? '<button class="btn btn-sm" id="cancelPickupAwbBtn" style="color:var(--priority-urgent);">Anulează</button>' : ''}
               </div>
               <div id="pickupTrackingBox" style="display:none;margin-top:10px;"></div>

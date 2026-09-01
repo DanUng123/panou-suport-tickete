@@ -950,6 +950,9 @@ async function handleApi(req, res, pathname, query) {
     if (reissuePickupMatch && req.method === 'POST') {
       const ticket = db.getTicket(currentAgent.companyId, reissuePickupMatch[1]);
       if (!ticket) return sendJSON(res, 404, { error: 'Tichet negăsit' });
+      if (!['service', 'retur'].includes(ticket.section)) {
+        return sendJSON(res, 400, { error: 'Reemiterea AWB este disponibilă doar pentru tichetele Service și Retur.' });
+      }
       if (!ticket.pickupAwbParcelId) return sendJSON(res, 400, { error: 'Tichetul nu are un AWB de ridicare de reemis.' });
 
       const courier = ticket.pickupAwbCourier === 'sameday' ? 'sameday' : 'gls';

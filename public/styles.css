@@ -5,17 +5,17 @@
    =========================================================== */
 
 :root {
-  --bg: #0a0e1a;
-  --surface: #0f1729;
-  --surface-raised: #172038;
-  --surface-hover: #1f2a47;
-  --border: #263254;
-  --border-light: #34456e;
+  --bg: #0a0d13;
+  --surface: #12161e;
+  --surface-raised: #1a1f2a;
+  --surface-hover: #212836;
+  --border: #232a37;
+  --border-light: #323b4a;
   --text: #eef0f4;
   --text-secondary: #8d96a6;
   --text-dim: #5f6878;
   --accent: #2f6fed;
-  --accent-dim: #16305a;
+  --accent-dim: #0f2138;
   --accent-text: #ffffff;
   --accent-glow: rgba(47,111,237,0.10);
 
@@ -934,7 +934,7 @@ a { color: inherit; text-decoration: none; }
 
 .service-row {
   display: grid;
-  grid-template-columns: 55px 95px 175px 155px 80px 1fr 1.1fr 90px;
+  grid-template-columns: 55px 95px 175px 155px 80px 1fr 1.1fr 130px;
   align-items: center;
   gap: 12px;
   padding: 13px 16px;
