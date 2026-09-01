@@ -375,7 +375,7 @@ function renderMarketingShell(activeRoute, innerHtml) {
     <div style="min-height:100vh;width:100%;display:flex;flex-direction:column;background:var(--bg);">
       <header style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;padding:18px 32px;border-bottom:1px solid var(--border);">
         <div style="display:flex;align-items:center;gap:10px;cursor:pointer;" id="marketingLogo">
-          <div style="width:32px;height:32px;border-radius:8px;background:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;">S</div>
+          <div style="width:32px;height:32px;border-radius:8px;background:var(--accent);display:flex;align-items:center;justify-content:center;"><svg width="18" height="18" viewBox="0 0 64 64"><path d="M34 6L14 34H26L20 58L50 24H36Z" fill="#ffffff"/></svg></div>
           <div style="font-weight:700;font-size:16px;">Easy-Ticket</div>
         </div>
         <nav style="display:flex;gap:4px;flex-wrap:wrap;">
@@ -832,7 +832,7 @@ function renderForgotPassword(statusMsg, isError) {
     <div class="auth-screen">
       <div class="auth-card">
         <div class="auth-brand">
-          <div class="mark">S</div>
+          <div class="mark"><svg width="18" height="18" viewBox="0 0 64 64"><path d="M34 6L14 34H26L20 58L50 24H36Z" fill="currentColor"/></svg></div>
           <div class="name">Easy-Ticket</div>
         </div>
         <h1>Am uitat parola</h1>
@@ -878,7 +878,7 @@ function renderResetPassword(token) {
     <div class="auth-screen">
       <div class="auth-card">
         <div class="auth-brand">
-          <div class="mark">S</div>
+          <div class="mark"><svg width="18" height="18" viewBox="0 0 64 64"><path d="M34 6L14 34H26L20 58L50 24H36Z" fill="currentColor"/></svg></div>
           <div class="name">Easy-Ticket</div>
         </div>
         <h1>Parolă nouă</h1>
@@ -920,7 +920,7 @@ function renderLogin(errorMsg) {
     <div class="auth-screen">
       <div class="auth-card">
         <div class="auth-brand">
-          <div class="mark">S</div>
+          <div class="mark"><svg width="18" height="18" viewBox="0 0 64 64"><path d="M34 6L14 34H26L20 58L50 24H36Z" fill="currentColor"/></svg></div>
           <div class="name">Easy-Ticket</div>
         </div>
         <h1>Autentificare</h1>
@@ -977,7 +977,7 @@ function renderSignup(errorMsg) {
     <div class="auth-screen">
       <div class="auth-card">
         <div class="auth-brand">
-          <div class="mark">S</div>
+          <div class="mark"><svg width="18" height="18" viewBox="0 0 64 64"><path d="M34 6L14 34H26L20 58L50 24H36Z" fill="currentColor"/></svg></div>
           <div class="name">Easy-Ticket</div>
         </div>
         <h1>Creează cont nou</h1>
@@ -1073,9 +1073,12 @@ function renderShell(activeRoute, contentNode) {
   // dintr-un template HTML, deci doua radacini surori ar pierde-o pe a doua.
   const sidebar = el(`
     <div class="sidebar" id="sidebar">
-      <div class="brand">
-        <div class="eyebrow">Suport clienți</div>
-        <div class="name">Easy-Ticket</div>
+      <div class="brand" style="display:flex;align-items:center;gap:10px;">
+        <div style="width:32px;height:32px;flex-shrink:0;border-radius:8px;background:var(--accent);display:flex;align-items:center;justify-content:center;"><svg width="18" height="18" viewBox="0 0 64 64"><path d="M34 6L14 34H26L20 58L50 24H36Z" fill="#ffffff"/></svg></div>
+        <div>
+          <div class="eyebrow">Suport clienți</div>
+          <div class="name">Easy-Ticket</div>
+        </div>
       </div>
       <nav class="nav">
         <div class="nav-item" data-route="#/dashboard">${NAV_ICONS.dashboard}Panou Control</div>
