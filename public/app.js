@@ -3628,6 +3628,17 @@ async function renderSettings() {
             <label>Email</label>
             <input type="text" id="s-gls-semail" value="${v(s.glsSenderEmail)}" />
           </div>
+          <div class="field">
+            <label>Format etichetă tipărire</label>
+            <select id="s-gls-printer">
+              <option value="Connect" ${s.glsTypeOfPrinter === 'Connect' || !s.glsTypeOfPrinter ? 'selected' : ''}>Connect (implicit, PDF standard)</option>
+              <option value="A4_2x2" ${s.glsTypeOfPrinter === 'A4_2x2' ? 'selected' : ''}>A4 — 4 etichete pe pagină</option>
+              <option value="A4_4x1" ${s.glsTypeOfPrinter === 'A4_4x1' ? 'selected' : ''}>A4 — 4 etichete, într-un rând</option>
+              <option value="Thermo" ${s.glsTypeOfPrinter === 'Thermo' ? 'selected' : ''}>Thermo (imprimantă termică)</option>
+              <option value="ThermoZPL" ${s.glsTypeOfPrinter === 'ThermoZPL' ? 'selected' : ''}>Thermo ZPL — 203 DPI</option>
+              <option value="ThermoZPL_300DPI" ${s.glsTypeOfPrinter === 'ThermoZPL_300DPI' ? 'selected' : ''}>Thermo ZPL — 300 DPI</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -3680,6 +3691,15 @@ async function renderSettings() {
           <div class="field">
             <label>Adresă</label>
             <input type="text" id="s-sd-saddress" value="${v(s.samedaySenderAddress)}" />
+          </div>
+          <div class="field">
+            <label>Format etichetă tipărire</label>
+            <select id="s-sd-pdfformat">
+              <option value="" ${!s.samedayAwbPdfFormat ? 'selected' : ''}>Implicit (A6)</option>
+              <option value="A4" ${s.samedayAwbPdfFormat === 'A4' ? 'selected' : ''}>A4</option>
+              <option value="A6" ${s.samedayAwbPdfFormat === 'A6' ? 'selected' : ''}>A6</option>
+            </select>
+            <div class="hint" style="margin-top:4px;">Notă: setare recent adăugată — dacă etichetele nu se descarcă corect după ce o schimbi, anunță-ne.</div>
           </div>
         </div>
       </div>
@@ -3738,6 +3758,7 @@ async function renderSettings() {
       glsSenderZipcode: q('#s-gls-szip'),
       glsSenderPhone: q('#s-gls-sphone'),
       glsSenderEmail: q('#s-gls-semail'),
+      glsTypeOfPrinter: q('#s-gls-printer'),
       samedayUsername: q('#s-sd-user'),
       samedayPassword: q('#s-sd-pass'),
       samedayPickupPointId: q('#s-sd-pickupid'),
@@ -3747,6 +3768,7 @@ async function renderSettings() {
       samedaySenderPhone: q('#s-sd-sphone'),
       samedaySenderPostalCode: q('#s-sd-szip'),
       samedaySenderAddress: q('#s-sd-saddress'),
+      samedayAwbPdfFormat: q('#s-sd-pdfformat'),
     };
     try {
       await api('/api/company/settings', { method: 'PATCH', body: JSON.stringify(payload) });
