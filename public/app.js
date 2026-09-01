@@ -2944,6 +2944,15 @@ async function openOrderDrawer(orderId) {
       </div>
     `).join('') || '<div style="color:var(--text-dim);font-size:13px;">Niciun produs listat.</div>';
 
+    const shippingRow = order.shippingCost != null ? `
+      <div class="line-item-row">
+        <div class="li-thumb li-thumb-placeholder">🚚</div>
+        <div class="li-name">Transport</div>
+        <div class="li-qty"></div>
+        <div class="li-price">${fmtMoney(order.shippingCost, order.currency)}</div>
+      </div>
+    ` : '';
+
     content.innerHTML = `
       <div class="order-header-v2">
         <div>
@@ -2969,10 +2978,9 @@ async function openOrderDrawer(orderId) {
 
       <div class="comments-panel" style="margin-bottom:16px;">
         <h2 style="font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary);margin:0 0 10px;">Produse comandate</h2>
-        <div class="line-items-list">${items}</div>
-        ${(order.shippingCost != null || order.totalAmount != null) ? `
-          <div style="border-top:1px solid var(--border);margin-top:10px;padding-top:10px;display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
-            ${order.shippingCost != null ? `<div style="font-size:13px;color:var(--text-secondary);">Transport: ${fmtMoney(order.shippingCost, order.currency)}</div>` : ''}
+        <div class="line-items-list">${items}${shippingRow}</div>
+        ${order.totalAmount != null ? `
+          <div style="border-top:1px solid var(--border);margin-top:10px;padding-top:10px;display:flex;justify-content:flex-end;">
             <div style="font-size:15px;font-weight:700;">Total comandă: ${fmtMoney(order.totalAmount, order.currency)}</div>
           </div>
         ` : ''}
