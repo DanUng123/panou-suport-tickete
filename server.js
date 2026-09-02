@@ -1254,6 +1254,29 @@ async function handleApi(req, res, pathname, query) {
       }
     }
 
+    const orderTrackingMatch = pathname.match(/^\/api\/orders\/([^/]+)\/awb-tracking$/);
+    if (orderTrackingMatch && req.method === 'GET') {
+      const order = db.getOrder(currentAgent.companyId, orderTrackingMatch[1]);
+      if (!order) return sendJSON(res, 404, { error: 'Comandă negăsită' });
+      if (!order.shippingAwb) return sendJSON(res, 404, { error: 'Comanda nu are AWB.' });
+      // curierul e determinat din carrierTrackingName, asa cum a fost
+      // sincronizat de la MerchantPro -- comanda nu are un ID intern de
+      // colet (parcelId), doar numarul AWB, dar ambele functii de status
+      // (GLS si Sameday) accepta direct numarul AWB, fara alt identificator
+      const courierName = (order.carrierTrackingName || '').toLowerCase();
+      if (!courierName.includes('gls') && !courierName.includes('sameday')) {
+        return sendJSON(res, 400, { error: 'Urmărirea directă în aplicație nu este disponibilă pentru acest curier.' });
+      }
+      try {
+        const statuses = courierName.includes('sameday')
+          ? await sameday.getAwbStatus(company, order.shippingAwb)
+          : await gls.getParcelStatus(company, order.shippingAwb);
+        return sendJSON(res, 200, statuses);
+      } catch (e) {
+        return sendJSON(res, 502, { error: e.message });
+      }
+    }
+
     // ---- profil client (agregat din comenzi + tichete cu acelasi telefon/email) ----
 
     if (pathname === '/api/clients/lookup' && req.method === 'GET') {

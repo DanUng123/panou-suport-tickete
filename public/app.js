@@ -2997,6 +2997,7 @@ async function openOrderDrawer(orderId) {
               ? `<a href="${escapeHtml(order.carrierTrackingUrl)}" target="_blank" rel="noopener" class="badge" style="text-decoration:none;" title="Urmărește coletul${order.carrierTrackingName ? ` — ${escapeHtml(order.carrierTrackingName)}` : ''}">📦 ${escapeHtml(order.shippingAwb)}</a>`
               : `<span class="badge" id="awbCopyBadge" style="cursor:pointer;" title="Click pentru a copia numărul AWB">📦 ${escapeHtml(order.shippingAwb)}</span>`)
           : ''}
+        ${order.shippingAwb && /gls|sameday/i.test(order.carrierTrackingName || '') ? `<button class="btn btn-sm" id="viewOrderTrackingBtn">Traseu</button>` : ''}
         ${order.invoice && !order.invoice.cancelled
           ? (order.invoice.url
               ? `<a href="${escapeHtml(order.invoice.url)}" target="_blank" rel="noopener" class="btn btn-sm btn-solid-green" style="text-decoration:none;">📄 ${escapeHtml(order.invoice.prefix || '')} ${escapeHtml(order.invoice.number || '')}</a>`
@@ -3005,6 +3006,7 @@ async function openOrderDrawer(orderId) {
         <div style="flex:1;"></div>
         <div style="font-size:22px;font-weight:700;">${fmtMoney(order.totalAmount, order.currency)}</div>
       </div>
+      <div id="orderTrackingBox" style="display:none;margin:-8px 0 16px;"></div>
 
       <div class="comments-panel" style="margin-bottom:16px;">
         <h2 style="font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary);margin:0 0 10px;">Produse comandate</h2>
@@ -3076,6 +3078,35 @@ async function openOrderDrawer(orderId) {
           showToast('Număr AWB copiat');
         } catch (e) {
           showToast('Nu am putut copia — copiază manual: ' + order.shippingAwb);
+        }
+      });
+    }
+
+    const viewOrderTrackingBtn = content.querySelector('#viewOrderTrackingBtn');
+    if (viewOrderTrackingBtn) {
+      viewOrderTrackingBtn.addEventListener('click', async () => {
+        const box = content.querySelector('#orderTrackingBox');
+        if (box.style.display === 'block') { box.style.display = 'none'; return; }
+        box.style.display = 'block';
+        box.innerHTML = '<div class="hint">Se încarcă…</div>';
+        try {
+          const events = await api(`/api/orders/${order.id}/awb-tracking`);
+          if (!events.length) {
+            box.innerHTML = '<div class="hint">Niciun eveniment de tracking încă.</div>';
+            return;
+          }
+          box.innerHTML = `
+            <div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;max-height:220px;overflow-y:auto;">
+              ${events.map((e) => `
+                <div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;">
+                  <div style="color:var(--text);">${escapeHtml(e.StatusDescription || '—')}</div>
+                  <div style="color:var(--text-dim);margin-top:2px;">${escapeHtml(e.DepotCity || '')} · ${e.StatusDate ? fmtDate(new Date(Number((e.StatusDate.match(/\d+/) || [0])[0])).toISOString()) : ''}</div>
+                </div>
+              `).join('')}
+            </div>
+          `;
+        } catch (err) {
+          box.innerHTML = `<div class="hint">Eroare: ${escapeHtml(err.message)}</div>`;
         }
       });
     }
