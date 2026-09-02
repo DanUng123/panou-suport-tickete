@@ -1056,13 +1056,14 @@ async function logout() {
 const ARRIVED_STAGES = ['at_service', 'return_awb_issued', 'in_transit_to_client', 'delivered_to_client'];
 
 const NAV_ICONS = {
-  dashboard: '<svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><rect x="1.5" y="1.5" width="6" height="6" rx="1.2"/><rect x="8.5" y="1.5" width="6" height="4" rx="1.2"/><rect x="8.5" y="7.5" width="6" height="7" rx="1.2"/><rect x="1.5" y="9.5" width="6" height="5" rx="1.2"/></svg>',
-  tickets: '<svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M1.5 5.5a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v1.2a1.3 1.3 0 0 0 0 2.6v1.2a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1V9.3a1.3 1.3 0 0 0 0-2.6V5.5Z"/><path d="M6 4.5v7" stroke-dasharray="1.6 1.6"/></svg>',
-  orders: '<svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 4.8 8 2l6 2.8v6.4L8 14 2 11.2V4.8Z"/><path d="M2 4.8 8 7.6l6-2.8M8 7.6V14"/></svg>',
-  service: '<svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.8 3.2a3 3 0 0 0-4 3.6L2 10.6l1.4 1.4 3.8-3.8a3 3 0 0 0 3.6-4L9 6l-1-1 1.8-1.8Z"/></svg>',
-  retur: '<svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8a5 5 0 1 0 1.6-3.7"/><path d="M1.5 2.5v2.6h2.6"/></svg>',
-  schimb: '<svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 5h9.5M11.5 5 9 2.5M11.5 5 9 7.5"/><path d="M14 11H4.5M4.5 11 7 8.5M4.5 11 7 13.5"/></svg>',
-  admin: '<svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 1.5 13 3.5v3.8c0 3.4-2.2 5.7-5 6.7-2.8-1-5-3.3-5-6.7V3.5L8 1.5Z"/><path d="M5.8 8 7.3 9.5l3-3.2"/></svg>',
+  dashboard: '<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="12" width="3.5" height="8" rx="1"/><rect x="10.2" y="7" width="3.5" height="13" rx="1"/><rect x="16.5" y="3" width="3.5" height="17" rx="1"/></svg>',
+  tickets: '<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11a9 9 0 0 1 18 0"/><rect x="2" y="11" width="4" height="6" rx="1.5"/><rect x="18" y="11" width="4" height="6" rx="1.5"/><path d="M20 17v1a3 3 0 0 1-3 3h-3"/></svg>',
+  orders: '<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1.3" fill="currentColor"/><circle cx="17" cy="20" r="1.3" fill="currentColor"/><path d="M2 4h2l2.4 11.6a2 2 0 0 0 2 1.6h7.6a2 2 0 0 0 2-1.6L20 8H6"/></svg>',
+  service: '<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>',
+  retur: '<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-3-6.2"/><path d="M20 3v5h-5"/></svg>',
+  schimb: '<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>',
+  admin: '<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 3 6v6c0 5 3.8 8.7 9 10 5.2-1.3 9-5 9-10V6l-9-4Z"/><path d="M9 12l2 2 4-4"/></svg>',
+  settings: '<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 6a2 2 0 1 0 4 0 2 2 0 1 0-4 0"/><path d="M4 12h16M14 12a2 2 0 1 0 4 0 2 2 0 1 0-4 0"/><path d="M4 18h16M7 18a2 2 0 1 0 4 0 2 2 0 1 0-4 0"/></svg>',
 };
 
 function renderShell(activeRoute, contentNode) {
@@ -1088,13 +1089,13 @@ function renderShell(activeRoute, contentNode) {
         <div class="nav-item" data-route="#/service">${NAV_ICONS.service}Service</div>
         <div class="nav-item" data-route="#/retur">${NAV_ICONS.retur}Retur</div>
         <div class="nav-item" data-route="#/schimb">${NAV_ICONS.schimb}Colet la Schimb</div>
-        ${isPlatformAdmin ? `<div class="nav-item" data-route="#/administrare-platforma" style="color:var(--accent);">🛠️ Administrare Platformă</div>` : ''}
-        ${isPlatformAdmin ? `<div class="nav-item" data-route="#/administrare-platforma-clienti" style="color:var(--accent);">👤 Clienți (toate companiile)</div>` : ''}
+        ${isPlatformAdmin ? `<div class="nav-item" data-route="#/administrare-platforma" style="color:var(--accent);">${NAV_ICONS.admin}Administrare Platformă</div>` : ''}
+        ${isPlatformAdmin ? `<div class="nav-item" data-route="#/administrare-platforma-clienti" style="color:var(--accent);"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20a8 8 0 0 1 16 0"/></svg>Clienți (toate companiile)</div>` : ''}
       </nav>
       <div class="sidebar-spacer"></div>
       <nav class="nav" style="border-top:1px solid var(--border);padding-top:8px;margin-bottom:4px;">
         ${currentAgent.role === 'manager' ? `<div class="nav-item" data-route="#/admin">${NAV_ICONS.admin}Administrare</div>` : ''}
-        ${currentAgent.role === 'manager' ? `<div class="nav-item" data-route="#/settings">⚙️ Setări</div>` : ''}
+        ${currentAgent.role === 'manager' ? `<div class="nav-item" data-route="#/settings">${NAV_ICONS.settings}Setări</div>` : ''}
       </nav>
       <div class="agent-card">
         <div class="avatar">${initials(currentAgent.name)}</div>

@@ -247,8 +247,11 @@ a { color: inherit; text-decoration: none; }
   border-color: var(--accent);
   font-weight: 600;
 }
-.nav-item .nav-icon { width: 20px; height: 20px; flex-shrink: 0; opacity: 1; }
-.nav-item.active .nav-icon { opacity: 1; }
+.nav-item .nav-icon {
+  width: 30px; height: 30px; padding: 6px; box-sizing: border-box;
+  border-radius: 9px; background: var(--surface-hover); flex-shrink: 0; opacity: 1;
+}
+.nav-item.active .nav-icon { background: rgba(255,255,255,0.18); opacity: 1; }
 .page-header .nav-icon { width: 30px; height: 30px; flex-shrink: 0; }
 .nav-item .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-dim); }
 .nav-item.active .dot { background: var(--accent-text); }
