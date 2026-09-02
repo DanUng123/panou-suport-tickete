@@ -907,9 +907,13 @@ async function handleApi(req, res, pathname, query) {
       }
 
       try {
-        const result = await courierClient.createPickupAwb(company, {
-          ticketId: ticket.id, reason, customerName, address, city, postalCode, phone, email,
-        });
+        // Colet la Schimb, la GLS, foloseste serviciul dedicat Exchange (XS)
+        // -- o singura cerere produce ambele AWB-uri (Tur + Retur) deodata,
+        // testat live cu contul real. Sameday face asta nativ, deja, prin
+        // propriul lor serviciu SWAP (fara nicio schimbare necesara aici)
+        const result = (reason === 'schimb' && courier === 'gls')
+          ? await gls.createExchangeAwb(company, { ticketId: ticket.id, customerName, address, city, postalCode, phone, email })
+          : await courierClient.createPickupAwb(company, { ticketId: ticket.id, reason, customerName, address, city, postalCode, phone, email });
         const updated = db.setTicketPickupAwb(currentAgent.companyId, ticket.id, {
           awbNumber: result.trackingNumber,
           parcelId: result.parcelId,
@@ -1215,9 +1219,10 @@ async function handleApi(req, res, pathname, query) {
       const ticket = db.getTicket(currentAgent.companyId, refreshSecondaryMatch[1]);
       if (!ticket) return sendJSON(res, 404, { error: 'Tichet negăsit' });
       if (!ticket.pickupAwbSecondaryNumber) return sendJSON(res, 400, { error: 'Tichetul nu are AWB secundar (retur).' });
-      // AWB-ul secundar exista doar la Sameday (Colet la Schimb)
       try {
-        const statuses = await sameday.getAwbStatus(company, ticket.pickupAwbSecondaryNumber);
+        const statuses = ticket.pickupAwbCourier === 'sameday'
+          ? await sameday.getAwbStatus(company, ticket.pickupAwbSecondaryNumber)
+          : await gls.getParcelStatus(company, ticket.pickupAwbSecondaryNumber);
         const delivered = statuses.some((s) => /livrat|delivered|predat destinatar|handed over/i.test(s.StatusDescription || ''));
         const pickedUp = statuses.some((s) => /preluat|ridicat|colectat|picked ?up|pickup|a p[ăa]r[ăa]sit/i.test(s.StatusDescription || ''));
 
