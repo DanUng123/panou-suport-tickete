@@ -2004,7 +2004,7 @@ async function paintTicketDrawer(ticket) {
                     <span class="status-pill-dot" style="background:${stageSecondaryDotColor(ticket.pickupAwbSecondaryStage)};"></span>${stageSecondaryStatusLabel(ticket.pickupAwbSecondaryStage, true)}
                   </div>
                 </div>
-                <div class="hint" style="margin-bottom:8px;">Generat automat de Sameday, odată cu AWB-ul de tur. Se anulează manual din panoul Sameday, dacă e cazul.</div>
+                <div class="hint" style="margin-bottom:8px;">Generat automat, odată cu AWB-ul de tur. Se anulează manual din panoul ${ticket.pickupAwbCourier === 'sameday' ? 'Sameday' : 'MyGLS'}, dacă e cazul.</div>
                 <div class="btn-row">
                   <button class="btn btn-sm" id="refreshSecondaryStatusBtn">↻ Status</button>
                   <button class="btn btn-sm" id="viewSecondaryTrackingBtn">Traseu</button>
