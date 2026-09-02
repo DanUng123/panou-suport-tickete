@@ -415,7 +415,7 @@ function renderMarketingHome() {
     <section style="max-width:920px;margin:0 auto;padding:80px 24px 60px;text-align:center;">
       <div style="display:inline-block;padding:6px 14px;border-radius:20px;background:var(--surface-raised);color:var(--accent);font-size:12.5px;font-weight:600;margin-bottom:20px;">Platformă pentru magazine online din România</div>
       <h1 style="font-size:40px;line-height:1.15;margin-bottom:16px;">Suport clienți, comenzi și curieri — totul dintr-un singur loc</h1>
-      <p style="font-size:16px;color:var(--text-secondary);max-width:640px;margin:0 auto 32px;">Easy-Ticket unește tichetele de service, retur și schimb, sincronizarea automată a comenzilor din MerchantPro, și generarea AWB-urilor cu GLS și Sameday — într-o singură platformă, gândită pentru echipe reale.</p>
+      <p style="font-size:16px;color:var(--text-secondary);max-width:640px;margin:0 auto 32px;">Easy-Ticket unește tichetele de service, retur și schimb, sincronizarea automată a comenzilor din MerchantPro sau GoMag, și generarea AWB-urilor cu GLS și Sameday — într-o singură platformă, gândită pentru echipe reale.</p>
       <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
         <button class="btn btn-primary" id="heroSignupBtn" style="padding:12px 24px;font-size:14.5px;">Creează cont gratuit</button>
         <button class="btn" id="heroPricingBtn" style="padding:12px 24px;font-size:14.5px;">Vezi prețurile</button>
@@ -427,7 +427,7 @@ function renderMarketingHome() {
         ${[
           { icon: '🎫', title: 'Tichete Service, Retur, Schimb', desc: 'Fiecare tip de solicitare are propriul flux, cu etape urmărite automat, de la ridicare până la finalizare.' },
           { icon: '📦', title: 'Curieri conectați direct', desc: 'AWB-uri generate și urmărite automat prin GLS și Sameday, fără să părăsești platforma.' },
-          { icon: '🔄', title: 'Comenzi sincronizate din MerchantPro', desc: 'Comenzile intră automat, la interval regulat, fără introducere manuală.' },
+          { icon: '🔄', title: 'Comenzi sincronizate din MerchantPro sau GoMag', desc: 'Comenzile intră automat, la interval regulat, fără introducere manuală.' },
           { icon: '👥', title: 'Multi-companie, izolat complet', desc: 'Fiecare firmă are datele ei separate — perfect pentru echipe sau clienți multipli.' },
         ].map((f) => `
           <div class="panel">
@@ -454,7 +454,7 @@ function renderMarketingWhatIs() {
   const sections = [
     { title: 'Tichete de suport, pe trei fluxuri dedicate', body: 'Service, Retur și Colet la Schimb au fiecare propriul flux — de la generarea AWB-ului de ridicare, până la finalizare. Etapele se actualizează automat, pe baza statusului real de la curier, sau manual, când e nevoie.' },
     { title: 'Curieri integrați direct — GLS și Sameday', body: 'Generezi eticheta, urmărești traseul, descarci PDF-ul — totul din tichet, fără să deschizi panoul curierului separat. La Colet la Schimb, ambele AWB-uri (tur și retur) sunt urmărite independent.' },
-    { title: 'Comenzi sincronizate automat din MerchantPro', body: 'Comenzile magazinului tău intră automat în platformă, la interval regulat, cu tot ce ai nevoie: status plată, status livrare, produse, sumă.' },
+    { title: 'Comenzi sincronizate automat din MerchantPro sau GoMag', body: 'Comenzile magazinului tău intră automat în platformă, la interval regulat, cu tot ce ai nevoie: status plată, status livrare, produse, sumă.' },
     { title: 'Rambursări gestionate complet', body: 'Datele bancare (IBAN, titular, sumă) se colectează direct pe tichet, cu validare automată. Etichetele se generează individual sau în bloc, pentru mai multe tichete deodată.' },
     { title: 'Bază de clienți, cu import din Excel', body: 'Încarci un fișier Excel cu clienți, platforma elimină automat duplicatele (după telefon) și normalizează formatele — pregătit pentru volume mari, de sute de mii de rânduri.' },
     { title: 'Multi-companie, de la prima zi', body: 'Fiecare companie își gestionează propriii agenți, tichete, comenzi și credențiale de curier — complet izolat de restul companiilor de pe platformă.' },
@@ -477,7 +477,7 @@ function renderMarketingPricing() {
   const plans = [
     {
       name: 'Start', price: '100', popular: false,
-      features: ['Până la 2 agenți', 'Un curier conectat (GLS sau Sameday)', 'Tichete nelimitate', 'Sincronizare comenzi MerchantPro', 'Suport prin email'],
+      features: ['Până la 2 agenți', 'Un curier conectat (GLS sau Sameday)', 'Tichete nelimitate', 'Sincronizare comenzi MerchantPro sau GoMag', 'Suport prin email'],
     },
     {
       name: 'Business', price: '200', popular: true,
@@ -2678,7 +2678,7 @@ async function paintNewTicketDrawer(fromOrderId) {
 }
 
 
-// ---------------- Comenzi (MerchantPro) ----------------
+// ---------------- Comenzi (MerchantPro + GoMag) ----------------
 
 function fmtMoney(amount, currency) {
   if (amount === null || amount === undefined) return '—';
@@ -2710,7 +2710,7 @@ async function renderOrdersList() {
       <div class="page-header">
         <div>
           <h1>Comenzi</h1>
-          <div class="sub">Sincronizate din MerchantPro</div>
+          <div class="sub">Sincronizate automat, din platforma de e-commerce conectată</div>
         </div>
         <button class="btn btn-primary" id="syncNowBtn">↻ Sincronizează acum</button>
       </div>
@@ -3524,7 +3524,7 @@ async function renderAdmin() {
   paintTab();
 }
 
-// ---------------- Setari companie (credentiale curieri/MerchantPro, doar manageri) ----------------
+// ---------------- Setari companie (credentiale curieri/MerchantPro/GoMag, doar manageri) ----------------
 
 async function renderSettings() {
   if (currentAgent.role !== 'manager') {
@@ -3537,7 +3537,7 @@ async function renderSettings() {
       <div class="page-header">
         <div>
           <h1>Setări</h1>
-          <div class="sub">Credențialele MerchantPro, GLS și Sameday ale companiei tale</div>
+          <div class="sub">Credențialele MerchantPro, GoMag, GLS și Sameday ale companiei tale</div>
         </div>
       </div>
       <div id="settings-body">Se încarcă…</div>
