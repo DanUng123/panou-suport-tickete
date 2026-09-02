@@ -2992,17 +2992,16 @@ async function openOrderDrawer(orderId) {
         <span class="badge badge-status-closed">${escapeHtml(paymentMethodLabel(order))}</span>
         <span class="badge ${paymentBadgeClass(order.paymentStatus)}">${PAYMENT_STATUS_LABELS_MP[order.paymentStatus] || order.paymentStatus || '—'}</span>
         <span class="badge ${shippingBadgeClass(order.shippingStatus)}">${SHIPPING_STATUS_LABELS_MP[order.shippingStatus] || order.shippingStatusText || order.shippingStatus || '—'}</span>
-        ${order.shippingAwb
-          ? (order.carrierTrackingUrl
-              ? `<a href="${escapeHtml(order.carrierTrackingUrl)}" target="_blank" rel="noopener" class="badge" style="text-decoration:none;" title="Urmărește coletul${order.carrierTrackingName ? ` — ${escapeHtml(order.carrierTrackingName)}` : ''}">📦 ${escapeHtml(order.shippingAwb)}</a>`
-              : `<span class="badge" id="awbCopyBadge" style="cursor:pointer;" title="Click pentru a copia numărul AWB">📦 ${escapeHtml(order.shippingAwb)}</span>`)
-          : ''}
-        ${order.shippingAwb && /gls|sameday/i.test(order.carrierTrackingName || '') ? `<button class="btn btn-sm" id="viewOrderTrackingBtn">Traseu</button>` : ''}
+        ${order.shippingAwb ? `<button class="btn btn-sm btn-solid-pink" id="awbBadgeBtn" title="${
+          /gls|sameday/i.test(order.carrierTrackingName || '')
+            ? 'Vezi traseul coletului'
+            : (order.carrierTrackingUrl ? `Urmărește coletul — ${escapeHtml(order.carrierTrackingName || '')}` : 'Click pentru a copia numărul AWB')
+        }">📦 ${escapeHtml(order.shippingAwb)}</button>` : ''}
         ${order.invoice && !order.invoice.cancelled
           ? (order.invoice.url
               ? `<a href="${escapeHtml(order.invoice.url)}" target="_blank" rel="noopener" class="btn btn-sm btn-solid-green" style="text-decoration:none;">📄 ${escapeHtml(order.invoice.prefix || '')} ${escapeHtml(order.invoice.number || '')}</a>`
               : `<span class="btn btn-sm btn-solid-green">📄 ${escapeHtml(order.invoice.prefix || '')} ${escapeHtml(order.invoice.number || '')}</span>`)
-          : `<button class="btn btn-sm" id="issueInvoiceBtn">Emite factură</button>`}
+          : ''}
         <div style="flex:1;"></div>
         <div style="font-size:22px;font-weight:700;">${fmtMoney(order.totalAmount, order.currency)}</div>
       </div>
@@ -3070,43 +3069,43 @@ async function openOrderDrawer(orderId) {
       item.addEventListener('click', () => openTicketDrawerCrossLink(item.dataset.tid));
     });
 
-    const awbCopyBadge = content.querySelector('#awbCopyBadge');
-    if (awbCopyBadge) {
-      awbCopyBadge.addEventListener('click', async () => {
-        try {
-          await navigator.clipboard.writeText(order.shippingAwb);
-          showToast('Număr AWB copiat');
-        } catch (e) {
-          showToast('Nu am putut copia — copiază manual: ' + order.shippingAwb);
-        }
-      });
-    }
-
-    const viewOrderTrackingBtn = content.querySelector('#viewOrderTrackingBtn');
-    if (viewOrderTrackingBtn) {
-      viewOrderTrackingBtn.addEventListener('click', async () => {
-        const box = content.querySelector('#orderTrackingBox');
-        if (box.style.display === 'block') { box.style.display = 'none'; return; }
-        box.style.display = 'block';
-        box.innerHTML = '<div class="hint">Se încarcă…</div>';
-        try {
-          const events = await api(`/api/orders/${order.id}/awb-tracking`);
-          if (!events.length) {
-            box.innerHTML = '<div class="hint">Niciun eveniment de tracking încă.</div>';
-            return;
+    const awbBadgeBtn = content.querySelector('#awbBadgeBtn');
+    if (awbBadgeBtn) {
+      const supportsInAppTracking = /gls|sameday/i.test(order.carrierTrackingName || '');
+      awbBadgeBtn.addEventListener('click', async () => {
+        if (supportsInAppTracking) {
+          const box = content.querySelector('#orderTrackingBox');
+          if (box.style.display === 'block') { box.style.display = 'none'; return; }
+          box.style.display = 'block';
+          box.innerHTML = '<div class="hint">Se încarcă…</div>';
+          try {
+            const events = await api(`/api/orders/${order.id}/awb-tracking`);
+            if (!events.length) {
+              box.innerHTML = '<div class="hint">Niciun eveniment de tracking încă.</div>';
+              return;
+            }
+            box.innerHTML = `
+              <div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;max-height:220px;overflow-y:auto;">
+                ${events.map((e) => `
+                  <div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;">
+                    <div style="color:var(--text);">${escapeHtml(e.StatusDescription || '—')}</div>
+                    <div style="color:var(--text-dim);margin-top:2px;">${escapeHtml(e.DepotCity || '')} · ${e.StatusDate ? fmtDate(new Date(Number((e.StatusDate.match(/\d+/) || [0])[0])).toISOString()) : ''}</div>
+                  </div>
+                `).join('')}
+              </div>
+            `;
+          } catch (err) {
+            box.innerHTML = `<div class="hint">Eroare: ${escapeHtml(err.message)}</div>`;
           }
-          box.innerHTML = `
-            <div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;max-height:220px;overflow-y:auto;">
-              ${events.map((e) => `
-                <div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;">
-                  <div style="color:var(--text);">${escapeHtml(e.StatusDescription || '—')}</div>
-                  <div style="color:var(--text-dim);margin-top:2px;">${escapeHtml(e.DepotCity || '')} · ${e.StatusDate ? fmtDate(new Date(Number((e.StatusDate.match(/\d+/) || [0])[0])).toISOString()) : ''}</div>
-                </div>
-              `).join('')}
-            </div>
-          `;
-        } catch (err) {
-          box.innerHTML = `<div class="hint">Eroare: ${escapeHtml(err.message)}</div>`;
+        } else if (order.carrierTrackingUrl) {
+          window.open(order.carrierTrackingUrl, '_blank', 'noopener');
+        } else {
+          try {
+            await navigator.clipboard.writeText(order.shippingAwb);
+            showToast('Număr AWB copiat');
+          } catch (e) {
+            showToast('Nu am putut copia — copiază manual: ' + order.shippingAwb);
+          }
         }
       });
     }
@@ -3127,23 +3126,6 @@ async function openOrderDrawer(orderId) {
       quickNoteBtn.style.display = '';
       content.querySelector('#noteBody').value = '';
     });
-
-    const issueInvoiceBtn = content.querySelector('#issueInvoiceBtn');
-    if (issueInvoiceBtn) {
-      issueInvoiceBtn.addEventListener('click', async () => {
-        issueInvoiceBtn.disabled = true;
-        issueInvoiceBtn.textContent = 'Se emite…';
-        try {
-          order = await api(`/api/orders/${order.id}/issue-invoice`, { method: 'POST' });
-          showToast('Factură emisă cu succes');
-          paint();
-        } catch (err) {
-          showToast('Eroare la emiterea facturii: ' + err.message);
-          issueInvoiceBtn.disabled = false;
-          issueInvoiceBtn.textContent = 'Emite factură';
-        }
-      });
-    }
 
     content.querySelector('#noteForm').addEventListener('submit', async (e) => {
       e.preventDefault();
