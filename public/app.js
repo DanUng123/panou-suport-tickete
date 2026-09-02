@@ -1056,13 +1056,13 @@ async function logout() {
 const ARRIVED_STAGES = ['at_service', 'return_awb_issued', 'in_transit_to_client', 'delivered_to_client'];
 
 const NAV_ICONS = {
-  dashboard: '<svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="1.5" width="6" height="6" rx="1.2"/><rect x="8.5" y="1.5" width="6" height="4" rx="1.2"/><rect x="8.5" y="7.5" width="6" height="7" rx="1.2"/><rect x="1.5" y="9.5" width="6" height="5" rx="1.2"/></svg>',
-  tickets: '<svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1.5 5.5a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v1.2a1.3 1.3 0 0 0 0 2.6v1.2a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1V9.3a1.3 1.3 0 0 0 0-2.6V5.5Z"/><path d="M6 4.5v7" stroke-dasharray="1.6 1.6"/></svg>',
-  orders: '<svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4.8 8 2l6 2.8v6.4L8 14 2 11.2V4.8Z"/><path d="M2 4.8 8 7.6l6-2.8M8 7.6V14"/></svg>',
-  service: '<svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9.8 3.2a3 3 0 0 0-4 3.6L2 10.6l1.4 1.4 3.8-3.8a3 3 0 0 0 3.6-4L9 6l-1-1 1.8-1.8Z"/></svg>',
-  retur: '<svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8a5 5 0 1 0 1.6-3.7"/><path d="M1.5 2.5v2.6h2.6"/></svg>',
-  schimb: '<svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 5h9.5M11.5 5 9 2.5M11.5 5 9 7.5"/><path d="M14 11H4.5M4.5 11 7 8.5M4.5 11 7 13.5"/></svg>',
-  admin: '<svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1.5 13 3.5v3.8c0 3.4-2.2 5.7-5 6.7-2.8-1-5-3.3-5-6.7V3.5L8 1.5Z"/><path d="M5.8 8 7.3 9.5l3-3.2"/></svg>',
+  dashboard: '<svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><rect x="1.5" y="1.5" width="6" height="6" rx="1.2"/><rect x="8.5" y="1.5" width="6" height="4" rx="1.2"/><rect x="8.5" y="7.5" width="6" height="7" rx="1.2"/><rect x="1.5" y="9.5" width="6" height="5" rx="1.2"/></svg>',
+  tickets: '<svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M1.5 5.5a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v1.2a1.3 1.3 0 0 0 0 2.6v1.2a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1V9.3a1.3 1.3 0 0 0 0-2.6V5.5Z"/><path d="M6 4.5v7" stroke-dasharray="1.6 1.6"/></svg>',
+  orders: '<svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 4.8 8 2l6 2.8v6.4L8 14 2 11.2V4.8Z"/><path d="M2 4.8 8 7.6l6-2.8M8 7.6V14"/></svg>',
+  service: '<svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.8 3.2a3 3 0 0 0-4 3.6L2 10.6l1.4 1.4 3.8-3.8a3 3 0 0 0 3.6-4L9 6l-1-1 1.8-1.8Z"/></svg>',
+  retur: '<svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8a5 5 0 1 0 1.6-3.7"/><path d="M1.5 2.5v2.6h2.6"/></svg>',
+  schimb: '<svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 5h9.5M11.5 5 9 2.5M11.5 5 9 7.5"/><path d="M14 11H4.5M4.5 11 7 8.5M4.5 11 7 13.5"/></svg>',
+  admin: '<svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 1.5 13 3.5v3.8c0 3.4-2.2 5.7-5 6.7-2.8-1-5-3.3-5-6.7V3.5L8 1.5Z"/><path d="M5.8 8 7.3 9.5l3-3.2"/></svg>',
 };
 
 function renderShell(activeRoute, contentNode) {
