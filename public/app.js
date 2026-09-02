@@ -3695,11 +3695,9 @@ async function renderSettings() {
           <div class="field">
             <label>Format etichetă tipărire</label>
             <select id="s-sd-pdfformat">
-              <option value="" ${!s.samedayAwbPdfFormat ? 'selected' : ''}>Implicit (A6)</option>
-              <option value="A4" ${s.samedayAwbPdfFormat === 'A4' ? 'selected' : ''}>A4</option>
+              <option value="A4" ${s.samedayAwbPdfFormat !== 'A6' ? 'selected' : ''}>A4 (implicit)</option>
               <option value="A6" ${s.samedayAwbPdfFormat === 'A6' ? 'selected' : ''}>A6</option>
             </select>
-            <div class="hint" style="margin-top:4px;">Notă: setare recent adăugată — dacă etichetele nu se descarcă corect după ce o schimbi, anunță-ne.</div>
           </div>
         </div>
       </div>
