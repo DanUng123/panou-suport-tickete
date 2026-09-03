@@ -10,6 +10,7 @@ const url = require('url');
 
 const db = require('./lib/db');
 const orderSync = require('./lib/order-sync');
+const samedayTrackingPoller = require('./lib/sameday-tracking-poller');
 const gls = require('./lib/gls');
 const sameday = require('./lib/sameday');
 const mp = require('./lib/merchantpro');
@@ -1252,7 +1253,9 @@ async function handleApi(req, res, pathname, query) {
       const legCourier = legCourierRaw === 'sameday' ? sameday : gls;
       if (!trackingNumber) return sendJSON(res, 404, { error: 'Nu există AWB pentru acest segment.' });
       try {
-        const statuses = legCourier === sameday ? await sameday.getAwbStatus(company, trackingNumber) : await gls.getParcelStatus(company, trackingNumber);
+        const statuses = legCourier === sameday
+          ? db.getSamedayTrackingHistory(currentAgent.companyId, trackingNumber)
+          : await gls.getParcelStatus(company, trackingNumber);
         return sendJSON(res, 200, statuses);
       } catch (e) {
         return sendJSON(res, 502, { error: e.message });
@@ -1274,7 +1277,7 @@ async function handleApi(req, res, pathname, query) {
       }
       try {
         const statuses = courierName.includes('sameday')
-          ? await sameday.getAwbStatus(company, order.shippingAwb)
+          ? db.getSamedayTrackingHistory(currentAgent.companyId, order.shippingAwb)
           : await gls.getParcelStatus(company, order.shippingAwb);
         return sendJSON(res, 200, statuses);
       } catch (e) {
@@ -1457,6 +1460,7 @@ server.listen(PORT, () => {
   console.log(`Ticket support app rulează pe http://localhost:${PORT}`);
   const syncIntervalMs = Number(process.env.MERCHANTPRO_SYNC_INTERVAL_MS || 2 * 60 * 1000);
   orderSync.startBackgroundSync(syncIntervalMs);
+  samedayTrackingPoller.startBackgroundPolling(90 * 60 * 1000);
 
   // curatare periodica a etichetelor AWB vechi (peste 30 de zile) -- pastram
   // doar numarul AWB, nu si PDF-ul greu; ruleaza o data la pornire, apoi o
