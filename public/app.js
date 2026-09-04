@@ -2237,11 +2237,16 @@ async function paintTicketDrawer(ticket) {
     if (cancelPickupBtn) {
       cancelPickupBtn.addEventListener('click', async () => {
         const courierLabel = ticket.pickupAwbCourier === 'sameday' ? 'Sameday' : (ticket.pickupAwbCourier === 'ptt' ? 'PTT Express' : 'GLS');
-        if (!confirm(`Anulezi AWB-ul de ridicare ${ticket.pickupAwbNumber}? Această acțiune îl șterge și la ${courierLabel}.`)) return;
+        const confirmMsg = ticket.pickupAwbCourier === 'ptt'
+          ? `Eliberezi tichetul de AWB-ul de ridicare ${ticket.pickupAwbNumber}? PTT Express nu oferă anulare prin API — AWB-ul rămâne activ acolo, va trebui anulat manual, din panoul lor web.`
+          : `Anulezi AWB-ul de ridicare ${ticket.pickupAwbNumber}? Această acțiune îl șterge și la ${courierLabel}.`;
+        if (!confirm(confirmMsg)) return;
         cancelPickupBtn.disabled = true;
         try {
-          ticket = await api(`/api/tickets/${ticket.id}/cancel-pickup-awb`, { method: 'POST' });
-          showToast('AWB de ridicare anulat');
+          const result = await api(`/api/tickets/${ticket.id}/cancel-pickup-awb`, { method: 'POST' });
+          const { warning, ...updatedTicket } = result;
+          ticket = updatedTicket;
+          showToast(warning || 'AWB de ridicare anulat');
           paint();
         } catch (err) {
           showToast('Eroare la anulare: ' + err.message);
@@ -2383,11 +2388,16 @@ async function paintTicketDrawer(ticket) {
     if (cancelReturnBtn) {
       cancelReturnBtn.addEventListener('click', async () => {
         const returnCourierLabel = ticket.returnAwbCourier === 'sameday' ? 'Sameday' : (ticket.returnAwbCourier === 'ptt' ? 'PTT Express' : 'GLS');
-        if (!confirm(`Anulezi AWB-ul de retur ${ticket.returnAwbNumber}? Această acțiune îl șterge și la ${returnCourierLabel}.`)) return;
+        const confirmMsg = ticket.returnAwbCourier === 'ptt'
+          ? `Eliberezi tichetul de AWB-ul de retur ${ticket.returnAwbNumber}? PTT Express nu oferă anulare prin API — AWB-ul rămâne activ acolo, va trebui anulat manual, din panoul lor web.`
+          : `Anulezi AWB-ul de retur ${ticket.returnAwbNumber}? Această acțiune îl șterge și la ${returnCourierLabel}.`;
+        if (!confirm(confirmMsg)) return;
         cancelReturnBtn.disabled = true;
         try {
-          ticket = await api(`/api/tickets/${ticket.id}/cancel-return-awb`, { method: 'POST' });
-          showToast('AWB de retur anulat');
+          const result = await api(`/api/tickets/${ticket.id}/cancel-return-awb`, { method: 'POST' });
+          const { warning, ...updatedTicket } = result;
+          ticket = updatedTicket;
+          showToast(warning || 'AWB de retur anulat');
           paint();
         } catch (err) {
           showToast('Eroare la anulare: ' + err.message);

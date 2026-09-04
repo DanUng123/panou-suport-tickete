@@ -976,15 +976,19 @@ async function handleApi(req, res, pathname, query) {
       if (!ticket.pickupAwbParcelId) return sendJSON(res, 400, { error: 'Tichetul nu are AWB de ridicare generat.' });
       try {
         const cancelCourier = COURIER_MODULES[ticket.pickupAwbCourier] || gls;
+        let warning = null;
         if (cancelCourier === sameday) {
           await sameday.deleteAwb(company, ticket.pickupAwbParcelId);
         } else if (cancelCourier === gls) {
           await gls.deleteParcel(company, ticket.pickupAwbParcelId);
         } else {
-          await pttexpress.deleteParcel(company, ticket.pickupAwbParcelId);
+          // PTT Express nu ofera anulare prin API (confirmat live) --
+          // eliberam doar tichetul local, ca sa poata fi reemis cu alt
+          // curier; AWB-ul ramane activ la PTT, de anulat manual acolo
+          warning = 'AWB-ul rămâne activ în contul PTT Express — anulează-l manual, din panoul lor web, ca să nu rămână o expediere fantomă.';
         }
         const updated = db.clearTicketPickupAwb(currentAgent.companyId, ticket.id, currentAgent);
-        return sendJSON(res, 200, updated);
+        return sendJSON(res, 200, { ...updated, warning });
       } catch (e) {
         return sendJSON(res, 502, { error: e.message });
       }
@@ -1156,15 +1160,16 @@ async function handleApi(req, res, pathname, query) {
       if (!ticket.returnAwbParcelId) return sendJSON(res, 400, { error: 'Tichetul nu are AWB de retur generat.' });
       try {
         const cancelReturnCourier = COURIER_MODULES[ticket.returnAwbCourier] || gls;
+        let warning = null;
         if (cancelReturnCourier === sameday) {
           await sameday.deleteAwb(company, ticket.returnAwbParcelId);
         } else if (cancelReturnCourier === gls) {
           await gls.deleteParcel(company, ticket.returnAwbParcelId);
         } else {
-          await pttexpress.deleteParcel(company, ticket.returnAwbParcelId);
+          warning = 'AWB-ul rămâne activ în contul PTT Express — anulează-l manual, din panoul lor web, ca să nu rămână o expediere fantomă.';
         }
         const updated = db.clearTicketReturnAwb(currentAgent.companyId, ticket.id, currentAgent);
-        return sendJSON(res, 200, updated);
+        return sendJSON(res, 200, { ...updated, warning });
       } catch (e) {
         return sendJSON(res, 502, { error: e.message });
       }
