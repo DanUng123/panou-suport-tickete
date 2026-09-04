@@ -1460,11 +1460,7 @@ server.listen(PORT, () => {
   console.log(`Ticket support app rulează pe http://localhost:${PORT}`);
   const syncIntervalMs = Number(process.env.MERCHANTPRO_SYNC_INTERVAL_MS || 2 * 60 * 1000);
   orderSync.startBackgroundSync(syncIntervalMs);
-  // NOTA: job-ul de polling pentru istoric Sameday (samedayTrackingPoller) a
-  // fost dezactivat -- am trecut la varianta simpla, "status final", care nu
-  // mai are nevoie de el. Codul ramane in lib/sameday-tracking-poller.js,
-  // neutilizat, pentru orice eventualitate viitoare.
-
+  samedayTrackingPoller.startBackgroundPolling(90 * 60 * 1000);
   // curatare periodica a etichetelor AWB vechi (peste 30 de zile) -- pastram
   // doar numarul AWB, nu si PDF-ul greu; ruleaza o data la pornire, apoi o
   // data pe zi. Daca cineva mai are nevoie de o eticheta veche, se re-cere

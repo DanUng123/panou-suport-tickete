@@ -2288,30 +2288,14 @@ async function paintTicketDrawer(ticket) {
     async function handleViewTracking(leg, box) {
       if (box.style.display === 'block') { box.style.display = 'none'; return; }
       box.style.display = 'block';
-
-      const legCourier = leg === 'return' ? ticket.returnAwbCourier : ticket.pickupAwbCourier;
-
-      // Sameday nu ofera interogare istoric per-AWB (confirmat de suportul
-      // lor tehnic) -- aratam direct statusul deja cunoscut, din sincronizarea
-      // periodica a tichetului, fara niciun apel suplimentar catre server
-      if (legCourier === 'sameday') {
-        const label = leg === 'secondary'
-          ? stageSecondaryStatusLabel(ticket.pickupAwbSecondaryStage, Boolean(ticket.pickupAwbSecondaryNumber))
-          : stageStatusLabel(ticket.stage, ticket.section);
-        box.innerHTML = `
-          <div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;">
-            <div style="color:var(--text);font-size:13px;">${escapeHtml(label)}</div>
-            <div style="color:var(--text-dim);font-size:11.5px;margin-top:3px;">Ultimul status cunoscut — Sameday nu oferă istoric detaliat per colet.</div>
-          </div>
-        `;
-        return;
-      }
-
       box.innerHTML = '<div class="hint">Se încarcă…</div>';
       try {
         const events = await api(`/api/tickets/${ticket.id}/awb-tracking?leg=${leg}`);
         if (!events.length) {
-          box.innerHTML = '<div class="hint">Niciun eveniment de tracking încă.</div>';
+          const legCourier = leg === 'return' ? ticket.returnAwbCourier : ticket.pickupAwbCourier;
+          box.innerHTML = legCourier === 'sameday'
+            ? '<div class="hint">Niciun eveniment încă — istoricul Sameday se construiește treptat (interogat la fiecare 90 min), verifică din nou peste puțin timp.</div>'
+            : '<div class="hint">Niciun eveniment de tracking încă.</div>';
           return;
         }
         box.innerHTML = `
@@ -3097,25 +3081,13 @@ async function openOrderDrawer(orderId) {
           const box = content.querySelector('#orderTrackingBox');
           if (box.style.display === 'block') { box.style.display = 'none'; return; }
           box.style.display = 'block';
-
-          // Sameday nu ofera interogare istoric per-AWB (confirmat de suportul
-          // lor tehnic) -- aratam direct statusul deja cunoscut, sincronizat
-          // periodic pe comanda, fara niciun apel suplimentar catre server
-          if (/sameday/i.test(order.carrierTrackingName || '')) {
-            box.innerHTML = `
-              <div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;">
-                <div style="color:var(--text);font-size:13px;">${escapeHtml(order.shippingStatusText || order.shippingStatus || '—')}</div>
-                <div style="color:var(--text-dim);font-size:11.5px;margin-top:3px;">Ultimul status cunoscut — Sameday nu oferă istoric detaliat per colet.</div>
-              </div>
-            `;
-            return;
-          }
-
           box.innerHTML = '<div class="hint">Se încarcă…</div>';
           try {
             const events = await api(`/api/orders/${order.id}/awb-tracking`);
             if (!events.length) {
-              box.innerHTML = '<div class="hint">Niciun eveniment de tracking încă.</div>';
+              box.innerHTML = /sameday/i.test(order.carrierTrackingName || '')
+                ? '<div class="hint">Niciun eveniment încă — istoricul Sameday se construiește treptat (interogat la fiecare 90 min), verifică din nou peste puțin timp.</div>'
+                : '<div class="hint">Niciun eveniment de tracking încă.</div>';
               return;
             }
             box.innerHTML = `
