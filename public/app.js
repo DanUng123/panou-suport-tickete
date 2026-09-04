@@ -1979,7 +1979,7 @@ async function paintTicketDrawer(ticket) {
 
           <div class="side-panel" style="margin-bottom:16px;">
             ${(() => {
-              const courierLabel = ticket.pickupAwbCourier === 'sameday' ? 'Sameday' : (ticket.pickupAwbCourier === 'gls' ? 'GLS' : null);
+              const courierLabel = ticket.pickupAwbCourier === 'sameday' ? 'Sameday' : (ticket.pickupAwbCourier === 'ptt' ? 'PTT Express' : (ticket.pickupAwbCourier === 'gls' ? 'GLS' : null));
               const baseTitles = { service: 'AWB ridicare (client → service)', retur: 'Ridicare de la client', schimb: 'AWB colet la schimb' };
               const base = baseTitles[ticket.section] || 'AWB ridicare';
               return `<h2>${base}${courierLabel ? ` (${courierLabel})` : ''}</h2>`;
@@ -2236,7 +2236,7 @@ async function paintTicketDrawer(ticket) {
     const cancelPickupBtn = content.querySelector('#cancelPickupAwbBtn');
     if (cancelPickupBtn) {
       cancelPickupBtn.addEventListener('click', async () => {
-        const courierLabel = ticket.pickupAwbCourier === 'sameday' ? 'Sameday' : 'GLS';
+        const courierLabel = ticket.pickupAwbCourier === 'sameday' ? 'Sameday' : (ticket.pickupAwbCourier === 'ptt' ? 'PTT Express' : 'GLS');
         if (!confirm(`Anulezi AWB-ul de ridicare ${ticket.pickupAwbNumber}? Această acțiune îl șterge și la ${courierLabel}.`)) return;
         cancelPickupBtn.disabled = true;
         try {
@@ -2253,7 +2253,7 @@ async function paintTicketDrawer(ticket) {
     const reissuePickupBtn = content.querySelector('#reissuePickupAwbBtn');
     if (reissuePickupBtn) {
       reissuePickupBtn.addEventListener('click', async () => {
-        const courierLabel = ticket.pickupAwbCourier === 'sameday' ? 'Sameday' : 'GLS';
+        const courierLabel = ticket.pickupAwbCourier === 'sameday' ? 'Sameday' : (ticket.pickupAwbCourier === 'ptt' ? 'PTT Express' : 'GLS');
         if (!confirm(`Coletul nu a fost ridicat? Se anulează automat AWB-ul curent (${ticket.pickupAwbNumber}, la ${courierLabel}) și se emite unul nou, cu aceleași date de ridicare.`)) return;
         reissuePickupBtn.disabled = true;
         reissuePickupBtn.textContent = 'Se reemite…';
@@ -2382,7 +2382,7 @@ async function paintTicketDrawer(ticket) {
     const cancelReturnBtn = content.querySelector('#cancelReturnAwbBtn');
     if (cancelReturnBtn) {
       cancelReturnBtn.addEventListener('click', async () => {
-        const returnCourierLabel = ticket.returnAwbCourier === 'sameday' ? 'Sameday' : 'GLS';
+        const returnCourierLabel = ticket.returnAwbCourier === 'sameday' ? 'Sameday' : (ticket.returnAwbCourier === 'ptt' ? 'PTT Express' : 'GLS');
         if (!confirm(`Anulezi AWB-ul de retur ${ticket.returnAwbNumber}? Această acțiune îl șterge și la ${returnCourierLabel}.`)) return;
         cancelReturnBtn.disabled = true;
         try {
