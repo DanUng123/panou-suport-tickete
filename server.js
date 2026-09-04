@@ -10,6 +10,7 @@ const url = require('url');
 
 const db = require('./lib/db');
 const orderSync = require('./lib/order-sync');
+const fullHistoryImport = require('./lib/full-history-import');
 const samedayTrackingPoller = require('./lib/sameday-tracking-poller');
 const gls = require('./lib/gls');
 const sameday = require('./lib/sameday');
@@ -696,6 +697,17 @@ async function handleApi(req, res, pathname, query) {
       } catch (e) {
         return sendJSON(res, 502, { error: e.message });
       }
+    }
+
+    if (pathname === '/api/orders/import-full-history' && req.method === 'POST') {
+      if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot porni importul complet.' });
+      if (!mp.isConfigured(company)) return sendJSON(res, 400, { error: 'Integrarea MerchantPro nu este configurată.' });
+      const result = fullHistoryImport.runFullHistoryImport(company);
+      return sendJSON(res, 200, result);
+    }
+
+    if (pathname === '/api/orders/import-full-history/status' && req.method === 'GET') {
+      return sendJSON(res, 200, fullHistoryImport.getImportStatus());
     }
 
     if (pathname === '/api/orders/stats' && req.method === 'GET') {

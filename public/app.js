@@ -2713,8 +2713,12 @@ async function renderOrdersList() {
           <h1>Comenzi</h1>
           <div class="sub">Sincronizate automat, din platforma de e-commerce conectată</div>
         </div>
-        <button class="btn btn-primary" id="syncNowBtn">↻ Sincronizează acum</button>
+        <div style="display:flex;gap:8px;">
+          <button class="btn" id="importHistoryBtn">Importă tot istoricul</button>
+          <button class="btn btn-primary" id="syncNowBtn">↻ Sincronizează acum</button>
+        </div>
       </div>
+      <div id="import-history-banner"></div>
       <div id="sync-banner"></div>
       <div class="stat-grid" id="order-stats" style="margin-bottom:18px;"></div>
       <div class="filters-search-row">
@@ -2771,6 +2775,76 @@ async function renderOrdersList() {
       showToast('Eroare: ' + err.message);
       e.target.disabled = false;
       e.target.textContent = '↻ Sincronizează acum';
+    }
+  });
+
+  const importHistoryBtn = content.querySelector('#importHistoryBtn');
+  const importBanner = content.querySelector('#import-history-banner');
+
+  function renderImportProgress(status) {
+    if (!status.running && !status.startedAt) { importBanner.innerHTML = ''; return; }
+    const pct = status.total ? Math.min(100, Math.round((status.processed / status.total) * 100)) : 0;
+    if (status.running) {
+      importBanner.innerHTML = `
+        <div class="panel" style="margin-bottom:16px;">
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:8px;">
+            <span>Import istoric în curs — ${status.processed} din ${status.total || '…'} comenzi</span>
+            <span>${pct}%</span>
+          </div>
+          <div style="background:var(--surface-hover);border-radius:6px;height:8px;overflow:hidden;">
+            <div style="background:var(--accent);height:100%;width:${pct}%;transition:width 0.3s;"></div>
+          </div>
+        </div>
+      `;
+    } else if (status.error) {
+      importBanner.innerHTML = `<div class="panel" style="margin-bottom:16px;border-color:var(--priority-urgent);"><strong style="color:var(--priority-urgent);">Import oprit din eroare:</strong> ${escapeHtml(status.error)} — ${status.processed} comenzi procesate până atunci.</div>`;
+    } else {
+      importBanner.innerHTML = `<div class="panel" style="margin-bottom:16px;border-color:var(--status-resolved);">Import finalizat — ${status.created} noi, ${status.updated} actualizate, din ${status.processed} comenzi verificate.</div>`;
+    }
+  }
+
+  async function pollImportStatus() {
+    try {
+      const status = await api('/api/orders/import-full-history/status');
+      renderImportProgress(status);
+      if (status.running) {
+        setTimeout(pollImportStatus, 2000);
+      } else {
+        importHistoryBtn.disabled = false;
+        importHistoryBtn.textContent = 'Importă tot istoricul';
+      }
+    } catch (e) { /* n-o blocam */ }
+  }
+
+  // daca un import era deja in curs (ex: pagina reincarcata), reia urmarirea
+  api('/api/orders/import-full-history/status').then((status) => {
+    if (status.running) {
+      importHistoryBtn.disabled = true;
+      importHistoryBtn.textContent = 'Import în curs…';
+      pollImportStatus();
+    } else {
+      renderImportProgress(status);
+    }
+  }).catch(() => {});
+
+  importHistoryBtn.addEventListener('click', async () => {
+    if (!confirm('Aduci toate comenzile din tot istoricul magazinului (poate dura mult, în funcție de volum). Continui?')) return;
+    importHistoryBtn.disabled = true;
+    importHistoryBtn.textContent = 'Se pornește…';
+    try {
+      const result = await api('/api/orders/import-full-history', { method: 'POST' });
+      if (result.skipped) {
+        showToast(result.reason);
+        importHistoryBtn.disabled = false;
+        importHistoryBtn.textContent = 'Importă tot istoricul';
+        return;
+      }
+      importHistoryBtn.textContent = 'Import în curs…';
+      pollImportStatus();
+    } catch (err) {
+      showToast('Eroare: ' + err.message);
+      importHistoryBtn.disabled = false;
+      importHistoryBtn.textContent = 'Importă tot istoricul';
     }
   });
 
