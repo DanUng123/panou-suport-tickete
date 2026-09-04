@@ -3811,6 +3811,16 @@ async function renderSettings() {
           <label>ID serviciu (implicit 38 — Național Standard)</label>
           <input type="text" id="s-ptt-service" value="${v(s.pttServiceId)}" placeholder="38" />
         </div>
+        <div class="field">
+          <label>Format etichetă tipărire</label>
+          <select id="s-ptt-labelformat">
+            <option value="PDFA4" ${!s.pttLabelFormat || s.pttLabelFormat === 'PDFA4' ? 'selected' : ''}>PDF — format A4 (implicit)</option>
+            <option value="PDF" ${s.pttLabelFormat === 'PDF' ? 'selected' : ''}>PDF — format standard</option>
+            <option value="ZPL" ${s.pttLabelFormat === 'ZPL' ? 'selected' : ''}>ZPL (imprimantă termică)</option>
+            <option value="EPL" ${s.pttLabelFormat === 'EPL' ? 'selected' : ''}>EPL (imprimantă termică)</option>
+            <option value="GIF" ${s.pttLabelFormat === 'GIF' ? 'selected' : ''}>GIF (imagine)</option>
+          </select>
+        </div>
         <div class="sub" style="margin:16px 0 8px;">Date expeditor (adresa firmei tale, folosită la ridicările de la client)</div>
         <div class="form-row">
           <div class="field">
@@ -3913,6 +3923,7 @@ async function renderSettings() {
       pttUsername: q('#s-ptt-user'),
       pttPassword: q('#s-ptt-pass'),
       pttServiceId: q('#s-ptt-service'),
+      pttLabelFormat: q('#s-ptt-labelformat'),
       pttSenderName: q('#s-ptt-sname'),
       pttSenderPhone: q('#s-ptt-sphone'),
       pttSenderCity: q('#s-ptt-scity'),
