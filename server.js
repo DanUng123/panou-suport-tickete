@@ -1254,7 +1254,7 @@ async function handleApi(req, res, pathname, query) {
       if (!trackingNumber) return sendJSON(res, 404, { error: 'Nu există AWB pentru acest segment.' });
       try {
         const statuses = legCourier === sameday
-          ? db.getSamedayTrackingHistory(currentAgent.companyId, trackingNumber)
+          ? await sameday.getAwbStatus(company, trackingNumber)
           : await gls.getParcelStatus(company, trackingNumber);
         return sendJSON(res, 200, statuses);
       } catch (e) {
@@ -1277,7 +1277,7 @@ async function handleApi(req, res, pathname, query) {
       }
       try {
         const statuses = courierName.includes('sameday')
-          ? db.getSamedayTrackingHistory(currentAgent.companyId, order.shippingAwb)
+          ? await sameday.getAwbStatus(company, order.shippingAwb)
           : await gls.getParcelStatus(company, order.shippingAwb);
         return sendJSON(res, 200, statuses);
       } catch (e) {
@@ -1460,7 +1460,11 @@ server.listen(PORT, () => {
   console.log(`Ticket support app rulează pe http://localhost:${PORT}`);
   const syncIntervalMs = Number(process.env.MERCHANTPRO_SYNC_INTERVAL_MS || 2 * 60 * 1000);
   orderSync.startBackgroundSync(syncIntervalMs);
-  samedayTrackingPoller.startBackgroundPolling(90 * 60 * 1000);
+  // NOTA: job-ul de polling (samedayTrackingPoller) nu mai e necesar --
+  // am descoperit si confirmat live un endpoint real, per-AWB
+  // (GET /api/client/parcel/{awb}/status-history), care ofera istoric
+  // complet direct, fara nicio acumulare. Codul ramane neutilizat, in
+  // lib/sameday-tracking-poller.js.
   // curatare periodica a etichetelor AWB vechi (peste 30 de zile) -- pastram
   // doar numarul AWB, nu si PDF-ul greu; ruleaza o data la pornire, apoi o
   // data pe zi. Daca cineva mai are nevoie de o eticheta veche, se re-cere

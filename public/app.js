@@ -2292,10 +2292,7 @@ async function paintTicketDrawer(ticket) {
       try {
         const events = await api(`/api/tickets/${ticket.id}/awb-tracking?leg=${leg}`);
         if (!events.length) {
-          const legCourier = leg === 'return' ? ticket.returnAwbCourier : ticket.pickupAwbCourier;
-          box.innerHTML = legCourier === 'sameday'
-            ? '<div class="hint">Niciun eveniment încă — istoricul Sameday se construiește treptat (interogat la fiecare 90 min), verifică din nou peste puțin timp.</div>'
-            : '<div class="hint">Niciun eveniment de tracking încă.</div>';
+          box.innerHTML = '<div class="hint">Niciun eveniment de tracking încă.</div>';
           return;
         }
         box.innerHTML = `
@@ -3085,9 +3082,7 @@ async function openOrderDrawer(orderId) {
           try {
             const events = await api(`/api/orders/${order.id}/awb-tracking`);
             if (!events.length) {
-              box.innerHTML = /sameday/i.test(order.carrierTrackingName || '')
-                ? '<div class="hint">Niciun eveniment încă — istoricul Sameday se construiește treptat (interogat la fiecare 90 min), verifică din nou peste puțin timp.</div>'
-                : '<div class="hint">Niciun eveniment de tracking încă.</div>';
+              box.innerHTML = '<div class="hint">Niciun eveniment de tracking încă.</div>';
               return;
             }
             box.innerHTML = `
