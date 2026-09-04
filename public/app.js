@@ -3639,225 +3639,284 @@ async function renderSettings() {
   body.innerHTML = '';
   body.appendChild(el(`
     <form id="settingsForm">
-      <div class="panel" style="margin-bottom:20px;">
-        <h2>MerchantPro</h2>
-        <div class="field">
-          <label>URL magazin</label>
-          <input type="text" id="s-mp-url" placeholder="https://magazinul-tau.ro/" value="${v(s.merchantProShopUrl)}" />
-        </div>
-        <div class="form-row">
-          <div class="field">
-            <label>Cheie API (API Key)</label>
-            <input type="text" id="s-mp-key" value="${v(s.merchantProApiKey)}" />
+      <div class="settings-tabs">
+        <div class="settings-tab active" data-tab="platforme">Integrări platforme</div>
+        <div class="settings-tab" data-tab="curieri">Integrări curieri</div>
+      </div>
+
+      <div class="settings-tab-panel active" data-tab-panel="platforme">
+        <div class="accordion-item">
+          <div class="accordion-header">
+            <h2>MerchantPro</h2>
+            <span class="accordion-chevron">▾</span>
           </div>
-          <div class="field">
-            <label>Secret API${s.merchantProApiSecretSet ? ' — setat ✓' : ''}</label>
-            <input type="password" id="s-mp-secret" placeholder="${s.merchantProApiSecretSet ? '••••••••  (lasă gol ca să păstrezi)' : 'Introdu secretul API'}" />
+          <div class="accordion-body">
+            <div class="accordion-body-inner">
+              <div class="field">
+                <label>URL magazin</label>
+                <input type="text" id="s-mp-url" placeholder="https://magazinul-tau.ro/" value="${v(s.merchantProShopUrl)}" />
+              </div>
+              <div class="form-row">
+                <div class="field">
+                  <label>Cheie API (API Key)</label>
+                  <input type="text" id="s-mp-key" value="${v(s.merchantProApiKey)}" />
+                </div>
+                <div class="field">
+                  <label>Secret API${s.merchantProApiSecretSet ? ' — setat ✓' : ''}</label>
+                  <input type="password" id="s-mp-secret" placeholder="${s.merchantProApiSecretSet ? '••••••••  (lasă gol ca să păstrezi)' : 'Introdu secretul API'}" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="accordion-item">
+          <div class="accordion-header">
+            <h2>GoMag</h2>
+            <span class="accordion-chevron">▾</span>
+          </div>
+          <div class="accordion-body">
+            <div class="accordion-body-inner">
+              <div class="form-row">
+                <div class="field">
+                  <label>URL magazin</label>
+                  <input type="text" id="s-gomag-url" placeholder="https://magazinul-tau.gomag.ro" value="${v(s.gomagShopUrl)}" />
+                </div>
+                <div class="field">
+                  <label>Cheie API${s.gomagApiKeySet ? ' — setată ✓' : ''}</label>
+                  <input type="password" id="s-gomag-key" placeholder="${s.gomagApiKeySet ? '••••••••  (lasă gol ca să păstrezi)' : 'Introdu cheia API'}" />
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      <div class="panel" style="margin-bottom:20px;">
-        <h2>GoMag</h2>
-        <div class="form-row">
-          <div class="field">
-            <label>URL magazin</label>
-            <input type="text" id="s-gomag-url" placeholder="https://magazinul-tau.gomag.ro" value="${v(s.gomagShopUrl)}" />
+      <div class="settings-tab-panel" data-tab-panel="curieri">
+        <div class="accordion-item">
+          <div class="accordion-header">
+            <h2>GLS</h2>
+            <span class="accordion-chevron">▾</span>
           </div>
-          <div class="field">
-            <label>Cheie API${s.gomagApiKeySet ? ' — setată ✓' : ''}</label>
-            <input type="password" id="s-gomag-key" placeholder="${s.gomagApiKeySet ? '••••••••  (lasă gol ca să păstrezi)' : 'Introdu cheia API'}" />
+          <div class="accordion-body">
+            <div class="accordion-body-inner">
+              <div class="form-row">
+                <div class="field">
+                  <label>Utilizator</label>
+                  <input type="text" id="s-gls-user" value="${v(s.glsUsername)}" />
+                </div>
+                <div class="field">
+                  <label>Parolă${s.glsPasswordSet ? ' — setată ✓' : ''}</label>
+                  <input type="password" id="s-gls-pass" placeholder="${s.glsPasswordSet ? '••••••••  (lasă gol ca să păstrezi)' : 'Introdu parola'}" />
+                </div>
+              </div>
+              <div class="field">
+                <label>Număr client GLS</label>
+                <input type="text" id="s-gls-client" value="${v(s.glsClientNumber)}" />
+              </div>
+              <div class="sub" style="margin:16px 0 8px;">Date expeditor (apar pe etichetele GLS)</div>
+              <div class="form-row">
+                <div class="field">
+                  <label>Nume firmă</label>
+                  <input type="text" id="s-gls-sname" value="${v(s.glsSenderName)}" />
+                </div>
+                <div class="field">
+                  <label>Persoană de contact</label>
+                  <input type="text" id="s-gls-scontact" value="${v(s.glsSenderContact)}" />
+                </div>
+              </div>
+              <div class="field">
+                <label>Adresă</label>
+                <input type="text" id="s-gls-saddress" value="${v(s.glsSenderAddress)}" />
+              </div>
+              <div class="form-row">
+                <div class="field">
+                  <label>Oraș</label>
+                  <input type="text" id="s-gls-scity" value="${v(s.glsSenderCity)}" />
+                </div>
+                <div class="field">
+                  <label>Cod poștal</label>
+                  <input type="text" id="s-gls-szip" value="${v(s.glsSenderZipcode)}" />
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="field">
+                  <label>Telefon</label>
+                  <input type="text" id="s-gls-sphone" value="${v(s.glsSenderPhone)}" />
+                </div>
+                <div class="field">
+                  <label>Email</label>
+                  <input type="text" id="s-gls-semail" value="${v(s.glsSenderEmail)}" />
+                </div>
+                <div class="field">
+                  <label>Format etichetă tipărire</label>
+                  <select id="s-gls-printer">
+                    <option value="Connect" ${s.glsTypeOfPrinter === 'Connect' || !s.glsTypeOfPrinter ? 'selected' : ''}>Connect (implicit, PDF standard)</option>
+                    <option value="A4_2x2" ${s.glsTypeOfPrinter === 'A4_2x2' ? 'selected' : ''}>A4 — 4 etichete pe pagină</option>
+                    <option value="A4_4x1" ${s.glsTypeOfPrinter === 'A4_4x1' ? 'selected' : ''}>A4 — 4 etichete, într-un rând</option>
+                    <option value="Thermo" ${s.glsTypeOfPrinter === 'Thermo' ? 'selected' : ''}>Thermo (imprimantă termică)</option>
+                    <option value="ThermoZPL" ${s.glsTypeOfPrinter === 'ThermoZPL' ? 'selected' : ''}>Thermo ZPL — 203 DPI</option>
+                    <option value="ThermoZPL_300DPI" ${s.glsTypeOfPrinter === 'ThermoZPL_300DPI' ? 'selected' : ''}>Thermo ZPL — 300 DPI</option>
+                  </select>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div class="panel" style="margin-bottom:20px;">
-        <h2>GLS</h2>
-        <div class="form-row">
-          <div class="field">
-            <label>Utilizator</label>
-            <input type="text" id="s-gls-user" value="${v(s.glsUsername)}" />
+        <div class="accordion-item">
+          <div class="accordion-header">
+            <h2>Sameday</h2>
+            <span class="accordion-chevron">▾</span>
           </div>
-          <div class="field">
-            <label>Parolă${s.glsPasswordSet ? ' — setată ✓' : ''}</label>
-            <input type="password" id="s-gls-pass" placeholder="${s.glsPasswordSet ? '••••••••  (lasă gol ca să păstrezi)' : 'Introdu parola'}" />
+          <div class="accordion-body">
+            <div class="accordion-body-inner">
+              <div class="form-row">
+                <div class="field">
+                  <label>Utilizator</label>
+                  <input type="text" id="s-sd-user" value="${v(s.samedayUsername)}" />
+                </div>
+                <div class="field">
+                  <label>Parolă${s.samedayPasswordSet ? ' — setată ✓' : ''}</label>
+                  <input type="password" id="s-sd-pass" placeholder="${s.samedayPasswordSet ? '••••••••  (lasă gol ca să păstrezi)' : 'Introdu parola'}" />
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="field">
+                  <label>ID punct de ridicare</label>
+                  <input type="text" id="s-sd-pickupid" value="${v(s.samedayPickupPointId)}" />
+                </div>
+                <div class="field">
+                  <label>ID persoană de contact (opțional)</label>
+                  <input type="text" id="s-sd-contactid" value="${v(s.samedayContactPersonId)}" />
+                </div>
+              </div>
+              <div class="field">
+                <label>Adresă punct de ridicare</label>
+                <input type="text" id="s-sd-pickupaddr" value="${v(s.samedayPickupPointAddress)}" />
+              </div>
+              <div style="margin-bottom:12px;">
+                <button type="button" class="btn btn-sm" id="samedayAutofillBtn">↻ Preia automat din contul Sameday</button>
+                <span class="hint" style="display:block;margin-top:4px;">Completează utilizatorul, parola și (opțional) ID-ul punctului de ridicare mai sus, apoi apasă — restul câmpurilor de mai jos se completează automat.</span>
+              </div>
+              <div class="sub" style="margin:16px 0 8px;">Date expeditor (folosite ca destinatar real la ridicările de la client)</div>
+              <div class="form-row">
+                <div class="field">
+                  <label>Nume firmă</label>
+                  <input type="text" id="s-sd-sname" value="${v(s.samedaySenderName)}" />
+                </div>
+                <div class="field">
+                  <label>Telefon</label>
+                  <input type="text" id="s-sd-sphone" value="${v(s.samedaySenderPhone)}" />
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="field">
+                  <label>Cod poștal</label>
+                  <input type="text" id="s-sd-szip" value="${v(s.samedaySenderPostalCode)}" />
+                </div>
+                <div class="field">
+                  <label>Adresă</label>
+                  <input type="text" id="s-sd-saddress" value="${v(s.samedaySenderAddress)}" />
+                </div>
+                <div class="field">
+                  <label>Format etichetă tipărire</label>
+                  <select id="s-sd-pdfformat">
+                    <option value="A4" ${s.samedayAwbPdfFormat !== 'A6' ? 'selected' : ''}>A4 (implicit)</option>
+                    <option value="A6" ${s.samedayAwbPdfFormat === 'A6' ? 'selected' : ''}>A6</option>
+                  </select>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-        <div class="field">
-          <label>Număr client GLS</label>
-          <input type="text" id="s-gls-client" value="${v(s.glsClientNumber)}" />
-        </div>
-        <div class="sub" style="margin:16px 0 8px;">Date expeditor (apar pe etichetele GLS)</div>
-        <div class="form-row">
-          <div class="field">
-            <label>Nume firmă</label>
-            <input type="text" id="s-gls-sname" value="${v(s.glsSenderName)}" />
-          </div>
-          <div class="field">
-            <label>Persoană de contact</label>
-            <input type="text" id="s-gls-scontact" value="${v(s.glsSenderContact)}" />
-          </div>
-        </div>
-        <div class="field">
-          <label>Adresă</label>
-          <input type="text" id="s-gls-saddress" value="${v(s.glsSenderAddress)}" />
-        </div>
-        <div class="form-row">
-          <div class="field">
-            <label>Oraș</label>
-            <input type="text" id="s-gls-scity" value="${v(s.glsSenderCity)}" />
-          </div>
-          <div class="field">
-            <label>Cod poștal</label>
-            <input type="text" id="s-gls-szip" value="${v(s.glsSenderZipcode)}" />
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="field">
-            <label>Telefon</label>
-            <input type="text" id="s-gls-sphone" value="${v(s.glsSenderPhone)}" />
-          </div>
-          <div class="field">
-            <label>Email</label>
-            <input type="text" id="s-gls-semail" value="${v(s.glsSenderEmail)}" />
-          </div>
-          <div class="field">
-            <label>Format etichetă tipărire</label>
-            <select id="s-gls-printer">
-              <option value="Connect" ${s.glsTypeOfPrinter === 'Connect' || !s.glsTypeOfPrinter ? 'selected' : ''}>Connect (implicit, PDF standard)</option>
-              <option value="A4_2x2" ${s.glsTypeOfPrinter === 'A4_2x2' ? 'selected' : ''}>A4 — 4 etichete pe pagină</option>
-              <option value="A4_4x1" ${s.glsTypeOfPrinter === 'A4_4x1' ? 'selected' : ''}>A4 — 4 etichete, într-un rând</option>
-              <option value="Thermo" ${s.glsTypeOfPrinter === 'Thermo' ? 'selected' : ''}>Thermo (imprimantă termică)</option>
-              <option value="ThermoZPL" ${s.glsTypeOfPrinter === 'ThermoZPL' ? 'selected' : ''}>Thermo ZPL — 203 DPI</option>
-              <option value="ThermoZPL_300DPI" ${s.glsTypeOfPrinter === 'ThermoZPL_300DPI' ? 'selected' : ''}>Thermo ZPL — 300 DPI</option>
-            </select>
-          </div>
-        </div>
-      </div>
 
-      <div class="panel" style="margin-bottom:20px;">
-        <h2>Sameday</h2>
-        <div class="form-row">
-          <div class="field">
-            <label>Utilizator</label>
-            <input type="text" id="s-sd-user" value="${v(s.samedayUsername)}" />
+        <div class="accordion-item">
+          <div class="accordion-header">
+            <h2>PTT Express</h2>
+            <span class="accordion-chevron">▾</span>
           </div>
-          <div class="field">
-            <label>Parolă${s.samedayPasswordSet ? ' — setată ✓' : ''}</label>
-            <input type="password" id="s-sd-pass" placeholder="${s.samedayPasswordSet ? '••••••••  (lasă gol ca să păstrezi)' : 'Introdu parola'}" />
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="field">
-            <label>ID punct de ridicare</label>
-            <input type="text" id="s-sd-pickupid" value="${v(s.samedayPickupPointId)}" />
-          </div>
-          <div class="field">
-            <label>ID persoană de contact (opțional)</label>
-            <input type="text" id="s-sd-contactid" value="${v(s.samedayContactPersonId)}" />
-          </div>
-        </div>
-        <div class="field">
-          <label>Adresă punct de ridicare</label>
-          <input type="text" id="s-sd-pickupaddr" value="${v(s.samedayPickupPointAddress)}" />
-        </div>
-        <div style="margin-bottom:12px;">
-          <button type="button" class="btn btn-sm" id="samedayAutofillBtn">↻ Preia automat din contul Sameday</button>
-          <span class="hint" style="display:block;margin-top:4px;">Completează utilizatorul, parola și (opțional) ID-ul punctului de ridicare mai sus, apoi apasă — restul câmpurilor de mai jos se completează automat.</span>
-        </div>
-        <div class="sub" style="margin:16px 0 8px;">Date expeditor (folosite ca destinatar real la ridicările de la client)</div>
-        <div class="form-row">
-          <div class="field">
-            <label>Nume firmă</label>
-            <input type="text" id="s-sd-sname" value="${v(s.samedaySenderName)}" />
-          </div>
-          <div class="field">
-            <label>Telefon</label>
-            <input type="text" id="s-sd-sphone" value="${v(s.samedaySenderPhone)}" />
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="field">
-            <label>Cod poștal</label>
-            <input type="text" id="s-sd-szip" value="${v(s.samedaySenderPostalCode)}" />
-          </div>
-          <div class="field">
-            <label>Adresă</label>
-            <input type="text" id="s-sd-saddress" value="${v(s.samedaySenderAddress)}" />
-          </div>
-          <div class="field">
-            <label>Format etichetă tipărire</label>
-            <select id="s-sd-pdfformat">
-              <option value="A4" ${s.samedayAwbPdfFormat !== 'A6' ? 'selected' : ''}>A4 (implicit)</option>
-              <option value="A6" ${s.samedayAwbPdfFormat === 'A6' ? 'selected' : ''}>A6</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      <div class="panel" style="margin-bottom:20px;">
-        <h2>PTT Express</h2>
-        <div class="form-row">
-          <div class="field">
-            <label>Utilizator</label>
-            <input type="text" id="s-ptt-user" value="${v(s.pttUsername)}" />
-          </div>
-          <div class="field">
-            <label>Parolă${s.pttPasswordSet ? ' — setată ✓' : ''}</label>
-            <input type="password" id="s-ptt-pass" placeholder="${s.pttPasswordSet ? '••••••••  (lasă gol ca să păstrezi)' : 'Introdu parola'}" />
+          <div class="accordion-body">
+            <div class="accordion-body-inner">
+              <div class="form-row">
+                <div class="field">
+                  <label>Utilizator</label>
+                  <input type="text" id="s-ptt-user" value="${v(s.pttUsername)}" />
+                </div>
+                <div class="field">
+                  <label>Parolă${s.pttPasswordSet ? ' — setată ✓' : ''}</label>
+                  <input type="password" id="s-ptt-pass" placeholder="${s.pttPasswordSet ? '••••••••  (lasă gol ca să păstrezi)' : 'Introdu parola'}" />
+                </div>
+              </div>
+              <div class="field">
+                <label>ID serviciu (implicit 38 — Național Standard)</label>
+                <input type="text" id="s-ptt-service" value="${v(s.pttServiceId)}" placeholder="38" />
+              </div>
+              <div class="field">
+                <label>Format etichetă tipărire</label>
+                <select id="s-ptt-labelformat">
+                  <option value="PDFA4" ${!s.pttLabelFormat || s.pttLabelFormat === 'PDFA4' ? 'selected' : ''}>PDF — format A4 (implicit)</option>
+                  <option value="PDF" ${s.pttLabelFormat === 'PDF' ? 'selected' : ''}>PDF — format standard</option>
+                  <option value="ZPL" ${s.pttLabelFormat === 'ZPL' ? 'selected' : ''}>ZPL (imprimantă termică)</option>
+                  <option value="EPL" ${s.pttLabelFormat === 'EPL' ? 'selected' : ''}>EPL (imprimantă termică)</option>
+                  <option value="GIF" ${s.pttLabelFormat === 'GIF' ? 'selected' : ''}>GIF (imagine)</option>
+                </select>
+              </div>
+              <div class="sub" style="margin:16px 0 8px;">Date expeditor (adresa firmei tale, folosită la ridicările de la client)</div>
+              <div class="form-row">
+                <div class="field">
+                  <label>Nume firmă</label>
+                  <input type="text" id="s-ptt-sname" value="${v(s.pttSenderName)}" />
+                </div>
+                <div class="field">
+                  <label>Telefon</label>
+                  <input type="text" id="s-ptt-sphone" value="${v(s.pttSenderPhone)}" />
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="field">
+                  <label>Oraș</label>
+                  <input type="text" id="s-ptt-scity" value="${v(s.pttSenderCity)}" />
+                </div>
+                <div class="field">
+                  <label>Cod poștal</label>
+                  <input type="text" id="s-ptt-szip" value="${v(s.pttSenderPostalCode)}" />
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="field">
+                  <label>Adresă</label>
+                  <input type="text" id="s-ptt-saddress" value="${v(s.pttSenderAddress)}" />
+                </div>
+                <div class="field">
+                  <label>Email</label>
+                  <input type="text" id="s-ptt-semail" value="${v(s.pttSenderEmail)}" />
+                </div>
+              </div>
+              <div class="hint" style="margin-top:4px;">Notă: PTT Express nu oferă anulare de AWB prin API — se face manual, din panoul lor web.</div>
+            </div>
           </div>
         </div>
-        <div class="field">
-          <label>ID serviciu (implicit 38 — Național Standard)</label>
-          <input type="text" id="s-ptt-service" value="${v(s.pttServiceId)}" placeholder="38" />
-        </div>
-        <div class="field">
-          <label>Format etichetă tipărire</label>
-          <select id="s-ptt-labelformat">
-            <option value="PDFA4" ${!s.pttLabelFormat || s.pttLabelFormat === 'PDFA4' ? 'selected' : ''}>PDF — format A4 (implicit)</option>
-            <option value="PDF" ${s.pttLabelFormat === 'PDF' ? 'selected' : ''}>PDF — format standard</option>
-            <option value="ZPL" ${s.pttLabelFormat === 'ZPL' ? 'selected' : ''}>ZPL (imprimantă termică)</option>
-            <option value="EPL" ${s.pttLabelFormat === 'EPL' ? 'selected' : ''}>EPL (imprimantă termică)</option>
-            <option value="GIF" ${s.pttLabelFormat === 'GIF' ? 'selected' : ''}>GIF (imagine)</option>
-          </select>
-        </div>
-        <div class="sub" style="margin:16px 0 8px;">Date expeditor (adresa firmei tale, folosită la ridicările de la client)</div>
-        <div class="form-row">
-          <div class="field">
-            <label>Nume firmă</label>
-            <input type="text" id="s-ptt-sname" value="${v(s.pttSenderName)}" />
-          </div>
-          <div class="field">
-            <label>Telefon</label>
-            <input type="text" id="s-ptt-sphone" value="${v(s.pttSenderPhone)}" />
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="field">
-            <label>Oraș</label>
-            <input type="text" id="s-ptt-scity" value="${v(s.pttSenderCity)}" />
-          </div>
-          <div class="field">
-            <label>Cod poștal</label>
-            <input type="text" id="s-ptt-szip" value="${v(s.pttSenderPostalCode)}" />
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="field">
-            <label>Adresă</label>
-            <input type="text" id="s-ptt-saddress" value="${v(s.pttSenderAddress)}" />
-          </div>
-          <div class="field">
-            <label>Email</label>
-            <input type="text" id="s-ptt-semail" value="${v(s.pttSenderEmail)}" />
-          </div>
-        </div>
-        <div class="hint" style="margin-top:4px;">Notă: PTT Express nu oferă anulare de AWB prin API — se face manual, din panoul lor web.</div>
       </div>
 
       <button class="btn btn-primary" type="submit">Salvează setările</button>
     </form>
   `));
+
+  content.querySelectorAll('.settings-tab').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      content.querySelectorAll('.settings-tab').forEach((t) => t.classList.remove('active'));
+      content.querySelectorAll('.settings-tab-panel').forEach((p) => p.classList.remove('active'));
+      tab.classList.add('active');
+      content.querySelector(`.settings-tab-panel[data-tab-panel="${tab.dataset.tab}"]`).classList.add('active');
+    });
+  });
+
+  content.querySelectorAll('.accordion-header').forEach((header) => {
+    header.addEventListener('click', () => {
+      header.closest('.accordion-item').classList.toggle('open');
+    });
+  });
 
   content.querySelector('#samedayAutofillBtn').addEventListener('click', async () => {
     const btn = content.querySelector('#samedayAutofillBtn');
