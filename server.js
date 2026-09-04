@@ -706,6 +706,13 @@ async function handleApi(req, res, pathname, query) {
       return sendJSON(res, 200, result);
     }
 
+    if (pathname === '/api/orders/import-full-history/resume' && req.method === 'POST') {
+      if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot relua importul.' });
+      if (!mp.isConfigured(company)) return sendJSON(res, 400, { error: 'Integrarea MerchantPro nu este configurată.' });
+      const result = fullHistoryImport.resumeFullHistoryImport(company);
+      return sendJSON(res, 200, result);
+    }
+
     if (pathname === '/api/orders/import-full-history/status' && req.method === 'GET') {
       return sendJSON(res, 200, fullHistoryImport.getImportStatus());
     }
@@ -719,6 +726,10 @@ async function handleApi(req, res, pathname, query) {
     }
 
     if (pathname === '/api/orders' && req.method === 'GET') {
+      // limita implicita SIGURA -- indiferent ce trimite (sau nu) interfata,
+      // niciodata nu incarcam toate comenzile deodata (pot fi zeci de mii)
+      const pageSize = Math.min(Number(query.pageSize) || 200, 500);
+      const page = Math.max(Number(query.page) || 1, 1);
       const filters = {
         shippingStatus: query.shippingStatus || undefined,
         paymentStatus: query.paymentStatus || undefined,
@@ -729,6 +740,8 @@ async function handleApi(req, res, pathname, query) {
         dateFrom: query.dateFrom || undefined,
         dateTo: query.dateTo || undefined,
         q: query.q || undefined,
+        limit: pageSize,
+        offset: (page - 1) * pageSize,
       };
       return sendJSON(res, 200, db.listOrders(currentAgent.companyId, filters));
     }
