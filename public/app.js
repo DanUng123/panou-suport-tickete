@@ -49,6 +49,7 @@ let agentsCache = [];
 let categoriesCache = [];
 let glsConfigured = false;
 let samedayConfigured = false;
+let pttConfigured = false;
 let platformLabel = 'MERCHANTPRO';
 
 // ---------------- utilitare ----------------
@@ -346,16 +347,18 @@ async function boot() {
 }
 
 async function loadReferenceData() {
-  const [agents, categories, glsStatus, samedayStatus] = await Promise.all([
+  const [agents, categories, glsStatus, samedayStatus, pttStatus] = await Promise.all([
     api('/api/agents'),
     api('/api/categories'),
     api('/api/gls/status').catch(() => ({ configured: false })),
     api('/api/sameday/status').catch(() => ({ configured: false })),
+    api('/api/ptt/status').catch(() => ({ configured: false })),
   ]);
   agentsCache = agents;
   categoriesCache = categories;
   glsConfigured = glsStatus.configured;
   samedayConfigured = samedayStatus.configured;
+  pttConfigured = pttStatus.configured;
 }
 
 // ---------------- ecran login ----------------
@@ -2028,6 +2031,7 @@ async function paintTicketDrawer(ticket) {
                     <select id="pu-courier" required>
                       <option value="gls" ${glsConfigured ? '' : 'disabled'}>GLS${glsConfigured ? '' : ' (neconfigurat)'}</option>
                       <option value="sameday" ${samedayConfigured ? '' : 'disabled'}>Sameday${samedayConfigured ? '' : ' (neconfigurat)'}</option>
+                      <option value="ptt" ${pttConfigured ? '' : 'disabled'}>PTT Express${pttConfigured ? '' : ' (neconfigurat)'}</option>
                     </select>
                   </div>
                 </div>
@@ -2063,6 +2067,7 @@ async function paintTicketDrawer(ticket) {
                 <select id="return-courier">
                   <option value="gls" ${glsConfigured ? '' : 'disabled'}>GLS${glsConfigured ? '' : ' (neconfigurat)'}</option>
                   <option value="sameday" ${samedayConfigured ? '' : 'disabled'}>Sameday${samedayConfigured ? '' : ' (neconfigurat)'}</option>
+                  <option value="ptt" ${pttConfigured ? '' : 'disabled'}>PTT Express${pttConfigured ? '' : ' (neconfigurat)'}</option>
                 </select>
               </div>
               <button class="btn btn-sm btn-block" id="readyToShipBtn" style="background:var(--status-resolved);color:#fff;border-color:var(--status-resolved);font-weight:600;">✓ PRODUS REPARAT</button>
@@ -3790,6 +3795,56 @@ async function renderSettings() {
         </div>
       </div>
 
+      <div class="panel" style="margin-bottom:20px;">
+        <h2>PTT Express</h2>
+        <div class="form-row">
+          <div class="field">
+            <label>Utilizator</label>
+            <input type="text" id="s-ptt-user" value="${v(s.pttUsername)}" />
+          </div>
+          <div class="field">
+            <label>Parolă${s.pttPasswordSet ? ' — setată ✓' : ''}</label>
+            <input type="password" id="s-ptt-pass" placeholder="${s.pttPasswordSet ? '••••••••  (lasă gol ca să păstrezi)' : 'Introdu parola'}" />
+          </div>
+        </div>
+        <div class="field">
+          <label>ID serviciu (implicit 38 — Național Standard)</label>
+          <input type="text" id="s-ptt-service" value="${v(s.pttServiceId)}" placeholder="38" />
+        </div>
+        <div class="sub" style="margin:16px 0 8px;">Date expeditor (adresa firmei tale, folosită la ridicările de la client)</div>
+        <div class="form-row">
+          <div class="field">
+            <label>Nume firmă</label>
+            <input type="text" id="s-ptt-sname" value="${v(s.pttSenderName)}" />
+          </div>
+          <div class="field">
+            <label>Telefon</label>
+            <input type="text" id="s-ptt-sphone" value="${v(s.pttSenderPhone)}" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field">
+            <label>Oraș</label>
+            <input type="text" id="s-ptt-scity" value="${v(s.pttSenderCity)}" />
+          </div>
+          <div class="field">
+            <label>Cod poștal</label>
+            <input type="text" id="s-ptt-szip" value="${v(s.pttSenderPostalCode)}" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field">
+            <label>Adresă</label>
+            <input type="text" id="s-ptt-saddress" value="${v(s.pttSenderAddress)}" />
+          </div>
+          <div class="field">
+            <label>Email</label>
+            <input type="text" id="s-ptt-semail" value="${v(s.pttSenderEmail)}" />
+          </div>
+        </div>
+        <div class="hint" style="margin-top:4px;">Notă: PTT Express nu oferă anulare de AWB prin API — se face manual, din panoul lor web.</div>
+      </div>
+
       <button class="btn btn-primary" type="submit">Salvează setările</button>
     </form>
   `));
@@ -3855,17 +3910,28 @@ async function renderSettings() {
       samedaySenderPostalCode: q('#s-sd-szip'),
       samedaySenderAddress: q('#s-sd-saddress'),
       samedayAwbPdfFormat: q('#s-sd-pdfformat'),
+      pttUsername: q('#s-ptt-user'),
+      pttPassword: q('#s-ptt-pass'),
+      pttServiceId: q('#s-ptt-service'),
+      pttSenderName: q('#s-ptt-sname'),
+      pttSenderPhone: q('#s-ptt-sphone'),
+      pttSenderCity: q('#s-ptt-scity'),
+      pttSenderPostalCode: q('#s-ptt-szip'),
+      pttSenderAddress: q('#s-ptt-saddress'),
+      pttSenderEmail: q('#s-ptt-semail'),
     };
     try {
       await api('/api/company/settings', { method: 'PATCH', body: JSON.stringify(payload) });
       // reimprospatam starea "configurat/neconfigurat" a curierilor, altfel
       // ar ramane invechita pana la urmatoarea logare
-      const [glsStatus, samedayStatus] = await Promise.all([
+      const [glsStatus, samedayStatus, pttStatus] = await Promise.all([
         api('/api/gls/status').catch(() => ({ configured: false })),
         api('/api/sameday/status').catch(() => ({ configured: false })),
+        api('/api/ptt/status').catch(() => ({ configured: false })),
       ]);
       glsConfigured = glsStatus.configured;
       samedayConfigured = samedayStatus.configured;
+      pttConfigured = pttStatus.configured;
       showToast('Setări salvate');
       renderSettings();
     } catch (err) {
