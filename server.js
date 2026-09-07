@@ -542,7 +542,22 @@ async function handleApi(req, res, pathname, query) {
       if (patch.samedayPassword === '') delete patch.samedayPassword;
       if (patch.gomagApiKey === '') delete patch.gomagApiKey;
       if (patch.pttPassword === '') delete patch.pttPassword;
+
+      // retinem starea DINAINTE de salvare, ca sa detectam daca MerchantPro
+      // sau GoMag tocmai au fost configurate pentru PRIMA DATA -- caz in
+      // care pornim automat, silentios, importul complet de istoric (clientul
+      // nu vede un buton sau progres detaliat, doar un mesaj general, ca ii
+      // "pregatim contul")
+      const wasMpConfigured = mp.isConfigured(company);
+      const wasGomagConfigured = gomag.isConfigured(company);
+
       const updated = db.updateCompanyCredentials(currentAgent.companyId, patch);
+      const merchantProJustConfigured = !wasMpConfigured && mp.isConfigured(updated);
+      const gomagJustConfigured = !wasGomagConfigured && gomag.isConfigured(updated);
+      if (merchantProJustConfigured || gomagJustConfigured) {
+        fullHistoryImport.maybeStartAutoImport(updated, { merchantProJustConfigured, gomagJustConfigured });
+      }
+
       const { merchantProApiSecret, glsPassword, samedayPassword, gomagApiKey, pttPassword, ...rest } = updated;
       return sendJSON(res, 200, {
         ...rest,
@@ -551,6 +566,7 @@ async function handleApi(req, res, pathname, query) {
         samedayPasswordSet: Boolean(samedayPassword),
         gomagApiKeySet: Boolean(gomagApiKey),
         pttPasswordSet: Boolean(pttPassword),
+        accountPreparing: merchantProJustConfigured || gomagJustConfigured,
       });
     }
 
@@ -720,7 +736,7 @@ async function handleApi(req, res, pathname, query) {
     }
 
     if (pathname === '/api/orders/import-full-history/status' && req.method === 'GET') {
-      return sendJSON(res, 200, fullHistoryImport.getImportStatus());
+      return sendJSON(res, 200, fullHistoryImport.getImportStatus(company));
     }
 
     if (pathname === '/api/orders/stats' && req.method === 'GET') {

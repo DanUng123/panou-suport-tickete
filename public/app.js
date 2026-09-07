@@ -4001,7 +4001,7 @@ async function renderSettings() {
       pttSenderEmail: q('#s-ptt-semail'),
     };
     try {
-      await api('/api/company/settings', { method: 'PATCH', body: JSON.stringify(payload) });
+      const savedCompany = await api('/api/company/settings', { method: 'PATCH', body: JSON.stringify(payload) });
       // reimprospatam starea "configurat/neconfigurat" a curierilor, altfel
       // ar ramane invechita pana la urmatoarea logare
       const [glsStatus, samedayStatus, pttStatus] = await Promise.all([
@@ -4012,7 +4012,7 @@ async function renderSettings() {
       glsConfigured = glsStatus.configured;
       samedayConfigured = samedayStatus.configured;
       pttConfigured = pttStatus.configured;
-      showToast('Setări salvate');
+      showToast(savedCompany.accountPreparing ? 'Setări salvate — îți pregătim contul, va dura puțin' : 'Setări salvate');
       renderSettings();
     } catch (err) {
       showToast('Eroare: ' + err.message);
