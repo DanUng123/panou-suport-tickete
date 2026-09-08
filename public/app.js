@@ -1187,12 +1187,12 @@ async function renderDashboard() {
 
   body.innerHTML = `
     <div class="stat-grid" style="grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));">
-      <div class="stat-tile accented"><span class="corner-dot glow-dot" style="background:var(--accent);"></span><div class="label">Comenzi azi</div><div class="value">${orderStats ? orderStats.total : '—'}</div></div>
-      <div class="stat-tile"><span class="corner-dot" style="background:var(--status-open);"></span><div class="label">Tichete deschise</div><div class="value">${stats.byStatus.open}</div></div>
-      <div class="stat-tile"><span class="corner-dot" style="background:var(--status-waiting);"></span><div class="label">Service activ</div><div class="value">${serviceActive.length}</div></div>
-      <div class="stat-tile"><span class="corner-dot" style="background:var(--status-in_progress);"></span><div class="label">Retur activ</div><div class="value">${returActive.length}</div></div>
-      <div class="stat-tile"><span class="corner-dot" style="background:var(--status-waiting);"></span><div class="label">Colet la Schimb</div><div class="value">${schimbActive.length}</div></div>
-      <div class="stat-tile"><span class="corner-dot glow-dot" style="background:var(--priority-urgent);"></span><div class="label">Peste 10 zile</div><div class="value" style="color:${overdueAll.length ? 'var(--priority-urgent)' : 'var(--text)'};">${overdueAll.length}</div></div>
+      <div class="stat-tile accented"><span class="corner-dot glow-dot" style="background:var(--tile-accent);"></span><div class="label">Comenzi azi</div><div class="value">${orderStats ? orderStats.total : '—'}</div></div>
+      <div class="stat-tile" style="--tile-accent:var(--status-open);"><span class="corner-dot" style="background:var(--tile-accent);"></span><div class="label">Tichete deschise</div><div class="value">${stats.byStatus.open}</div></div>
+      <div class="stat-tile" style="--tile-accent:var(--status-resolved);"><span class="corner-dot" style="background:var(--tile-accent);"></span><div class="label">Service activ</div><div class="value">${serviceActive.length}</div></div>
+      <div class="stat-tile" style="--tile-accent:var(--status-in_progress);"><span class="corner-dot" style="background:var(--tile-accent);"></span><div class="label">Retur activ</div><div class="value">${returActive.length}</div></div>
+      <div class="stat-tile" style="--tile-accent:var(--status-pink);"><span class="corner-dot" style="background:var(--tile-accent);"></span><div class="label">Colet la Schimb</div><div class="value">${schimbActive.length}</div></div>
+      <div class="stat-tile" style="--tile-accent:var(--priority-urgent);"><span class="corner-dot glow-dot" style="background:var(--tile-accent);"></span><div class="label">Peste 10 zile</div><div class="value" style="color:${overdueAll.length ? 'var(--priority-urgent)' : 'var(--text)'};">${overdueAll.length}</div></div>
     </div>
 
     <div class="panel" style="margin-bottom:16px;">
@@ -1241,9 +1241,9 @@ async function renderProductAnalytics(pickerContainer, analyticsBody) {
 
       analyticsBody.innerHTML = `
         <div class="stat-grid" style="grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));margin-bottom:20px;">
-          <div class="stat-tile"><span class="corner-dot" style="background:var(--status-in_progress);"></span><div class="label">Retururi</div><div class="value">${data.counts.retur}</div></div>
-          <div class="stat-tile"><span class="corner-dot" style="background:var(--status-waiting);"></span><div class="label">Colete la Schimb</div><div class="value">${data.counts.schimb}</div></div>
-          <div class="stat-tile"><span class="corner-dot" style="background:var(--status-open);"></span><div class="label">Colete în Service</div><div class="value">${data.counts.service}</div></div>
+          <div class="stat-tile" style="--tile-accent:var(--status-in_progress);"><span class="corner-dot" style="background:var(--tile-accent);"></span><div class="label">Retururi</div><div class="value">${data.counts.retur}</div></div>
+          <div class="stat-tile" style="--tile-accent:var(--status-pink);"><span class="corner-dot" style="background:var(--tile-accent);"></span><div class="label">Colete la Schimb</div><div class="value">${data.counts.schimb}</div></div>
+          <div class="stat-tile" style="--tile-accent:var(--status-open);"><span class="corner-dot" style="background:var(--tile-accent);"></span><div class="label">Colete în Service</div><div class="value">${data.counts.service}</div></div>
         </div>
         <div class="dash-grid">
           <div class="panel">
