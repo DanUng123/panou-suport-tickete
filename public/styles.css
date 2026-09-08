@@ -1403,3 +1403,191 @@ a { color: inherit; text-decoration: none; }
 @media (max-width: 720px) {
   .drawer-panel { width: 100vw; padding: 20px; }
 }
+
+/* ===========================================================
+   Tichete — aliniere vizuală cu restul platformei
+   Tipografie și spațieri unificate; panourile și formularele
+   aduse la același stil de card ca listele de comenzi.
+   =========================================================== */
+
+/* ---- Etichete de secțiune, comune tuturor panourilor ---- */
+
+.panel h2,
+.side-panel h2,
+.comments-panel h2,
+.form-card h2 {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-dim);
+  margin: 0 0 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* ---- Bara de filtre: card, cu câmpuri de aceeași înălțime ---- */
+
+.filters-bar {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.filters-bar select,
+.filters-bar input[type="text"] {
+  height: 36px;
+  background: var(--surface-raised);
+  border-radius: 8px;
+  font-size: 14px;
+}
+.filters-bar input[type="text"] { flex: 1 1 260px; min-width: 220px; }
+.filters-bar select:focus,
+.filters-bar input:focus,
+.filters-search-row input[type="text"]:focus,
+.period-custom-inputs input[type="date"]:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+  outline: none;
+}
+
+/* ---- Lista de tichete: aceeași densitate ca lista de comenzi ---- */
+
+.ticket-row { padding: 14px 16px; gap: 12px; }
+.ticket-row + .ticket-row { border-top: 1px solid var(--border); }
+.ticket-row.header { letter-spacing: 0.06em; font-size: 11.5px; }
+.ticket-id { font-size: 13px; letter-spacing: 0.02em; }
+.ticket-subject .t-title { font-size: 15px; font-weight: 600; }
+.ticket-subject .t-requester { font-size: 12.5px; }
+.ticket-date { font-size: 12.5px; letter-spacing: 0.01em; }
+.priority-stripe { border-radius: 3px; }
+
+/* ---- Cardul de antet al tichetului ---- */
+
+.ticket-header-card { padding: 22px 24px; }
+.ticket-header-card .t-id {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+.ticket-header-card h1 {
+  font-size: 23px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0 0 14px;
+}
+.ticket-header-card .badges-row { flex-wrap: wrap; gap: 7px; margin-bottom: 16px; }
+.ticket-header-card .description {
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  max-width: 78ch;
+}
+
+/* Datele solicitantului: celule egale, etichete discrete */
+.meta-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 14px 20px;
+  margin-top: 18px;
+  padding-top: 16px;
+}
+.meta-row .meta-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+.meta-row .meta-value { font-size: 14.5px; }
+
+/* ---- Panouri laterale (AWB, rambursare) ---- */
+
+.side-panel { padding: 18px 20px; }
+.side-panel .sub {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+}
+.side-panel .btn-row { gap: 6px; }
+.side-panel .btn-sm { flex: 0 1 auto; }
+
+/* ---- Formulare: câmpuri și etichete identice peste tot ---- */
+
+.field label,
+.field-compact label {
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+}
+.field input, .field select,
+.field-compact input, .field-compact select {
+  height: 38px;
+}
+.field-compact input, .field-compact select { height: 34px; }
+.field input:focus, .field select:focus, .field textarea:focus,
+.field-compact input:focus, .field-compact select:focus,
+.comment-form textarea:focus, .admin-inline-form input:focus, .admin-inline-form select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+  outline: none;
+}
+.form-card { padding: 24px 26px; }
+.form-actions { justify-content: flex-end; margin-top: 18px; }
+
+/* ---- Activitate: cronologie cu un fir vertical ---- */
+
+.comments-panel { padding: 20px 22px; }
+.comments-panel .comment,
+.comments-panel .history-entry {
+  position: relative;
+  padding-left: 18px;
+}
+.comments-panel .comment::before,
+.comments-panel .history-entry::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border);
+}
+.comments-panel .comment:first-child::before,
+.comments-panel .history-entry:first-child::before { top: 12px; }
+.comments-panel .comment:last-of-type::before { bottom: auto; height: 14px; }
+.comment { padding: 14px 0; border-bottom: 1px solid var(--border); }
+.comment-head { gap: 10px; font-size: 13px; }
+.comment-head .c-author { font-size: 14px; }
+.comment-body { font-size: 14.5px; color: var(--text); line-height: 1.6; }
+.comment .comment-body { color: var(--text-secondary); }
+.history-entry { font-size: 13.5px; padding: 9px 0; }
+.history-entry .c-time { font-family: var(--font-mono); font-size: 12px; color: var(--text-dim); }
+.comment-form { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
+.comment-form textarea { min-height: 80px; font-size: 14.5px; }
+.comment-form-actions { margin-top: 12px; }
+
+/* Nota interna se distinge de un raspuns catre client */
+.comment:has(.internal-tag) {
+  background: rgba(167,139,250,0.06);
+  border-radius: 8px;
+  padding-left: 12px;
+  padding-right: 12px;
+  margin-left: 6px;
+}
+.comment:has(.internal-tag)::before { display: none; }
+
+/* ---- Butoane: aceeași înălțime în toate barele de acțiuni ---- */
+
+.btn { height: 38px; }
+.btn-sm { height: 32px; font-size: 13.5px; }
+.btn-block { height: 40px; }
