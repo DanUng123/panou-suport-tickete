@@ -563,7 +563,7 @@ function renderMarketingContact() {
     btn.textContent = 'Se trimite…';
     try {
       await api('/api/public/contact', { method: 'POST', body: JSON.stringify(payload) });
-      resultBox.innerHTML = `<div class="hint" style="background:rgba(107,196,130,0.1);border:1px solid rgba(107,196,130,0.3);border-radius:8px;padding:10px 12px;">✓ Mesaj trimis — revenim cât mai curând.</div>`;
+      resultBox.innerHTML = `<div class="hint" style="background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.3);border-radius:8px;padding:10px 12px;">✓ Mesaj trimis — revenim cât mai curând.</div>`;
       page.querySelector('#contactForm').reset();
     } catch (err) {
       resultBox.innerHTML = `<div class="error-msg">${escapeHtml(err.message)}</div>`;
@@ -672,11 +672,11 @@ async function renderPlatformAdminPanel() {
       `;
       const rowsHtml = companies.map((c) => `
         <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);font-size:13px;">
-          <div style="flex:1.5;min-width:0;font-weight:500;">${escapeHtml(c.name)}${c.isTestAccount ? ' <span class="badge" style="background:rgba(47,111,237,0.15);color:var(--accent);font-size:10.5px;">contul tău</span>' : ''}</div>
+          <div style="flex:1.5;min-width:0;font-weight:500;">${escapeHtml(c.name)}${c.isTestAccount ? ' <span class="badge" style="background:rgba(59,130,246,0.15);color:var(--accent);font-size:10.5px;">contul tău</span>' : ''}</div>
           <div style="flex:1;min-width:0;color:var(--text-secondary);">${escapeHtml(fmtDate(c.createdAt))}</div>
           <div style="flex:0.7;min-width:0;color:var(--text-secondary);">${c.agentCount}</div>
           <div style="flex:0.8;min-width:0;">
-            <span class="badge" style="background:${c.active ? 'rgba(107,196,130,0.18)' : 'rgba(232,92,76,0.18)'};color:${c.active ? 'var(--status-resolved)' : 'var(--priority-urgent)'};">${c.active ? '✓ Activă' : '✕ Dezactivată'}</span>
+            <span class="badge" style="background:${c.active ? 'rgba(52,211,153,0.18)' : 'rgba(248,113,113,0.18)'};color:${c.active ? 'var(--status-resolved)' : 'var(--priority-urgent)'};">${c.active ? '✓ Activă' : '✕ Dezactivată'}</span>
           </div>
           ${c.isTestAccount
             ? '<div style="flex-shrink:0;width:110px;font-size:11px;color:var(--text-dim);">protejat</div>'
@@ -841,7 +841,7 @@ function renderForgotPassword(statusMsg, isError) {
         </div>
         <h1>Am uitat parola</h1>
         <p class="sub">Introdu emailul contului tău — dacă există, primești un link de resetare.</p>
-        ${statusMsg ? `<div class="${isError ? 'error-msg' : 'hint'}" style="${isError ? '' : 'background:rgba(107,196,130,0.1);border:1px solid rgba(107,196,130,0.3);border-radius:8px;padding:10px 12px;margin-bottom:14px;'}">${escapeHtml(statusMsg)}</div>` : ''}
+        ${statusMsg ? `<div class="${isError ? 'error-msg' : 'hint'}" style="${isError ? '' : 'background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.3);border-radius:8px;padding:10px 12px;margin-bottom:14px;'}">${escapeHtml(statusMsg)}</div>` : ''}
         <form id="forgot-form">
           <div class="field">
             <label for="fpEmail">Email</label>
@@ -1940,7 +1940,7 @@ async function paintTicketDrawer(ticket) {
               <span class="badge badge-priority-${ticket.priority}">${PRIORITY_LABELS[ticket.priority]}</span>
               ${ticket.section === 'service' ? '<span class="badge badge-status-in_progress">🔧 Service</span>' : ''}
               ${ticket.section === 'retur' ? '<span class="badge badge-priority-urgent">↩ Retur</span>' : ''}
-              ${ticket.refundPaidAt ? '<span class="badge" style="background:rgba(107,196,130,0.18);color:var(--status-resolved);border:1px solid rgba(107,196,130,0.4);">✓ Bani Returnați</span>' : ''}
+              ${ticket.refundPaidAt ? '<span class="badge" style="background:rgba(52,211,153,0.18);color:var(--status-resolved);border:1px solid rgba(52,211,153,0.4);">✓ Bani Returnați</span>' : ''}
               ${ticket.stage ? `<span class="badge" style="background:rgba(255,255,255,0.06);"><span class="status-pill-dot" style="background:${stageDotColor(ticket.stage)};"></span>${stageStatusLabel(ticket.stage, ticket.section)}</span>` : ''}
               ${computeDeadline(ticket) ? `<span class="badge" style="background:rgba(255,255,255,0.06);color:${isPastDeadline(ticket) ? 'var(--priority-urgent)' : 'var(--text-secondary)'};">⏱ ${fmtShortDate(computeDeadline(ticket))}</span>` : ''}
               ${relatedOrder ? `<span class="badge badge-status-waiting" id="relatedOrderLink" style="cursor:pointer;">📦 Comandă #${relatedOrder.mpId}</span>` : ''}
