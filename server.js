@@ -640,6 +640,34 @@ async function handleApi(req, res, pathname, query) {
       }
     }
 
+    // Serviciile disponibile pe contul PTT Express al companiei -- citite live
+    // de la ei, ca sa poata fi alese dintr-o lista in Setari, nu scrise de mana.
+    // Se poate apela si inainte de salvare (cu credentialele din formular);
+    // daca parola e goala, folosim pe cea deja salvata.
+    if (pathname === '/api/company/settings/ptt-services' && req.method === 'POST') {
+      if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot accesa setările companiei' });
+      const body = await readBody(req);
+      const draftCompany = {
+        ...company,
+        pttUsername: body.pttUsername || company.pttUsername,
+        pttPassword: body.pttPassword || company.pttPassword,
+        pttSenderName: body.pttSenderName || company.pttSenderName,
+        pttSenderAddress: body.pttSenderAddress || company.pttSenderAddress,
+        pttSenderCity: body.pttSenderCity || company.pttSenderCity,
+        pttSenderPostalCode: body.pttSenderPostalCode || company.pttSenderPostalCode,
+        pttSenderPhone: body.pttSenderPhone || company.pttSenderPhone,
+        pttSenderEmail: body.pttSenderEmail || company.pttSenderEmail,
+      };
+      if (!draftCompany.pttUsername || !draftCompany.pttPassword) {
+        return sendJSON(res, 400, { error: 'Completează mai întâi utilizatorul și parola PTT Express, apoi încearcă din nou.' });
+      }
+      try {
+        return sendJSON(res, 200, { services: await pttexpress.getAvailableServices(draftCompany) });
+      } catch (e) {
+        return sendJSON(res, 502, { error: e.message });
+      }
+    }
+
     if (pathname === '/api/stats' && req.method === 'GET') {
       return sendJSON(res, 200, db.getStats(currentAgent.companyId));
     }
@@ -1039,13 +1067,19 @@ async function handleApi(req, res, pathname, query) {
       // curier neprezentat etc.), apoi curatam IMEDIAT starea tichetului --
       // altfel, daca pasul 2 (generare) esueaza, tichetul ar ramane cu un
       // AWB "activ" in interfata, desi de fapt a fost deja anulat la curier
+      // PTT Express nu expune nicio operatie de anulare in API (verificat pe
+      // serviciul lor live) -- pentru ei sarim peste pasul de anulare, altfel
+      // reemiterea ar esua mereu; AWB-ul vechi ramane activ la PTT si trebuie
+      // anulat manual, iar utilizatorul e avertizat explicit in raspuns
+      const oldAwbNumber = ticket.pickupAwbNumber;
+      let reissueWarning = null;
       try {
         if (courier === 'sameday') {
           await sameday.deleteAwb(company, ticket.pickupAwbParcelId);
         } else if (courier === 'gls') {
           await gls.deleteParcel(company, ticket.pickupAwbParcelId);
         } else {
-          await pttexpress.deleteParcel(company, ticket.pickupAwbParcelId);
+          reissueWarning = `AWB-ul vechi (${oldAwbNumber}) rămâne activ în contul PTT Express — anulează-l manual, din panoul lor web, ca să nu rămână o expediere fantomă.`;
         }
         db.clearTicketPickupAwb(currentAgent.companyId, ticket.id, currentAgent);
       } catch (e) {
@@ -1063,7 +1097,10 @@ async function handleApi(req, res, pathname, query) {
       const email = ticket.requesterEmail || '';
 
       if (!address || !city || !postalCode || !phone) {
-        return sendJSON(res, 200, { ...db.getTicket(currentAgent.companyId, ticket.id), reissued: false, warning: 'AWB-ul vechi a fost anulat, dar datele de ridicare sunt incomplete pentru a genera automat unul nou -- completează manual formularul.' });
+        const incompleteWarning = reissueWarning
+          ? `${reissueWarning} Datele de ridicare sunt incomplete pentru a genera automat unul nou — completează manual formularul.`
+          : 'AWB-ul vechi a fost anulat, dar datele de ridicare sunt incomplete pentru a genera automat unul nou -- completează manual formularul.';
+        return sendJSON(res, 200, { ...db.getTicket(currentAgent.companyId, ticket.id), reissued: false, warning: incompleteWarning });
       }
 
       try {
@@ -1082,7 +1119,7 @@ async function handleApi(req, res, pathname, query) {
           courier,
           secondaryAwbNumber: result.secondaryAwbNumber,
         }, currentAgent);
-        return sendJSON(res, 200, { ...updated, labelAvailable: Boolean(result.labelPdf), reissued: true });
+        return sendJSON(res, 200, { ...updated, labelAvailable: Boolean(result.labelPdf), reissued: true, warning: reissueWarning });
       } catch (e) {
         return sendJSON(res, 502, { error: `AWB-ul vechi a fost anulat, dar generarea celui nou a eșuat: ${e.message}. Generează manual unul nou, din formular.` });
       }

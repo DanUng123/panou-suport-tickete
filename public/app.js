@@ -2014,7 +2014,7 @@ async function paintTicketDrawer(ticket) {
                 <button class="btn btn-sm" id="viewPickupTrackingBtn">Traseu</button>
                 <button class="btn btn-sm" id="downloadPickupLabelBtn">↓ PDF</button>
                 ${!ARRIVED_STAGES.includes(ticket.stage) && ['service', 'retur'].includes(ticket.section) ? '<button class="btn btn-sm" id="reissuePickupAwbBtn" style="color:var(--status-open);">↻ Reemite AWB</button>' : ''}
-                ${!ARRIVED_STAGES.includes(ticket.stage) ? '<button class="btn btn-sm" id="cancelPickupAwbBtn" style="color:var(--priority-urgent);">Anulează</button>' : ''}
+                ${!ARRIVED_STAGES.includes(ticket.stage) ? `<button class="btn btn-sm" id="cancelPickupAwbBtn" style="color:var(--priority-urgent);" title="${ticket.pickupAwbCourier === 'ptt' ? 'Elimină AWB-ul de pe tichet — PTT Express nu permite anularea prin API, AWB-ul rămâne activ la ei' : 'Anulează AWB-ul, inclusiv la curier'}">${ticket.pickupAwbCourier === 'ptt' ? 'Elimină AWB' : 'Anulează'}</button>` : ''}
               </div>
               <div id="pickupTrackingBox" style="display:none;margin-top:10px;"></div>
               ${ticket.pickupAwbSecondaryNumber ? `
@@ -2105,7 +2105,7 @@ async function paintTicketDrawer(ticket) {
                   <button class="btn btn-sm" id="refreshReturnStatusBtn">↻ Status</button>
                   <button class="btn btn-sm" id="viewReturnTrackingBtn">Traseu</button>
                   <button class="btn btn-sm" id="downloadReturnLabelBtn">↓ PDF</button>
-                  <button class="btn btn-sm" id="cancelReturnAwbBtn" style="color:var(--priority-urgent);">Anulează</button>
+                  <button class="btn btn-sm" id="cancelReturnAwbBtn" style="color:var(--priority-urgent);" title="${ticket.returnAwbCourier === 'ptt' ? 'Elimină AWB-ul de pe tichet — PTT Express nu permite anularea prin API, AWB-ul rămâne activ la ei' : 'Anulează AWB-ul, inclusiv la curier'}">${ticket.returnAwbCourier === 'ptt' ? 'Elimină AWB' : 'Anulează'}</button>
                 </div>
                 <div id="returnTrackingBox" style="display:none;margin-top:10px;"></div>
               ` : '<div class="hint">Apasă „PRODUS REPARAT" mai sus pentru a genera AWB-ul de retur către client.</div>'}
@@ -2276,16 +2276,20 @@ async function paintTicketDrawer(ticket) {
     if (reissuePickupBtn) {
       reissuePickupBtn.addEventListener('click', async () => {
         const courierLabel = ticket.pickupAwbCourier === 'sameday' ? 'Sameday' : (ticket.pickupAwbCourier === 'ptt' ? 'PTT Express' : 'GLS');
-        if (!confirm(`Coletul nu a fost ridicat? Se anulează automat AWB-ul curent (${ticket.pickupAwbNumber}, la ${courierLabel}) și se emite unul nou, cu aceleași date de ridicare.`)) return;
+        const reissueMsg = ticket.pickupAwbCourier === 'ptt'
+          ? `Coletul nu a fost ridicat? Se emite un AWB nou, cu aceleași date de ridicare. Atenție: PTT Express nu oferă anulare prin API, deci AWB-ul curent (${ticket.pickupAwbNumber}) rămâne activ acolo și trebuie anulat manual, din panoul lor web.`
+          : `Coletul nu a fost ridicat? Se anulează automat AWB-ul curent (${ticket.pickupAwbNumber}, la ${courierLabel}) și se emite unul nou, cu aceleași date de ridicare.`;
+        if (!confirm(reissueMsg)) return;
         reissuePickupBtn.disabled = true;
         reissuePickupBtn.textContent = 'Se reemite…';
         try {
           const result = await api(`/api/tickets/${ticket.id}/reissue-pickup-awb`, { method: 'POST' });
-          ticket = result;
-          if (result.reissued) {
+          const { warning: reissueWarning, ...reissuedTicket } = result;
+          ticket = reissuedTicket;
+          if (reissueWarning) {
+            showToast(reissueWarning);
+          } else if (result.reissued) {
             showToast('AWB vechi anulat, unul nou a fost emis');
-          } else if (result.warning) {
-            showToast(result.warning);
           }
           paint();
         } catch (err) {
@@ -3815,8 +3819,15 @@ async function renderSettings() {
                 </div>
               </div>
               <div class="field">
-                <label>ID serviciu (implicit 38 — Național Standard)</label>
-                <input type="text" id="s-ptt-service" value="${v(s.pttServiceId)}" placeholder="38" />
+                <label>Serviciu de livrare</label>
+                <select id="s-ptt-service">
+                  <option value="" ${!s.pttServiceId ? 'selected' : ''}>Implicit (ID 38)</option>
+                  ${s.pttServiceId ? `<option value="${escapeHtml(s.pttServiceId)}" selected>ID ${escapeHtml(s.pttServiceId)} — serviciu salvat</option>` : ''}
+                </select>
+                <div style="margin-top:6px;">
+                  <button type="button" class="btn btn-sm" id="pttServicesBtn">↻ Preia serviciile din contul PTT</button>
+                </div>
+                <div class="hint" id="pttServicesHint" style="margin-top:4px;">Lista de servicii diferă de la un cont la altul — se citește direct din contul tău PTT Express. După ce alegi, apasă „Salvează setările".</div>
               </div>
               <div class="field">
                 <label>Format etichetă tipărire</label>
@@ -3914,6 +3925,52 @@ async function renderSettings() {
       btn.textContent = '↻ Preia automat din contul Sameday';
     }
   });
+
+  // ---- servicii PTT Express: lista se citeste din contul companiei ----
+  async function loadPttServices({ silent } = {}) {
+    const select = content.querySelector('#s-ptt-service');
+    const hint = content.querySelector('#pttServicesHint');
+    const btn = content.querySelector('#pttServicesBtn');
+    if (!select) return;
+    const payload = {
+      pttUsername: content.querySelector('#s-ptt-user').value.trim(),
+      pttPassword: content.querySelector('#s-ptt-pass').value,
+      pttSenderName: content.querySelector('#s-ptt-sname').value.trim(),
+      pttSenderAddress: content.querySelector('#s-ptt-saddress').value.trim(),
+      pttSenderCity: content.querySelector('#s-ptt-scity').value.trim(),
+      pttSenderPostalCode: content.querySelector('#s-ptt-szip').value.trim(),
+      pttSenderPhone: content.querySelector('#s-ptt-sphone').value.trim(),
+      pttSenderEmail: content.querySelector('#s-ptt-semail').value.trim(),
+    };
+    if (!payload.pttUsername && !silent) {
+      showToast('Completează întâi utilizatorul PTT Express.');
+      return;
+    }
+    if (btn) { btn.disabled = true; btn.textContent = 'Se încarcă…'; }
+    try {
+      const { services } = await api('/api/company/settings/ptt-services', { method: 'POST', body: JSON.stringify(payload) });
+      const selected = select.value;
+      select.innerHTML = `<option value="">Implicit (ID 38)</option>` + services.map((svc) => `
+        <option value="${escapeHtml(svc.id)}" ${String(svc.id) === String(selected) ? 'selected' : ''}>ID ${escapeHtml(svc.id)} — ${escapeHtml(svc.name)}${svc.price ? ` (${escapeHtml(svc.price)})` : ''}</option>
+      `).join('');
+      // serviciul salvat nu mai e disponibil pe cont -- il pastram, ca sa nu se piarda tacut la salvare
+      if (selected && !services.some((svc) => String(svc.id) === String(selected))) {
+        select.insertAdjacentHTML('beforeend', `<option value="${escapeHtml(selected)}" selected>ID ${escapeHtml(selected)} — indisponibil acum pe cont</option>`);
+      }
+      select.value = selected;
+      if (hint) hint.textContent = `${services.length} servicii disponibile pe contul tău. După ce alegi, apasă „Salvează setările".`;
+    } catch (err) {
+      if (hint) hint.textContent = `Nu am putut citi serviciile din contul PTT: ${err.message}`;
+      if (!silent) showToast('Eroare: ' + err.message);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '↻ Preia serviciile din contul PTT'; }
+    }
+  }
+
+  const pttServicesBtn = content.querySelector('#pttServicesBtn');
+  if (pttServicesBtn) pttServicesBtn.addEventListener('click', () => loadPttServices());
+  // la deschiderea setarilor, daca integrarea e deja configurata, incarcam lista in fundal
+  if (s.pttUsername && s.pttPasswordSet) loadPttServices({ silent: true });
 
   content.querySelector('#settingsForm').addEventListener('submit', async (e) => {
     e.preventDefault();
