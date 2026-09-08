@@ -2632,46 +2632,53 @@ async function paintNewTicketDrawer(fromOrderId) {
   const defaultCategory = categoriesCache.includes('Altele') ? 'Altele' : (categoriesCache[0] || '');
 
   const content = el(`
-    <div class="modal-body">
-      ${prefill ? `<div class="hint" style="margin-bottom:14px;">Comandă: <strong style="color:var(--text);">#${prefill.orderMpId}</strong>${prefill.productNames ? ` · Produs: <strong style="color:var(--text);">${escapeHtml(prefill.productNames)}</strong>` : ''}</div>` : ''}
+    <div class="modal-body new-ticket">
+      ${prefill ? `
+        <div class="nt-context" title="${prefill.productNames ? escapeHtml(prefill.productNames) : ''}">
+          <span class="nt-context-order">#${prefill.orderMpId}</span>
+          ${prefill.productNames ? `<span class="nt-context-product">${escapeHtml(prefill.productNames)}</span>` : ''}
+        </div>
+      ` : ''}
       <form id="newForm">
         <div class="field">
           <label>Temă *</label>
           <input type="text" id="f-subject" required placeholder="Ex: Nu pot accesa contul" autofocus />
         </div>
-        <div class="field">
-          <label>Descriere *</label>
-          <textarea id="f-description" required placeholder="Detaliază problema semnalată de client…"></textarea>
-        </div>
-        <div class="field">
-          <label>Nume solicitant *</label>
-          <input type="text" id="f-reqname" required placeholder="Ex: Vlad Marinescu" value="${prefill ? escapeHtml(prefill.requesterName) : ''}" />
-        </div>
         <div class="form-row">
+          <div class="field">
+            <label>Nume solicitant *</label>
+            <input type="text" id="f-reqname" required placeholder="Ex: Vlad Marinescu" value="${prefill ? escapeHtml(prefill.requesterName) : ''}" />
+          </div>
           <div class="field">
             <label>Telefon client</label>
             <input type="text" id="f-reqphone" placeholder="07xxxxxxxx" value="${prefill ? escapeHtml(prefill.requesterPhone) : ''}" />
           </div>
+        </div>
+        <div class="form-row">
           <div class="field">
             <label>Email client</label>
             <input type="email" id="f-reqemail" placeholder="client@exemplu.ro" value="${prefill ? escapeHtml(prefill.requesterEmail) : ''}" />
           </div>
+          <div class="field">
+            <label>Fotografii (max ${MAX_NEW_TICKET_PHOTOS})</label>
+            <div class="nt-photo-row">
+              <input type="file" id="f-photos-input" accept="image/*" multiple style="display:none;" />
+              <button type="button" class="btn btn-sm" id="addPhotoBtn">📷 Adaugă</button>
+              <span class="hint" id="photoCount">0/${MAX_NEW_TICKET_PHOTOS}</span>
+            </div>
+          </div>
         </div>
         <div class="field">
-          <label>Până la ${MAX_NEW_TICKET_PHOTOS} fotografii (opțional)</label>
-          <div style="display:flex;align-items:center;gap:10px;">
-            <input type="file" id="f-photos-input" accept="image/*" multiple style="display:none;" />
-            <button type="button" class="btn btn-sm" id="addPhotoBtn">📷+ Adaugă foto</button>
-            <span class="hint" id="photoCount">0/${MAX_NEW_TICKET_PHOTOS}</span>
-          </div>
-          <div class="photo-thumbs" id="photoThumbs"></div>
+          <label>Descriere *</label>
+          <textarea id="f-description" required placeholder="Detaliază problema semnalată de client…"></textarea>
         </div>
-        <label class="checkbox-label" style="margin-bottom:16px;">
-          <input type="checkbox" id="f-urgent" /> Urgent
-        </label>
-        <div class="form-actions">
-          <button class="btn btn-ghost" type="button" id="cancelBtn">Anulează</button>
-          <button class="btn btn-primary" type="submit">Salvează</button>
+        <div class="photo-thumbs" id="photoThumbs"></div>
+        <div class="nt-actions">
+          <label class="checkbox-label"><input type="checkbox" id="f-urgent" /> Urgent</label>
+          <div class="nt-actions-btns">
+            <button class="btn btn-sm btn-ghost" type="button" id="cancelBtn">Anulează</button>
+            <button class="btn btn-sm btn-primary" type="submit">Salvează</button>
+          </div>
         </div>
       </form>
     </div>
