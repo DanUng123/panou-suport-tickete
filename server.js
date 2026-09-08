@@ -231,13 +231,26 @@ function serveStatic(req, res, pathname) {
           res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
           return res.end('Not found');
         }
-        res.writeHead(200, { 'Content-Type': MIME['.html'] });
+        res.writeHead(200, { 'Content-Type': MIME['.html'], 'Cache-Control': 'no-cache' });
         res.end(indexData);
       });
       return;
     }
     const ext = path.extname(filePath);
-    res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream' });
+    // "no-cache" nu inseamna "fara cache", ci "verifica intai daca s-a schimbat":
+    // browserul (si Cloudflare) pastreaza fisierul, dar intreaba serverul de
+    // fiecare data, iar noi raspundem 304 daca e acelasi. Fara asta, dupa un
+    // deploy poti primi in continuare app.js-ul vechi, din cache.
+    const etag = `W/"${data.length.toString(16)}-${crypto.createHash('sha1').update(data).digest('hex').slice(0, 16)}"`;
+    if (req.headers['if-none-match'] === etag) {
+      res.writeHead(304, { ETag: etag, 'Cache-Control': 'no-cache' });
+      return res.end();
+    }
+    res.writeHead(200, {
+      'Content-Type': MIME[ext] || 'application/octet-stream',
+      'Cache-Control': 'no-cache',
+      ETag: etag,
+    });
     res.end(data);
   });
 }
@@ -1367,7 +1380,8 @@ async function handleApi(req, res, pathname, query) {
         }
       }
       if (lastError) return sendJSON(res, 502, { error: lastError.message });
-      return sendJSON(res, 200, []);
+      // am incercat mai multi curieri si niciunul nu stie de AWB-ul asta
+      return sendJSON(res, 400, { error: 'Urmărirea directă în aplicație nu este disponibilă pentru acest curier.' });
     }
 
     // ---- profil client (agregat din comenzi + tichete cu acelasi telefon/email) ----

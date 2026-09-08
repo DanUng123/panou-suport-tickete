@@ -60,10 +60,14 @@ let platformLabel = 'MERCHANTPRO';
 // Express lipseste cu totul), deci numele curierului poate fi gol chiar daca
 // avem integrarea lui -- in cazul asta lasam serverul sa incerce curierii configurati.
 function supportsInAppTracking(order) {
-  const name = order.carrierTrackingName || '';
-  if (/gls|sameday|ptt/i.test(name)) return true;
+  if (/gls|sameday|ptt/i.test(order.carrierTrackingName || '')) return true;
   if (/gls|sameday|ptt/i.test(order.awbCourier || '')) return true;
-  if (!name && (glsConfigured || samedayConfigured || pttConfigured)) return true;
+  // Numele curierului de la MerchantPro poate lipsi sau poate fi scris altfel
+  // decat il stim noi (la PTT Express lipseste obiectul carrier_tracking cu
+  // totul). Daca nu avem nici macar un link de urmarire al curierului, incercam
+  // in aplicatie -- serverul stie sa raspunda ca nu recunoaste AWB-ul, iar
+  // atunci ne intoarcem la comportamentul vechi.
+  if (!order.carrierTrackingUrl && (glsConfigured || samedayConfigured || pttConfigured)) return true;
   return false;
 }
 
