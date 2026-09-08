@@ -201,6 +201,35 @@ const MIME = {
   '.svg': 'image/svg+xml',
 };
 
+/**
+ * Eticheta primita de la curier nu e mereu PDF: PTT Express o livreaza in
+ * formatul ales in Setari -- PDF/PDFA4, dar si GIF sau ZPL/EPL (text pentru
+ * imprimante termice). Deducem tipul real din primii octeti si trimitem
+ * headerele potrivite; altfel browserul primeste un ".pdf" care nu e PDF si
+ * refuza sa-l deschida.
+ */
+function sendLabelFile(res, buffer, baseName) {
+  const head = buffer.slice(0, 4).toString('latin1');
+  let contentType = 'text/plain; charset=utf-8';
+  let extension = 'txt';
+  let disposition = 'attachment'; // ZPL/EPL: se trimit la imprimanta, nu se citesc pe ecran
+  if (head.startsWith('%PDF')) {
+    contentType = 'application/pdf';
+    extension = 'pdf';
+    disposition = 'inline';
+  } else if (head.startsWith('GIF8')) {
+    contentType = 'image/gif';
+    extension = 'gif';
+    disposition = 'inline';
+  }
+  res.writeHead(200, {
+    'Content-Type': contentType,
+    'Content-Disposition': `${disposition}; filename="${baseName}.${extension}"`,
+    'Content-Length': buffer.length,
+  });
+  return res.end(buffer);
+}
+
 function serveStatic(req, res, pathname) {
   let filePath = pathname === '/' ? '/index.html' : pathname;
   filePath = path.join(PUBLIC_DIR, filePath);
@@ -1131,13 +1160,7 @@ async function handleApi(req, res, pathname, query) {
       if (!ticket || !ticket.pickupAwbParcelId) return sendJSON(res, 404, { error: 'Nu există AWB de ridicare pentru acest tichet.' });
 
       if (ticket.pickupAwbLabelPdf) {
-        const pdfBuffer = Buffer.from(ticket.pickupAwbLabelPdf, 'base64');
-        res.writeHead(200, {
-          'Content-Type': 'application/pdf',
-          'Content-Disposition': `inline; filename="ridicare-${ticket.pickupAwbNumber}.pdf"`,
-          'Content-Length': pdfBuffer.length,
-        });
-        return res.end(pdfBuffer);
+        return sendLabelFile(res, Buffer.from(ticket.pickupAwbLabelPdf, 'base64'), `ridicare-${ticket.pickupAwbNumber}`);
       }
 
       try {
@@ -1152,12 +1175,7 @@ async function handleApi(req, res, pathname, query) {
           section: ticket.section,
           courier: ticket.pickupAwbCourier,
         }, currentAgent);
-        res.writeHead(200, {
-          'Content-Type': 'application/pdf',
-          'Content-Disposition': `inline; filename="ridicare-${ticket.pickupAwbNumber}.pdf"`,
-          'Content-Length': pdfBuffer.length,
-        });
-        return res.end(pdfBuffer);
+        return sendLabelFile(res, pdfBuffer, `ridicare-${ticket.pickupAwbNumber}`);
       } catch (e) {
         return sendJSON(res, 502, {
           error: `Eticheta nu e salvată local, iar re-cererea ei de la curier a eșuat (${e.message}). Anulează acest AWB de ridicare și generează unul nou.`,
@@ -1247,13 +1265,7 @@ async function handleApi(req, res, pathname, query) {
       if (!ticket || !ticket.returnAwbParcelId) return sendJSON(res, 404, { error: 'Nu există AWB de retur pentru acest tichet.' });
 
       if (ticket.returnAwbLabelPdf) {
-        const pdfBuffer = Buffer.from(ticket.returnAwbLabelPdf, 'base64');
-        res.writeHead(200, {
-          'Content-Type': 'application/pdf',
-          'Content-Disposition': `inline; filename="retur-${ticket.returnAwbNumber}.pdf"`,
-          'Content-Length': pdfBuffer.length,
-        });
-        return res.end(pdfBuffer);
+        return sendLabelFile(res, Buffer.from(ticket.returnAwbLabelPdf, 'base64'), `retur-${ticket.returnAwbNumber}`);
       }
       try {
         const activeCourier = COURIER_MODULES[ticket.returnAwbCourier] || gls;
@@ -1266,12 +1278,7 @@ async function handleApi(req, res, pathname, query) {
           labelPdf: pdfBuffer.toString('base64'),
           courier: ticket.returnAwbCourier,
         }, currentAgent);
-        res.writeHead(200, {
-          'Content-Type': 'application/pdf',
-          'Content-Disposition': `inline; filename="retur-${ticket.returnAwbNumber}.pdf"`,
-          'Content-Length': pdfBuffer.length,
-        });
-        return res.end(pdfBuffer);
+        return sendLabelFile(res, pdfBuffer, `retur-${ticket.returnAwbNumber}`);
       } catch (e) {
         return sendJSON(res, 502, {
           error: `Eticheta nu e salvată local, iar re-cererea ei de la curier a eșuat (${e.message}). Anulează AWB-ul de retur și generează unul nou.`,
