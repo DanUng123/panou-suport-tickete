@@ -2149,7 +2149,7 @@ async function paintTicketDrawer(ticket) {
           ` : ''}
 
           <div class="comments-panel">
-            <h2 style="font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary);margin:0 0 14px;">Activitate (${ticket.comments.length} comentarii)</h2>
+            <h2>Activitate (${ticket.comments.length} comentarii)</h2>
             ${comments}
             <form class="comment-form" id="commentForm">
               <textarea id="commentBody" placeholder="Scrie un răspuns sau o notă internă…" required></textarea>
@@ -3086,7 +3086,7 @@ async function openOrderDrawer(orderId) {
       <div id="orderTrackingBox" style="display:none;margin:-8px 0 16px;"></div>
 
       <div class="comments-panel" style="margin-bottom:16px;">
-        <h2 style="font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary);margin:0 0 10px;">Produse comandate</h2>
+        <h2>Produse comandate</h2>
         <div class="line-items-list">${items}${shippingRow}</div>
         ${order.totalAmount != null ? `
           <div style="border-top:1px solid var(--border);margin-top:10px;padding-top:10px;display:flex;justify-content:flex-end;">
