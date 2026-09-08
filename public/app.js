@@ -54,6 +54,12 @@ let platformLabel = 'MERCHANTPRO';
 
 // ---------------- utilitare ----------------
 
+// Curierii pentru care putem afisa traseul coletului direct in aplicatie.
+// Trebuie sa ramana sincronizat cu ruta /api/orders/:id/awb-tracking din server.js.
+function supportsInAppTracking(carrierTrackingName) {
+  return /gls|sameday|ptt/i.test(carrierTrackingName || '');
+}
+
 function el(html) {
   const t = document.createElement('template');
   t.innerHTML = html.trim();
@@ -3009,7 +3015,7 @@ async function openOrderDrawer(orderId) {
         <span class="badge ${paymentBadgeClass(order.paymentStatus)}">${PAYMENT_STATUS_LABELS_MP[order.paymentStatus] || order.paymentStatus || '—'}</span>
         <span class="badge ${shippingBadgeClass(order.shippingStatus)}">${SHIPPING_STATUS_LABELS_MP[order.shippingStatus] || order.shippingStatusText || order.shippingStatus || '—'}</span>
         ${order.shippingAwb ? `<button class="btn btn-sm btn-solid-pink" id="awbBadgeBtn" title="${
-          /gls|sameday/i.test(order.carrierTrackingName || '')
+          supportsInAppTracking(order.carrierTrackingName)
             ? 'Vezi traseul coletului'
             : (order.carrierTrackingUrl ? `Urmărește coletul — ${escapeHtml(order.carrierTrackingName || '')}` : 'Click pentru a copia numărul AWB')
         }">📦 ${escapeHtml(order.shippingAwb)}</button>` : ''}
@@ -3087,9 +3093,9 @@ async function openOrderDrawer(orderId) {
 
     const awbBadgeBtn = content.querySelector('#awbBadgeBtn');
     if (awbBadgeBtn) {
-      const supportsInAppTracking = /gls|sameday/i.test(order.carrierTrackingName || '');
+      const canTrackInApp = supportsInAppTracking(order.carrierTrackingName);
       awbBadgeBtn.addEventListener('click', async () => {
-        if (supportsInAppTracking) {
+        if (canTrackInApp) {
           const box = content.querySelector('#orderTrackingBox');
           if (box.style.display === 'block') { box.style.display = 'none'; return; }
           box.style.display = 'block';

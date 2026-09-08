@@ -1333,24 +1333,41 @@ async function handleApi(req, res, pathname, query) {
       const order = db.getOrder(currentAgent.companyId, orderTrackingMatch[1]);
       if (!order) return sendJSON(res, 404, { error: 'Comandă negăsită' });
       if (!order.shippingAwb) return sendJSON(res, 404, { error: 'Comanda nu are AWB.' });
-      // curierul e determinat din carrierTrackingName, asa cum a fost
-      // sincronizat de la MerchantPro -- comanda nu are un ID intern de
-      // colet (parcelId), doar numarul AWB, dar ambele functii de status
-      // (GLS si Sameday) accepta direct numarul AWB, fara alt identificator
-      const courierName = (order.carrierTrackingName || '').toLowerCase();
-      if (!courierName.includes('gls') && !courierName.includes('sameday') && !courierName.includes('ptt')) {
+      // Curierul se determina, in ordine, din: numele curierului sincronizat
+      // de la MerchantPro (carrierTrackingName), curierul cu care am emis noi
+      // AWB-ul (awbCourier) si -- daca ambele lipsesc -- prin incercarea
+      // curierilor configurati pe companie. Ultimul caz e cel real pentru
+      // AWB-urile PTT Express: MerchantPro nu trimite deloc obiectul
+      // carrier_tracking pentru ele, asa ca numele curierului e gol.
+      // Comanda nu are un ID intern de colet (parcelId), doar numarul AWB,
+      // dar toate cele trei functii de status accepta direct numarul AWB.
+      const courierName = `${order.carrierTrackingName || ''} ${order.awbCourier || ''}`.toLowerCase();
+      let candidates;
+      if (courierName.includes('gls')) candidates = ['gls'];
+      else if (courierName.includes('sameday')) candidates = ['sameday'];
+      else if (courierName.includes('ptt')) candidates = ['ptt'];
+      else candidates = ['ptt', 'sameday', 'gls'].filter((key) => COURIER_MODULES[key].isConfigured(company));
+
+      if (!candidates.length) {
         return sendJSON(res, 400, { error: 'Urmărirea directă în aplicație nu este disponibilă pentru acest curier.' });
       }
-      try {
-        const statuses = courierName.includes('gls')
-          ? await gls.getParcelStatus(company, order.shippingAwb)
-          : courierName.includes('sameday')
-            ? await sameday.getAwbStatus(company, order.shippingAwb)
-            : await pttexpress.getAwbStatus(company, order.shippingAwb);
-        return sendJSON(res, 200, statuses);
-      } catch (e) {
-        return sendJSON(res, 502, { error: e.message });
+
+      let lastError = null;
+      for (const key of candidates) {
+        try {
+          const statuses = key === 'gls'
+            ? await gls.getParcelStatus(company, order.shippingAwb)
+            : await COURIER_MODULES[key].getAwbStatus(company, order.shippingAwb);
+          // cu un singur candidat returnam si lista goala (AWB fara evenimente
+          // inca); cand ghicim curierul, o lista goala inseamna, de fapt, "nu e
+          // al lui" -- trecem la urmatorul si returnam gol doar daca niciunul nu stie de el
+          if (statuses.length || candidates.length === 1) return sendJSON(res, 200, statuses);
+        } catch (e) {
+          lastError = e;
+        }
       }
+      if (lastError) return sendJSON(res, 502, { error: lastError.message });
+      return sendJSON(res, 200, []);
     }
 
     // ---- profil client (agregat din comenzi + tichete cu acelasi telefon/email) ----
