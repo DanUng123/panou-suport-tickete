@@ -54,6 +54,11 @@ let platformLabel = 'MERCHANTPRO';
 
 // ---------------- utilitare ----------------
 
+// Curierii prin care se poate emite un colet la schimb. Momentan doar Sameday
+// -- GLS si PTT Express nu sunt eligibile. Cand se mai adauga unul, se trece aici
+// (si in lista corespunzatoare din server.js).
+const SCHIMB_COURIERS = ['sameday'];
+
 // Cand putem afisa traseul coletului direct in aplicatie.
 // Trebuie sa ramana sincronizat cu ruta /api/orders/:id/awb-tracking din server.js.
 // MerchantPro nu trimite obiectul carrier_tracking pentru toti curierii (la PTT
@@ -2013,7 +2018,7 @@ async function paintTicketDrawer(ticket) {
                 <button class="btn btn-sm" id="refreshPickupStatusBtn">↻ Status</button>
                 <button class="btn btn-sm" id="viewPickupTrackingBtn">Traseu</button>
                 <button class="btn btn-sm" id="downloadPickupLabelBtn">↓ PDF</button>
-                ${!ARRIVED_STAGES.includes(ticket.stage) && ['service', 'retur'].includes(ticket.section) ? '<button class="btn btn-sm" id="reissuePickupAwbBtn" style="color:var(--status-open);">↻ Reemite AWB</button>' : ''}
+                ${!ARRIVED_STAGES.includes(ticket.stage) && ['service', 'retur'].includes(ticket.section) && ticket.pickupAwbCourier !== 'ptt' ? '<button class="btn btn-sm" id="reissuePickupAwbBtn" style="color:var(--status-open);">↻ Reemite AWB</button>' : ''}
                 ${!ARRIVED_STAGES.includes(ticket.stage) ? `<button class="btn btn-sm" id="cancelPickupAwbBtn" style="color:var(--priority-urgent);" title="${ticket.pickupAwbCourier === 'ptt' ? 'Elimină AWB-ul de pe tichet — PTT Express nu permite anularea prin API, AWB-ul rămâne activ la ei' : 'Anulează AWB-ul, inclusiv la curier'}">${ticket.pickupAwbCourier === 'ptt' ? 'Elimină AWB' : 'Anulează'}</button>` : ''}
               </div>
               <div id="pickupTrackingBox" style="display:none;margin-top:10px;"></div>
@@ -2045,11 +2050,8 @@ async function paintTicketDrawer(ticket) {
                   </div>
                   <div class="field-compact">
                     <label>Curier *</label>
-                    <select id="pu-courier" required>
-                      <option value="gls" ${glsConfigured ? '' : 'disabled'}>GLS${glsConfigured ? '' : ' (neconfigurat)'}</option>
-                      <option value="sameday" ${samedayConfigured ? '' : 'disabled'}>Sameday${samedayConfigured ? '' : ' (neconfigurat)'}</option>
-                      <option value="ptt" ${pttConfigured ? '' : 'disabled'}>PTT Express${pttConfigured ? '' : ' (neconfigurat)'}</option>
-                    </select>
+                    <select id="pu-courier" required></select>
+                    <div class="hint" id="pu-courier-hint" style="display:none;margin-top:4px;"></div>
                   </div>
                 </div>
                 <div class="field-compact">
@@ -2217,6 +2219,45 @@ async function paintTicketDrawer(ticket) {
     const pickupForm = content.querySelector('#pickupAwbForm');
     if (pickupForm) {
       const courierSelect = content.querySelector('#pu-courier');
+      const reasonSelect = content.querySelector('#pu-reason');
+      const courierHint = content.querySelector('#pu-courier-hint');
+      const pickupSubmitBtn = pickupForm.querySelector('button[type="submit"]');
+
+      // Lista de curieri se rescrie in functie de motiv: coletul la schimb se
+      // poate emite momentan doar prin Sameday, deci ceilalti nici nu apar.
+      function paintCourierOptions() {
+        const onlySameday = SCHIMB_COURIERS.length === 1 && reasonSelect.value === 'schimb';
+        const available = [
+          { value: 'gls', label: 'GLS', configured: glsConfigured },
+          { value: 'sameday', label: 'Sameday', configured: samedayConfigured },
+          { value: 'ptt', label: 'PTT Express', configured: pttConfigured },
+        ].filter((c) => (reasonSelect.value === 'schimb' ? SCHIMB_COURIERS.includes(c.value) : true));
+
+        const previous = courierSelect.value;
+        courierSelect.innerHTML = available.map((c) => `
+          <option value="${c.value}" ${c.configured ? '' : 'disabled'} ${c.value === previous ? 'selected' : ''}>${c.label}${c.configured ? '' : ' (neconfigurat)'}</option>
+        `).join('');
+        // pastram alegerea anterioara doar daca mai e valida; altfel primul curier configurat
+        if (!available.some((c) => c.value === previous && c.configured)) {
+          courierSelect.value = (available.find((c) => c.configured) || available[0] || {}).value || '';
+        }
+
+        courierHint.textContent = onlySameday
+          ? 'Coletul la schimb se poate emite momentan doar prin Sameday.'
+          : '';
+        courierHint.style.display = onlySameday ? 'block' : 'none';
+
+        // butonul de trimitere se blocheaza daca niciun curier eligibil nu e configurat
+        const selected = available.find((c) => c.value === courierSelect.value);
+        const canSubmit = Boolean(selected && selected.configured);
+        pickupSubmitBtn.disabled = !canSubmit;
+        pickupSubmitBtn.style.opacity = canSubmit ? '' : '0.5';
+        pickupSubmitBtn.style.cursor = canSubmit ? '' : 'not-allowed';
+      }
+
+      reasonSelect.addEventListener('change', paintCourierOptions);
+      courierSelect.addEventListener('change', paintCourierOptions);
+      paintCourierOptions();
 
       pickupForm.addEventListener('submit', async (e) => {
         e.preventDefault();

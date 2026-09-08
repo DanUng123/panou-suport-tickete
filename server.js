@@ -17,6 +17,13 @@ const sameday = require('./lib/sameday');
 const pttexpress = require('./lib/pttexpress');
 // mapare comuna curier -> modul, folosita peste tot unde citim ticket.pickupAwbCourier/returnAwbCourier
 const COURIER_MODULES = { gls, sameday, ptt: pttexpress };
+// Curierii prin care se poate emite un colet la schimb. Momentan doar Sameday --
+// GLS si PTT Express nu sunt eligibile. Cand se mai adauga unul, se trece aici
+// (si in SCHIMB_COURIERS din public/app.js, care controleaza lista din formular).
+const SCHIMB_COURIERS = ['sameday'];
+// Curierii care nu suporta reemiterea AWB-ului: PTT Express nu expune nicio
+// operatie de anulare in API, deci "reemite" ar lasa in urma un AWB fantoma.
+const NO_REISSUE_COURIERS = ['ptt'];
 const mp = require('./lib/merchantpro');
 const gomag = require('./lib/gomag');
 const resend = require('./lib/resend');
@@ -209,6 +216,9 @@ const MIME = {
  * refuza sa-l deschida.
  */
 function sendLabelFile(res, buffer, baseName) {
+  if (!buffer || buffer.length < 100) {
+    return sendJSON(res, 502, { error: `Eticheta primită de la curier e goală sau incompletă (${buffer ? buffer.length : 0} octeți). Regenerează AWB-ul.` });
+  }
   const head = buffer.slice(0, 4).toString('latin1');
   let contentType = 'text/plain; charset=utf-8';
   let extension = 'txt';
@@ -1012,6 +1022,9 @@ async function handleApi(req, res, pathname, query) {
       if (!courierClient.isConfigured(company)) {
         return sendJSON(res, 400, { error: `Integrarea ${courierLabel} nu este configurată pe server.` });
       }
+      if (reason === 'schimb' && !SCHIMB_COURIERS.includes(courier)) {
+        return sendJSON(res, 400, { error: `Coletul la schimb nu se poate emite prin ${courierLabel} — momentan doar prin Sameday.` });
+      }
 
       // adresa: folosim ce vine explicit in cerere; daca lipseste cate un
       // camp, completam din comanda asociata tichetului (daca exista)
@@ -1091,6 +1104,9 @@ async function handleApi(req, res, pathname, query) {
 
       const courier = ['sameday', 'ptt'].includes(ticket.pickupAwbCourier) ? ticket.pickupAwbCourier : 'gls';
       const courierClient = COURIER_MODULES[courier];
+      if (NO_REISSUE_COURIERS.includes(courier)) {
+        return sendJSON(res, 400, { error: 'PTT Express nu permite anularea AWB-ului prin API, deci reemiterea nu e disponibilă. Elimină AWB-ul de pe tichet, anulează-l manual în panoul PTT și generează unul nou.' });
+      }
 
       // pas 1: anulam AWB-ul vechi (colet neridicat -- client negasit,
       // curier neprezentat etc.), apoi curatam IMEDIAT starea tichetului --
