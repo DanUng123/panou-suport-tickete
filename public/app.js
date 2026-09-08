@@ -1934,27 +1934,8 @@ async function paintTicketDrawer(ticket) {
     content.innerHTML = `
       <div class="ticket-detail-grid" style="grid-template-columns: 1fr;">
         <div>
-          <div class="ticket-header-card" style="position:relative;">
-            ${ticket.section === 'service' ? `
-              <div style="position:absolute;top:16px;right:16px;">
-                <button class="btn btn-sm" id="manualMoveBtn">↕ Mută tichetul manual</button>
-                <div id="manualMoveMenu" style="display:none;position:absolute;top:calc(100% + 6px);right:0;background:var(--surface-raised);border:1px solid var(--border);border-radius:8px;padding:6px;min-width:180px;z-index:20;box-shadow:0 4px 16px rgba(0,0,0,0.3);">
-                  <button class="btn btn-sm manual-move-option" data-stage="pickup_awb_issued" style="width:100%;justify-content:flex-start;margin-bottom:4px;">Colete Ridicate</button>
-                  <button class="btn btn-sm manual-move-option" data-stage="at_service" style="width:100%;justify-content:flex-start;margin-bottom:4px;">In Service</button>
-                  <button class="btn btn-sm manual-move-option" data-stage="delivered_to_client" style="width:100%;justify-content:flex-start;">Inapoi la Client</button>
-                </div>
-              </div>
-            ` : ''}
-            ${ticket.section === 'retur' ? `
-              <div style="position:absolute;top:16px;right:16px;">
-                <button class="btn btn-sm" id="manualMoveBtn">↕ Mută tichetul manual</button>
-                <div id="manualMoveMenu" style="display:none;position:absolute;top:calc(100% + 6px);right:0;background:var(--surface-raised);border:1px solid var(--border);border-radius:8px;padding:6px;min-width:190px;z-index:20;box-shadow:0 4px 16px rgba(0,0,0,0.3);">
-                  <button class="btn btn-sm manual-move-option" data-stage="pickup_awb_issued" style="width:100%;justify-content:flex-start;margin-bottom:4px;">Colete Ridicate</button>
-                  <button class="btn btn-sm manual-move-option" data-stage="at_service" style="width:100%;justify-content:flex-start;margin-bottom:4px;">In așteptare IBAN</button>
-                  <button class="btn btn-sm manual-move-option" data-stage="at_service" data-require-iban="1" style="width:100%;justify-content:flex-start;">Gata de Retur</button>
-                </div>
-              </div>
-            ` : ''}
+          <div class="ticket-header-card">
+            <div class="thc-main">
             <div class="t-id">${ticket.sectionCode ? escapeHtml(ticket.sectionCode) : ticket.id}</div>
             <h1>${escapeHtml(ticket.subject)}</h1>
             <div class="badges-row">
@@ -1990,13 +1971,32 @@ async function paintTicketDrawer(ticket) {
                 `).join('')}
               </div>
             ` : ''}
-            <div class="meta-row">
-              <div class="meta-item"><div class="meta-label">Solicitant</div><div class="meta-value">${escapeHtml(ticket.requesterName)}</div></div>
-              <div class="meta-item"><div class="meta-label">Telefon</div><div class="meta-value">${escapeHtml(ticket.requesterPhone || '—')}</div></div>
-              <div class="meta-item"><div class="meta-label">Email</div><div class="meta-value">${escapeHtml(ticket.requesterEmail || '—')}</div></div>
-              <div class="meta-item"><div class="meta-label">Creat</div><div class="meta-value">${fmtDate(ticket.createdAt)}</div></div>
-              <div class="meta-item"><div class="meta-label">Actualizat</div><div class="meta-value">${fmtDate(ticket.updatedAt)}</div></div>
             </div>
+            <aside class="thc-side">
+              ${['service', 'retur'].includes(ticket.section) ? `
+                <div class="thc-actions">
+                  <button class="btn btn-sm btn-block" id="manualMoveBtn">↕ Mută tichetul manual</button>
+                  <div id="manualMoveMenu" style="display:none;position:absolute;top:calc(100% + 6px);right:0;left:0;background:var(--surface-raised);border:1px solid var(--border);border-radius:8px;padding:6px;z-index:20;box-shadow:0 4px 16px rgba(0,0,0,0.3);">
+                    ${ticket.section === 'service' ? `
+                      <button class="btn btn-sm manual-move-option" data-stage="pickup_awb_issued" style="width:100%;justify-content:flex-start;margin-bottom:4px;">Colete Ridicate</button>
+                      <button class="btn btn-sm manual-move-option" data-stage="at_service" style="width:100%;justify-content:flex-start;margin-bottom:4px;">In Service</button>
+                      <button class="btn btn-sm manual-move-option" data-stage="delivered_to_client" style="width:100%;justify-content:flex-start;">Inapoi la Client</button>
+                    ` : `
+                      <button class="btn btn-sm manual-move-option" data-stage="pickup_awb_issued" style="width:100%;justify-content:flex-start;margin-bottom:4px;">Colete Ridicate</button>
+                      <button class="btn btn-sm manual-move-option" data-stage="at_service" style="width:100%;justify-content:flex-start;margin-bottom:4px;">In așteptare IBAN</button>
+                      <button class="btn btn-sm manual-move-option" data-stage="at_service" data-require-iban="1" style="width:100%;justify-content:flex-start;">Gata de Retur</button>
+                    `}
+                  </div>
+                </div>
+              ` : ''}
+              <div class="meta-row">
+                <div class="meta-item"><div class="meta-label">Solicitant</div><div class="meta-value">${escapeHtml(ticket.requesterName)}</div></div>
+                <div class="meta-item"><div class="meta-label">Telefon</div><div class="meta-value">${escapeHtml(ticket.requesterPhone || '—')}</div></div>
+                <div class="meta-item"><div class="meta-label">Email</div><div class="meta-value">${escapeHtml(ticket.requesterEmail || '—')}</div></div>
+                <div class="meta-item"><div class="meta-label">Creat</div><div class="meta-value">${fmtDate(ticket.createdAt)}</div></div>
+                <div class="meta-item"><div class="meta-label">Actualizat</div><div class="meta-value">${fmtDate(ticket.updatedAt)}</div></div>
+              </div>
+            </aside>
           </div>
 
           <div class="side-panel" style="margin-bottom:16px;">
