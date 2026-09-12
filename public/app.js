@@ -746,15 +746,18 @@ async function renderPlatformClientsPanel() {
       <div class="page-header">
         <div>
           <h1>Clienți (toate companiile)</h1>
-          <div class="sub">Clienți unici, agregați din comenzile tuturor companiilor de pe platformă — deduplicați după telefon.</div>
+          <div class="sub">Clienți unici, grupați pe magazine — deduplicați după telefon, în cadrul fiecărui magazin.</div>
         </div>
       </div>
       <div class="panel">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
-          <h2 style="margin:0;">Total clienți unici (<span id="platformClientsCount">…</span>)</h2>
+          <h2 style="margin:0;" id="platformClientsHeading">Total clienți unici (<span id="platformClientsCount">…</span>)</h2>
           <button class="btn btn-sm" id="platformClientsExportBtn">↓ Descarcă toți</button>
         </div>
-        <input type="text" id="platformClientsSearchInput" placeholder="Caută după nume, telefon sau email…" style="width:100%;margin-bottom:12px;background:var(--surface-raised);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:13px;color:var(--text);" />
+        <div id="platformClientsPendingNote"></div>
+        <div class="status-pills-label">Magazin</div>
+        <div class="status-pills" id="platformClientsShopPills">Se încarcă…</div>
+        <input type="text" id="platformClientsSearchInput" placeholder="Caută după nume, telefon sau email…" style="width:100%;margin:12px 0;background:var(--surface-raised);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:13px;color:var(--text);" />
         <div id="platformClientsListArea">Se încarcă…</div>
         <div id="platformClientsPager" style="display:flex;justify-content:center;align-items:center;gap:12px;margin-top:16px;"></div>
       </div>
@@ -763,23 +766,86 @@ async function renderPlatformClientsPanel() {
   renderShell('#/administrare-platforma-clienti', content);
 
   let currentPage = 1;
+  let activeCompanyId = '';   // '' = toate magazinele
+  let companiesById = {};
   const pageSize = 100;
   let searchTimer = null;
+
+  // ---- randul de filtre pe magazine ----
+  async function loadShops() {
+    const pills = content.querySelector('#platformClientsShopPills');
+    try {
+      const { companies, pendingIndex } = await api('/api/platform-admin/client-companies');
+      companiesById = Object.fromEntries(companies.map((c) => [c.id, c.name]));
+
+      const note = content.querySelector('#platformClientsPendingNote');
+      if (pendingIndex > 0) {
+        // dupa un import mare, telefoanele se normalizeaza in fundal, in
+        // loturi -- spunem asta, ca lista incompleta sa nu para o eroare
+        note.innerHTML = `<div class="hint" style="margin-bottom:10px;">Se mai indexează ${pendingIndex.toLocaleString('ro-RO')} comenzi în fundal — lista se completează pe măsură.</div>`;
+      } else {
+        note.innerHTML = '';
+      }
+
+      const totalClients = companies.reduce((sum, c) => sum + c.clientCount, 0);
+      pills.innerHTML = [
+        `<button class="status-pill ${!activeCompanyId ? 'active' : ''}" data-company="">↺ Toate magazinele<span class="status-pill-count">${totalClients.toLocaleString('ro-RO')}</span></button>`,
+        ...companies.map((c) => `
+          <button class="status-pill ${activeCompanyId === c.id ? 'active' : ''}" data-company="${escapeHtml(c.id)}" title="${escapeHtml(c.name)}">
+            <span class="status-pill-dot" style="background:${shopColor(c.id)}"></span>${escapeHtml(c.name)}<span class="status-pill-count">${c.clientCount.toLocaleString('ro-RO')}</span>
+          </button>
+        `),
+      ].join('');
+
+      pills.querySelectorAll('.status-pill').forEach((pill) => {
+        pill.addEventListener('click', () => {
+          const clicked = pill.dataset.company;
+          activeCompanyId = clicked === activeCompanyId ? '' : clicked;
+          currentPage = 1;
+          loadShops();
+          loadClients();
+        });
+      });
+    } catch (e) {
+      pills.innerHTML = `<span class="hint">Nu am putut încărca lista de magazine: ${escapeHtml(e.message)}</span>`;
+    }
+  }
+
+  // culoare stabila per magazin, derivata din id -- acelasi magazin are
+  // aceeasi bulina la fiecare incarcare, fara sa tinem o lista de culori
+  function shopColor(id) {
+    const palette = ['var(--accent)', 'var(--status-resolved)', 'var(--status-waiting)', 'var(--status-open)', 'var(--status-in_progress)', 'var(--status-pink)', 'var(--priority-urgent)'];
+    let h = 0;
+    for (let i = 0; i < String(id).length; i++) h = (h * 31 + String(id).charCodeAt(i)) >>> 0;
+    return palette[h % palette.length];
+  }
 
   async function loadClients() {
     const listArea = content.querySelector('#platformClientsListArea');
     const pagerArea = content.querySelector('#platformClientsPager');
     const countSpan = content.querySelector('#platformClientsCount');
+    const heading = content.querySelector('#platformClientsHeading');
     const q = content.querySelector('#platformClientsSearchInput').value.trim();
+    listArea.innerHTML = 'Se încarcă…';
     try {
       const params = new URLSearchParams({ page: currentPage, pageSize, q });
+      if (activeCompanyId) params.set('companyId', activeCompanyId);
       const { items, total } = await api(`/api/platform-admin/clients?${params.toString()}`);
-      countSpan.textContent = total;
+      countSpan.textContent = total.toLocaleString('ro-RO');
+      heading.firstChild.textContent = activeCompanyId
+        ? `Clienți la ${companiesById[activeCompanyId] || 'magazinul selectat'} (`
+        : 'Total clienți unici (';
+      const exportBtn = content.querySelector('#platformClientsExportBtn');
+      if (!exportBtn.disabled) exportBtn.textContent = activeCompanyId ? '↓ Descarcă magazinul' : '↓ Descarcă toți';
+
       if (!total) {
-        listArea.innerHTML = q ? '<div class="hint">Niciun client găsit pentru această căutare.</div>' : '<div class="hint">Niciun client încă — apare automat pe măsură ce companiile primesc comenzi.</div>';
+        listArea.innerHTML = q || activeCompanyId
+          ? '<div class="hint">Niciun client găsit pentru filtrele curente.</div>'
+          : '<div class="hint">Niciun client încă — apare automat pe măsură ce companiile primesc comenzi.</div>';
         pagerArea.innerHTML = '';
         return;
       }
+
       const headerHtml = `
         <div style="display:flex;align-items:center;gap:12px;padding:6px 0 8px;border-bottom:2px solid var(--border);font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.03em;">
           <div style="flex:1.2;min-width:0;">Nume</div>
@@ -788,9 +854,26 @@ async function renderPlatformClientsPanel() {
           <div style="flex:0.7;min-width:0;">Județ</div>
           <div style="flex:1;min-width:0;">Telefon</div>
           <div style="flex:1.2;min-width:0;">Email</div>
+          <div style="flex:0.5;min-width:0;text-align:right;">Comenzi</div>
         </div>
       `;
-      const rowsHtml = items.map((c) => `
+
+      // Lista vine ordonata pe magazin, asa ca punem un antet de grup ori de
+      // cate ori se schimba magazinul. Cand e filtrata pe un singur magazin,
+      // antetul ar fi redundant -- il sarim.
+      let lastCompany = null;
+      const rowsHtml = items.map((c) => {
+        let groupHeader = '';
+        if (!activeCompanyId && c.companyId !== lastCompany) {
+          lastCompany = c.companyId;
+          groupHeader = `
+            <div style="display:flex;align-items:center;gap:8px;padding:14px 0 6px;">
+              <span class="status-pill-dot" style="background:${shopColor(c.companyId)}"></span>
+              <span style="font-size:13px;font-weight:600;color:var(--text);">${escapeHtml(c.companyName || '—')}</span>
+            </div>
+          `;
+        }
+        return groupHeader + `
         <div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;">
           <div style="flex:1.2;min-width:0;font-weight:500;">${escapeHtml(c.name || '—')}</div>
           <div style="flex:1.4;min-width:0;color:var(--text-secondary);">${escapeHtml(c.address || '—')}</div>
@@ -798,8 +881,10 @@ async function renderPlatformClientsPanel() {
           <div style="flex:0.7;min-width:0;color:var(--text-secondary);">${escapeHtml(c.county || '—')}</div>
           <div style="flex:1;min-width:0;font-family:var(--font-mono);color:var(--text-secondary);">${escapeHtml(c.phone || '—')}</div>
           <div style="flex:1.2;min-width:0;color:var(--text-secondary);">${escapeHtml(c.email || '—')}</div>
+          <div style="flex:0.5;min-width:0;text-align:right;color:var(--text-secondary);">${c.orderCount}</div>
         </div>
-      `).join('');
+      `;
+      }).join('');
       listArea.innerHTML = '';
       listArea.appendChild(el(`<div>${headerHtml}${rowsHtml}</div>`));
 
@@ -808,7 +893,7 @@ async function renderPlatformClientsPanel() {
       pagerArea.appendChild(el(`
         <div style="display:flex;align-items:center;gap:12px;">
           <button class="btn btn-sm" id="platformClientsPrevPage" ${currentPage <= 1 ? 'disabled' : ''}>← Anterioară</button>
-          <span class="hint">Pagina ${currentPage} din ${totalPages}</span>
+          <span class="hint">Pagina ${currentPage.toLocaleString('ro-RO')} din ${totalPages.toLocaleString('ro-RO')}</span>
           <button class="btn btn-sm" id="platformClientsNextPage" ${currentPage >= totalPages ? 'disabled' : ''}>Următoare →</button>
         </div>
       `));
@@ -820,6 +905,8 @@ async function renderPlatformClientsPanel() {
       listArea.innerHTML = `<div class="error-msg">${escapeHtml(e.message)}</div>`;
     }
   }
+
+  loadShops();
   loadClients();
 
   content.querySelector('#platformClientsSearchInput').addEventListener('input', () => {
@@ -839,23 +926,27 @@ async function renderPlatformClientsPanel() {
       let page = 1;
       while (true) {
         btn.textContent = `Se pregătește… (${allClients.length} preluați)`;
-        const { items, total } = await api(`/api/platform-admin/clients?page=${page}&pageSize=${EXPORT_PAGE_SIZE}`);
+        const params = new URLSearchParams({ page: String(page), pageSize: String(EXPORT_PAGE_SIZE) });
+        if (activeCompanyId) params.set('companyId', activeCompanyId);
+        const { items, total } = await api(`/api/platform-admin/clients?${params.toString()}`);
         allClients = allClients.concat(items);
         if (allClients.length >= total || items.length < EXPORT_PAGE_SIZE) break;
         page += 1;
       }
       if (!allClients.length) { showToast('Niciun client de exportat.'); return; }
       const ws = XLSX.utils.json_to_sheet(allClients.map((c) => ({
-        Nume: c.name || '', Adresă: c.address || '', Oraș: c.city || '', Județ: c.county || '', Telefon: c.phone || '', Email: c.email || '',
+        Magazin: c.companyName || '', Nume: c.name || '', Adresă: c.address || '', Oraș: c.city || '',
+        Județ: c.county || '', Telefon: c.phone || '', Email: c.email || '', Comenzi: c.orderCount || 0,
       })));
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Clienți');
-      XLSX.writeFile(wb, `clienti-platforma-${new Date().toISOString().slice(0, 10)}.xlsx`);
+      const suffix = activeCompanyId ? '-' + (companiesById[activeCompanyId] || 'magazin').toLowerCase().replace(/[^a-z0-9]+/g, '-') : '';
+      XLSX.writeFile(wb, `clienti-platforma${suffix}-${new Date().toISOString().slice(0, 10)}.xlsx`);
     } catch (e) {
       showToast('Eroare: ' + e.message);
     } finally {
       btn.disabled = false;
-      btn.textContent = '↓ Descarcă toți';
+      btn.textContent = activeCompanyId ? '↓ Descarcă magazinul' : '↓ Descarcă toți';
     }
   });
 }

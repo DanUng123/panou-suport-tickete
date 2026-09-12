@@ -491,7 +491,17 @@ async function handleApi(req, res, pathname, query) {
       if (!isPlatformAdminRequest(req)) return sendJSON(res, 401, { error: 'Neautentificat' });
       const page = Math.max(1, Number(query.page) || 1);
       const pageSize = Math.min(20000, Math.max(1, Number(query.pageSize) || 100));
-      return sendJSON(res, 200, db.getAllPlatformClients({ page, pageSize, q: query.q || '' }));
+      return sendJSON(res, 200, db.getAllPlatformClients({
+        page, pageSize, q: query.q || '', companyId: query.companyId || null,
+      }));
+    }
+
+    // Magazinele, cu cati clienti unici are fiecare -- randul de filtre de
+    // deasupra listei. Separat de lista propriu-zisa: nu se schimba la
+    // fiecare pagina, deci nu are rost recalculat la fiecare navigare.
+    if (pathname === '/api/platform-admin/client-companies' && req.method === 'GET') {
+      if (!isPlatformAdminRequest(req)) return sendJSON(res, 401, { error: 'Neautentificat' });
+      return sendJSON(res, 200, db.listPlatformClientCompanies());
     }
 
     const toggleCompanyMatch = pathname.match(/^\/api\/platform-admin\/companies\/([^/]+)\/active$/);
