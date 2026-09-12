@@ -95,6 +95,14 @@ function fmtDate(iso) {
     d.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' });
 }
 
+/** Data înscrierii, fără oră: „1 sept. 2026". */
+function fmtSignupDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('ro-RO', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
 function fmtShortDate(date) {
   if (!date) return '—';
   return date.toLocaleDateString('ro-RO', { day: '2-digit', month: 'short' });
@@ -1110,6 +1118,7 @@ function renderShell(activeRoute, contentNode) {
       <nav class="nav">
         <div class="nav-item" data-route="#/dashboard">${NAV_ICONS.dashboard}Panou Control</div>
         <div class="nav-item" data-route="#/orders">${NAV_ICONS.orders}Comenzi</div>
+        <div class="nav-item" data-route="#/clienti-totali"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h18"/><path d="M3 12h18"/><path d="M3 17h18"/><circle cx="7" cy="7" r="0.5" fill="currentColor"/></svg>Clienți totali</div>
         <div class="nav-item" data-route="#/tickets">${NAV_ICONS.tickets}Tichete</div>
         <div class="nav-item" data-route="#/service">${NAV_ICONS.service}Service</div>
         <div class="nav-item" data-route="#/retur">${NAV_ICONS.retur}Retur</div>
@@ -2779,6 +2788,192 @@ function paymentMethodLabel(order) {
   return name || '—';
 }
 
+// ---------------- Clienți totali: istoricul complet de comenzi ----------------
+// Restul platformei arata doar comenzile din ziua inscrierii magazinului
+// incoace, ca paginile de lucru sa nu fie inecate de un istoric de sute de mii
+// de comenzi. Aici sunt toate, inclusiv cele importate din trecutul
+// magazinului -- aceeasi companie, aceleasi date, doar fara filtrul implicit.
+
+const ALL_ORDERS_PAGE_SIZE = 100;
+
+async function renderAllOrdersList() {
+  const routeFilters = parseListRoute(window.location.hash);
+  const currentQ = routeFilters.q || '';
+  let currentPage = Math.max(1, Number(routeFilters.page) || 1);
+
+  const content = el(`
+    <div>
+      <div class="page-header">
+        <div>
+          <h1>Clienți totali</h1>
+          <div class="sub">Istoricul complet de comenzi, inclusiv cel preluat din perioada de dinaintea înscrierii pe platformă</div>
+        </div>
+      </div>
+      <div class="stat-grid" id="allOrdersStats" style="margin-bottom:18px;"></div>
+      <div class="filters-search-row">
+        <input type="text" id="allOrdersQ" placeholder="Caută client, oraș, ID comandă, telefon, AWB…" value="${escapeHtml(currentQ)}" />
+      </div>
+      <div id="allOrdersBody">Se încarcă…</div>
+      <div id="allOrdersPager" style="margin-top:14px;"></div>
+    </div>
+  `);
+  renderShell('#/clienti-totali', content);
+
+  const listBody = content.querySelector('#allOrdersBody');
+  const pagerArea = content.querySelector('#allOrdersPager');
+  const statsArea = content.querySelector('#allOrdersStats');
+  const searchInput = content.querySelector('#allOrdersQ');
+
+  function buildQuery(page) {
+    const params = new URLSearchParams({ scope: 'all', page: String(page), pageSize: String(ALL_ORDERS_PAGE_SIZE) });
+    const q = searchInput.value.trim();
+    if (q) params.set('q', q);
+    return params;
+  }
+
+  async function load() {
+    listBody.innerHTML = 'Se încarcă…';
+    pagerArea.innerHTML = '';
+    const listParams = buildQuery(currentPage);
+    const countParams = new URLSearchParams({ scope: 'all' });
+    if (searchInput.value.trim()) countParams.set('q', searchInput.value.trim());
+
+    const [ordersResult, countResult] = await Promise.allSettled([
+      api(`/api/orders?${listParams.toString()}`),
+      api(`/api/orders/count?${countParams.toString()}`),
+    ]);
+
+    if (ordersResult.status !== 'fulfilled') {
+      listBody.innerHTML = `<div class="panel">Eroare la încărcarea comenzilor: ${escapeHtml(ordersResult.reason.message)}</div>`;
+      return;
+    }
+    const orders = ordersResult.value;
+    const counts = countResult.status === 'fulfilled' ? countResult.value : {};
+    const total = counts.total ?? null;
+    const signupDate = counts.signupDate || null;
+    // la o căutare foarte largă, indexul se oprește la 5.000 de potriviri --
+    // arătăm „5.000+", nu un total exact care ar fi neadevărat
+    const cappedHere = Boolean(counts.capped) && total === 5000;
+    const totalLabel = total === null ? '—' : total.toLocaleString('ro-RO') + (cappedHere ? '+' : '');
+
+    statsArea.innerHTML = `
+      <div class="stat-tile accented"><span class="corner-dot" style="background:var(--accent);"></span><div class="label">${searchInput.value.trim() ? 'Comenzi găsite' : 'Comenzi în total'}</div><div class="value">${totalLabel}</div><div class="sub-line">${searchInput.value.trim() ? 'în tot istoricul' : 'tot istoricul preluat'}</div></div>
+      ${signupDate ? `<div class="stat-tile"><span class="corner-dot glow-dot" style="background:var(--status-in_progress);"></span><div class="label">Înscriere pe platformă</div><div class="value" style="font-size:20px;">${escapeHtml(fmtSignupDate(signupDate))}</div><div class="sub-line">de aici încolo apar și în Comenzi</div></div>` : ''}
+    `;
+
+    if (!orders.length) {
+      listBody.innerHTML = `
+        <div class="ticket-table">
+          <div class="empty-state">
+            <div class="big">◌</div>
+            ${searchInput.value.trim() ? 'Nicio comandă nu corespunde căutării.' : 'Nu există încă nicio comandă preluată.'}
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    listBody.innerHTML = ordersTableHtml(orders);
+    wireOrderRows(listBody);
+
+    if (total !== null) {
+      const totalPages = Math.max(1, Math.ceil(total / ALL_ORDERS_PAGE_SIZE));
+      pagerArea.appendChild(el(`
+        <div style="display:flex;align-items:center;gap:12px;">
+          <button class="btn btn-sm" id="allOrdersPrev" ${currentPage <= 1 ? 'disabled' : ''}>← Anterioară</button>
+          <span class="hint">Pagina ${currentPage.toLocaleString('ro-RO')} din ${totalPages.toLocaleString('ro-RO')}</span>
+          <button class="btn btn-sm" id="allOrdersNext" ${currentPage >= totalPages ? 'disabled' : ''}>Următoare →</button>
+        </div>
+      `));
+      const prev = pagerArea.querySelector('#allOrdersPrev');
+      const next = pagerArea.querySelector('#allOrdersNext');
+      if (prev) prev.addEventListener('click', () => { currentPage -= 1; syncRoute(); load(); });
+      if (next) next.addEventListener('click', () => { currentPage += 1; syncRoute(); load(); });
+    }
+  }
+
+  // pastram cautarea si pagina in adresa, ca un refresh sau butonul Inapoi
+  // sa aduca acelasi ecran
+  function syncRoute() {
+    const params = new URLSearchParams();
+    if (searchInput.value.trim()) params.set('q', searchInput.value.trim());
+    if (currentPage > 1) params.set('page', String(currentPage));
+    const qs = params.toString();
+    history.replaceState(null, '', qs ? `#/clienti-totali?${qs}` : '#/clienti-totali');
+    currentMainRoute = window.location.hash;
+  }
+
+  let searchTimer;
+  searchInput.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => { currentPage = 1; syncRoute(); load(); }, 350);
+  });
+
+  await load();
+}
+
+// ---- randare partajata a randurilor de comanda (Comenzi + Clienți totali) ----
+// Aceeasi functie in ambele pagini: un tabel schimbat intr-un loc nu mai poate
+// ramane diferit in celalalt.
+
+function orderRowsHtml(orders) {
+  return orders.map((o) => {
+    const thumbs = (o.lineItems || []).slice(0, 3).map((it) => {
+      const qtyBadge = it.quantity > 1 ? `<span class="thumb-qty-badge">×${it.quantity}</span>` : '';
+      const productName = it.product_name || '';
+      const img = it.product_image_url
+        ? `<img class="order-thumb" src="${escapeHtml(it.product_image_url)}" alt="" title="${escapeHtml(productName)}" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'order-thumb order-thumb-placeholder',textContent:'—'}))" />`
+        : `<div class="order-thumb order-thumb-placeholder" title="${escapeHtml(productName)}">—</div>`;
+      return `<span class="order-thumb-wrap">${img}${qtyBadge}</span>`;
+    }).join('');
+    const extraCount = (o.lineItems || []).length - 3;
+
+    return `
+    <div class="order-row" data-id="${o.id}">
+      <div class="order-platform"><span class="platform-dot"></span>${escapeHtml(platformLabel)}</div>
+      <div class="order-id">#${o.mpId}</div>
+      <div class="order-client">
+        <div class="t-title">${escapeHtml(o.shippingName || o.billingName || '—')}</div>
+        <div class="t-requester">${escapeHtml(o.shippingCity || '')}</div>
+      </div>
+      <div class="order-thumbs">${thumbs}${extraCount > 0 ? `<div class="order-thumb order-thumb-more">+${extraCount}</div>` : ''}</div>
+      <div class="order-total">${fmtMoney(o.totalAmount, o.currency)}</div>
+      <div style="min-width:0;overflow:hidden;display:flex;align-items:center;gap:6px;">
+        ${o.paymentStatus === 'paid' ? '<span class="glow-dot" title="Plată finalizată"></span>' : ''}
+        <span class="badge badge-status-closed" style="max-width:100%;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(paymentMethodLabel(o))}</span>
+      </div>
+      <div class="order-awb-status">
+        <div class="awb-status-line"><span class="awb-status-dot ${o.awbNumber || o.shippingAwb ? 'has-awb' : ''}"></span>${o.awbNumber || o.shippingAwb ? 'AWB emis' : 'Fără AWB'}</div>
+        <div class="awb-status-sub">${escapeHtml(SHIPPING_STATUS_LABELS_MP[o.shippingStatus] || o.shippingStatusText || o.shippingStatus || '—')}</div>
+      </div>
+      <div class="order-invoice">${o.invoice && !o.invoice.cancelled ? `<span class="invoice-badge">${escapeHtml(o.invoice.prefix || '')}.${escapeHtml(o.invoice.number || '')}</span>` : '<span style="color:var(--text-dim);">—</span>'}</div>
+      <div class="ticket-date">${fmtDate(o.dateCreated)}</div>
+    </div>
+  `;
+  }).join('');
+}
+
+function ordersTableHtml(orders) {
+  return `
+    <div class="ticket-table">
+      <div class="order-row header">
+        <div>Platformă</div><div>Comandă</div><div>Client</div><div>Produse</div><div>Total</div><div>Metodă</div><div>Livrare</div><div>Factură</div><div>Data</div>
+      </div>
+      ${orderRowsHtml(orders)}
+    </div>
+  `;
+}
+
+/** Face fiecare rand din tabel sa deschida sertarul comenzii. */
+function wireOrderRows(container) {
+  container.querySelectorAll('.order-row[data-id]').forEach((row) => {
+    row.addEventListener('click', () => {
+      history.pushState(null, '', `#/orders/${row.dataset.id}`);
+      openOrderDrawer(row.dataset.id);
+    });
+  });
+}
+
 async function renderOrdersList() {
   const filters = parseListRoute(window.location.hash);
 
@@ -2968,55 +3163,8 @@ async function renderOrdersList() {
     return;
   }
 
-  const rows = orders.map((o) => {
-    const thumbs = (o.lineItems || []).slice(0, 3).map((it) => {
-      const qtyBadge = it.quantity > 1 ? `<span class="thumb-qty-badge">×${it.quantity}</span>` : '';
-      const productName = it.product_name || '';
-      const img = it.product_image_url
-        ? `<img class="order-thumb" src="${escapeHtml(it.product_image_url)}" alt="" title="${escapeHtml(productName)}" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'order-thumb order-thumb-placeholder',textContent:'—'}))" />`
-        : `<div class="order-thumb order-thumb-placeholder" title="${escapeHtml(productName)}">—</div>`;
-      return `<span class="order-thumb-wrap">${img}${qtyBadge}</span>`;
-    }).join('');
-    const extraCount = (o.lineItems || []).length - 3;
-
-    return `
-    <div class="order-row" data-id="${o.id}">
-      <div class="order-platform"><span class="platform-dot"></span>${escapeHtml(platformLabel)}</div>
-      <div class="order-id">#${o.mpId}</div>
-      <div class="order-client">
-        <div class="t-title">${escapeHtml(o.shippingName || o.billingName || '—')}</div>
-        <div class="t-requester">${escapeHtml(o.shippingCity || '')}</div>
-      </div>
-      <div class="order-thumbs">${thumbs}${extraCount > 0 ? `<div class="order-thumb order-thumb-more">+${extraCount}</div>` : ''}</div>
-      <div class="order-total">${fmtMoney(o.totalAmount, o.currency)}</div>
-      <div style="min-width:0;overflow:hidden;display:flex;align-items:center;gap:6px;">
-        ${o.paymentStatus === 'paid' ? '<span class="glow-dot" title="Plată finalizată"></span>' : ''}
-        <span class="badge badge-status-closed" style="max-width:100%;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(paymentMethodLabel(o))}</span>
-      </div>
-      <div class="order-awb-status">
-        <div class="awb-status-line"><span class="awb-status-dot ${o.awbNumber || o.shippingAwb ? 'has-awb' : ''}"></span>${o.awbNumber || o.shippingAwb ? 'AWB emis' : 'Fără AWB'}</div>
-        <div class="awb-status-sub">${escapeHtml(SHIPPING_STATUS_LABELS_MP[o.shippingStatus] || o.shippingStatusText || o.shippingStatus || '—')}</div>
-      </div>
-      <div class="order-invoice">${o.invoice && !o.invoice.cancelled ? `<span class="invoice-badge">${escapeHtml(o.invoice.prefix || '')}.${escapeHtml(o.invoice.number || '')}</span>` : '<span style="color:var(--text-dim);">—</span>'}</div>
-      <div class="ticket-date">${fmtDate(o.dateCreated)}</div>
-    </div>
-  `;
-  }).join('');
-
-  listBody.innerHTML = `
-    <div class="ticket-table">
-      <div class="order-row header">
-        <div>Platformă</div><div>Comandă</div><div>Client</div><div>Produse</div><div>Total</div><div>Metodă</div><div>Livrare</div><div>Factură</div><div>Data</div>
-      </div>
-      ${rows}
-    </div>
-  `;
-  listBody.querySelectorAll('.order-row[data-id]').forEach((row) => {
-    row.addEventListener('click', () => {
-      history.pushState(null, '', `#/orders/${row.dataset.id}`);
-      openOrderDrawer(row.dataset.id);
-    });
-  });
+  listBody.innerHTML = ordersTableHtml(orders);
+  wireOrderRows(listBody);
 }
 
 /** Navigare directă (link, refresh, buton Înapoi browser). */
@@ -4238,6 +4386,9 @@ function render() {
   } else if (path === '#/orders') {
     hideDrawer();
     renderOrdersList();
+  } else if (path === '#/clienti-totali') {
+    hideDrawer();
+    renderAllOrdersList();
   } else if (path === '#/new') {
     renderNewTicket();
   } else if (path === '#/admin') {

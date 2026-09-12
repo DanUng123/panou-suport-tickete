@@ -37,6 +37,19 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 const sessions = new Map();
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000; // 12 ore
 
+/**
+ * Inceputul zilei in care compania s-a inscris pe platforma (00:00 UTC).
+ * Comenzile de dinainte de acest moment sunt istoric importat: exista in
+ * contul magazinului, dar apar doar in tabul de istoric complet, nu si in
+ * paginile de lucru de zi cu zi. Fara data de inscriere (caz care nu ar
+ * trebui sa apara), nu filtram nimic.
+ */
+function signupDayStartISO(createdAt) {
+  if (!createdAt) return undefined;
+  const day = String(createdAt).slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? `${day}T00:00:00.000Z` : undefined;
+}
+
 function createSession(agentId) {
   const token = crypto.randomBytes(24).toString('hex');
   sessions.set(token, { agentId, expiresAt: Date.now() + SESSION_TTL_MS });
@@ -495,9 +508,20 @@ async function handleApi(req, res, pathname, query) {
     if (!currentAgent || !currentAgent.active) return sendJSON(res, 401, { error: 'Neautentificat' });
 
     const requireManager = () => currentAgent.role === 'manager';
+
+    // ---------- pragul de istoric ----------
+    // Paginile de zi cu zi (Comenzi, statistici, profil client) arata doar
+    // comenzile din ziua inscrierii magazinului incoace. Istoricul importat
+    // dinainte exista si e al magazinului -- il vede in tabul "Clienți totali",
+    // care trimite scope=all. Nu e o restrictie de securitate, ci un filtru
+    // implicit: altfel, un magazin cu 900.000 de comenzi vechi si-ar ineca
+    // paginile de lucru.
     // datele companiei (inclusiv credentialele decriptate GLS/Sameday/MerchantPro) --
     // preluate o singura data, disponibile pentru toate rutele de mai jos
     const company = db.getCompany(currentAgent.companyId);
+    const historyCutoff = signupDayStartISO(company && company.createdAt);
+    const wantsFullHistory = query.scope === 'all';
+    const orderCutoff = wantsFullHistory ? undefined : historyCutoff;
 
     if (pathname === '/api/categories' && req.method === 'GET') {
       return sendJSON(res, 200, db.listCategories(currentAgent.companyId));
@@ -922,7 +946,7 @@ async function handleApi(req, res, pathname, query) {
     }
 
     if (pathname === '/api/orders/stats' && req.method === 'GET') {
-      return sendJSON(res, 200, db.getOrderStats(currentAgent.companyId, { dateFrom: query.dateFrom || undefined, dateTo: query.dateTo || undefined }));
+      return sendJSON(res, 200, db.getOrderStats(currentAgent.companyId, { dateFrom: query.dateFrom || undefined, dateTo: query.dateTo || undefined, minDateCreated: orderCutoff }));
     }
 
     if (pathname === '/api/product-analytics' && req.method === 'GET') {
@@ -944,10 +968,37 @@ async function handleApi(req, res, pathname, query) {
         dateFrom: query.dateFrom || undefined,
         dateTo: query.dateTo || undefined,
         q: query.q || undefined,
+        minDateCreated: orderCutoff,
         limit: pageSize,
         offset: (page - 1) * pageSize,
       };
       return sendJSON(res, 200, db.listOrders(currentAgent.companyId, filters));
+    }
+
+    // Cate comenzi corespund filtrelor -- doar numarul, pentru paginare.
+    // Folosita de tabul de istoric complet, care poate avea sute de mii de
+    // randuri si are nevoie sa stie cate pagini sunt.
+    if (pathname === '/api/orders/count' && req.method === 'GET') {
+      return sendJSON(res, 200, {
+        total: db.countOrders(currentAgent.companyId, {
+          shippingStatus: query.shippingStatus || undefined,
+          paymentStatus: query.paymentStatus || undefined,
+          internalStatus: query.internalStatus || undefined,
+          assignedTo: query.assignedTo || undefined,
+          needsAwb: query.needsAwb === '1' ? true : undefined,
+          hasAwb: query.needsAwb === '0' ? true : undefined,
+          dateFrom: query.dateFrom || undefined,
+          dateTo: query.dateTo || undefined,
+          q: query.q || undefined,
+          minDateCreated: orderCutoff,
+        }),
+        historyCutoff: historyCutoff || null,
+        signupDate: (company && company.createdAt) || null,
+        // indexul de cautare intoarce cel mult 5.000 de potriviri (plafon pus
+        // ca sortarea sa ramana rapida la sute de mii de comenzi), deci la o
+        // cautare foarte larga numarul e "cel putin atat", nu exact
+        capped: Boolean(query.q) ,
+      });
     }
 
     const orderMatch = pathname.match(/^\/api\/orders\/([^/]+)$/);
@@ -1549,7 +1600,7 @@ async function handleApi(req, res, pathname, query) {
     // ---- profil client (agregat din comenzi + tichete cu acelasi telefon/email) ----
 
     if (pathname === '/api/clients/lookup' && req.method === 'GET') {
-      const profile = db.getClientProfile(currentAgent.companyId, { phone: query.phone || undefined, email: query.email || undefined });
+      const profile = db.getClientProfile(currentAgent.companyId, { phone: query.phone || undefined, email: query.email || undefined, minDateCreated: orderCutoff });
       return sendJSON(res, 200, profile);
     }
 
