@@ -707,6 +707,108 @@ async function handleApi(req, res, pathname, query) {
       }
     }
 
+    // ---------- ștergerea contului de companie (GDPR art. 17) ----------
+
+    // Ce se va șterge -- afișat în interfață, înainte de confirmare.
+    if (pathname === '/api/company/deletion-summary' && req.method === 'GET') {
+      if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot șterge contul companiei' });
+      return sendJSON(res, 200, {
+        companyName: company.name,
+        counts: db.getCompanyDataCounts(currentAgent.companyId),
+      });
+    }
+
+    // Exportul complet al datelor, înainte de ștergere. Scris în flux, lot cu
+    // lot: la sute de mii de comenzi, un JSON construit întâi în memorie ar
+    // depăși memoria serverului.
+    if (pathname === '/api/company/export' && req.method === 'GET') {
+      if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot exporta datele companiei' });
+      const header = db.getCompanyExportHeader(currentAgent.companyId);
+      if (!header) return sendJSON(res, 404, { error: 'Companie negăsită' });
+
+      const stamp = new Date().toISOString().slice(0, 10);
+      const safeName = String(company.name || 'companie').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'companie';
+      res.writeHead(200, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Content-Disposition': `attachment; filename="export-${safeName}-${stamp}.json"`,
+        'Cache-Control': 'no-store',
+      });
+
+      // scriere cu respectarea contrapresiunii -- altfel, la volum mare,
+      // rândurile se adună în buffer-ul de socket, în memorie
+      const write = (chunk) => new Promise((resolve, reject) => {
+        if (res.write(chunk)) return resolve();
+        res.once('drain', resolve);
+        res.once('error', reject);
+      });
+
+      try {
+        await write('{\n');
+        await write(`"exportedAt": ${JSON.stringify(new Date().toISOString())},\n`);
+        await write(`"company": ${JSON.stringify(header)},\n`);
+        await write('"_note": "Fotografiile atașate tichetelor și fișierele PDF ale AWB-urilor nu sunt incluse (conținut binar). Parolele conturilor și cheile de integrare nu sunt exportate.",\n');
+
+        let openSection = null;
+        let rowsInSection = 0;
+        for (const chunk of db.iterateCompanyExport(currentAgent.companyId, { batchSize: 500 })) {
+          if (chunk.section !== openSection) {
+            if (openSection) await write('\n],\n');
+            await write(`${JSON.stringify(chunk.section)}: [`);
+            openSection = chunk.section;
+            rowsInSection = 0;
+          }
+          let buf = '';
+          for (const row of chunk.rows) {
+            buf += (rowsInSection ? ',\n' : '\n') + JSON.stringify(row);
+            rowsInSection += 1;
+          }
+          if (buf) await write(buf);
+        }
+        if (openSection) await write('\n]\n');
+        await write('}\n');
+        res.end();
+      } catch (e) {
+        // răspunsul e deja pornit, nu mai putem trimite un cod de eroare
+        try { res.end(`\n/* EXPORT INCOMPLET: ${String(e.message).replace(/\*\//g, '')} */`); } catch (e2) { /* conexiune deja închisă */ }
+      }
+      return;
+    }
+
+    // Ștergerea propriu-zisă. Ireversibilă, imediată.
+    if (pathname === '/api/company/delete' && req.method === 'POST') {
+      if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot șterge contul companiei' });
+      const body = await readBody(req);
+
+      // dublă confirmare: parola contului + numele exact al companiei
+      if (!body.password || !db.verifyAgent(currentAgent.id, body.password)) {
+        return sendJSON(res, 403, { error: 'Parolă incorectă.' });
+      }
+      const typed = String(body.confirmName || '').trim();
+      if (typed.toLowerCase() !== String(company.name || '').trim().toLowerCase()) {
+        return sendJSON(res, 400, { error: 'Numele companiei nu se potrivește. Scrie-l exact așa cum apare mai sus.' });
+      }
+
+      // sesiunile tuturor colegilor din companie, invalidate înainte de
+      // ștergere -- altfel ar rămâne active până la expirare, cu un cont
+      // care nu mai există
+      const agentIds = new Set(db.listAgents(currentAgent.companyId, { includeInactive: true }).map((a) => a.id));
+      for (const [token, entry] of sessions) {
+        if (agentIds.has(entry.agentId)) sessions.delete(token);
+      }
+
+      let result;
+      try {
+        result = db.deleteCompanyCompletely(currentAgent.companyId);
+      } catch (e) {
+        return sendJSON(res, 500, { error: `Ștergerea nu a putut fi finalizată: ${e.message}` });
+      }
+      if (!result) return sendJSON(res, 404, { error: 'Companie negăsită' });
+
+      console.log(`Cont șters definitiv: ${result.companyName} (${currentAgent.companyId})`, result.deleted);
+      res.setHeader('Set-Cookie', 'session=; HttpOnly; Secure; Path=/; Max-Age=0');
+      return sendJSON(res, 200, { ok: true, deleted: result.deleted });
+    }
+
     if (pathname === '/api/stats' && req.method === 'GET') {
       return sendJSON(res, 200, db.getStats(currentAgent.companyId));
     }

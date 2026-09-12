@@ -1759,3 +1759,100 @@ a { color: inherit; text-decoration: none; }
     gap: 10px 16px;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Zonă periculoasă (Setări): descărcarea datelor și ștergerea contului
+   Aceeași densitate și aceleași jetoane de culoare ca restul platformei --
+   singura diferență e accentul roșu, ca să nu se confunde cu o secțiune
+   obișnuită de setări.
+   --------------------------------------------------------------------------- */
+
+.danger-zone {
+  margin-top: 26px;
+  border: 1px solid color-mix(in srgb, var(--priority-urgent) 32%, var(--border));
+  border-radius: 12px;
+  background:
+    radial-gradient(120% 100% at 0% 0%, color-mix(in srgb, var(--priority-urgent) 7%, transparent), transparent 60%),
+    var(--surface-card);
+  overflow: hidden;
+}
+
+.dz-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.dz-head h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--priority-urgent);
+}
+.dz-sub {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-top: 1px;
+}
+/* bulina preia stilul neon comun, prin .glow-dot -- aici doar culoarea */
+.dz-dot { background: var(--priority-urgent); margin-top: 7px; }
+
+.dz-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 14px 18px;
+}
+.dz-row + .dz-row { border-top: 1px solid var(--border); }
+.dz-row-danger { background: color-mix(in srgb, var(--priority-urgent) 5%, transparent); }
+
+.dz-title { font-size: 14px; font-weight: 600; color: var(--text); }
+.dz-desc { font-size: 13px; color: var(--text-secondary); margin-top: 3px; max-width: 62ch; line-height: 1.45; }
+.dz-btn { flex-shrink: 0; text-decoration: none; }
+
+.btn-danger {
+  background: color-mix(in srgb, var(--priority-urgent) 16%, transparent);
+  border-color: color-mix(in srgb, var(--priority-urgent) 45%, transparent);
+  color: var(--priority-urgent);
+  font-weight: 600;
+}
+.btn-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--priority-urgent) 26%, transparent);
+  border-color: var(--priority-urgent);
+}
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* fereastra de confirmare */
+.dz-modal { padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 14px; }
+.dz-modal p { margin: 0; font-size: 14px; line-height: 1.5; }
+.dz-warn { color: var(--text); }
+.dz-hint { color: var(--text-secondary); font-size: 13px; }
+/* eticheta e scrisa cu majuscule de stilul general al formularelor; numele
+   companiei trebuie insa aratat exact asa cum trebuie tastat */
+.dz-modal code {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 13px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+.dz-modal-error {
+  font-size: 13px;
+  color: var(--priority-urgent);
+  background: color-mix(in srgb, var(--priority-urgent) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--priority-urgent) 35%, transparent);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.dz-actions { margin-top: 2px; }
+
+@media (max-width: 720px) {
+  .dz-row { flex-direction: column; align-items: stretch; }
+  .dz-btn { width: 100%; }
+}
