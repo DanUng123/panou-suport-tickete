@@ -3065,11 +3065,20 @@ function wireOrderRows(container) {
   });
 }
 
+// Filtrele din pagina Comenzi (perioadă, status livrare, status plată, AWB)
+// sunt ascunse temporar, la cererea lui Dan, până reluăm partea de filtre.
+// Codul lor a rămas intact: pune steagul pe false și pagina revine exact cum
+// era, fără nicio altă modificare.
+const FILTRE_COMENZI_ASCUNSE = true;
+
 async function renderOrdersList() {
   const filters = parseListRoute(window.location.hash);
 
-  // implicit: "Azi" -- daca nu exista niciun filtru de data si nici alegerea explicita "Toate"
-  if (!filters.dateFrom && !filters.dateTo && filters.period !== 'all') {
+  // implicit: "Azi" -- daca nu exista niciun filtru de data si nici alegerea explicita "Toate".
+  // Cat timp filtrele sunt ascunse, NU fortam "Azi": fara selectorul de
+  // perioada pe ecran, lista ar ramane blocata pe ziua curenta, fara nicio
+  // cale de a schimba asta.
+  if (!FILTRE_COMENZI_ASCUNSE && !filters.dateFrom && !filters.dateTo && filters.period !== 'all') {
     const today = computePeriodRange('today');
     const params = new URLSearchParams({ ...filters, dateFrom: today.dateFrom, dateTo: today.dateTo });
     navigate(`#/orders?${params.toString()}`);
@@ -3090,6 +3099,7 @@ async function renderOrdersList() {
       <div class="filters-search-row">
         <input type="text" id="q" placeholder="Caută client, oraș, ID comandă, telefon, AWB…" value="${escapeHtml(filters.q || '')}" />
       </div>
+      ${FILTRE_COMENZI_ASCUNSE ? '' : `
       <div class="status-pills-label">Perioadă</div>
       <div id="periodPickerContainer"></div>
       <div class="status-pills-label">Status livrare</div>
@@ -3098,12 +3108,13 @@ async function renderOrdersList() {
       <div class="status-pills" id="paymentPills"></div>
       <div class="status-pills-label">AWB</div>
       <div class="status-pills" id="awbPills"></div>
+      `}
       <div id="orders-body">Se încarcă…</div>
     </div>
   `);
   renderShell('#/orders', content);
 
-  renderPeriodPicker(content.querySelector('#periodPickerContainer'), filters, (range) => applyFiltersFromForm(range));
+  if (!FILTRE_COMENZI_ASCUNSE) renderPeriodPicker(content.querySelector('#periodPickerContainer'), filters, (range) => applyFiltersFromForm(range));
 
   // ---- cele trei cereri independente, in PARALEL (nu secvential) --
   // reduce timpul total de asteptare la cel al celei mai lente dintre ele,
@@ -3178,13 +3189,14 @@ async function renderOrdersList() {
   });
 
   function buildPillRow(containerId, { activeValue, filterKey, allLabel, entries }) {
+    const container = content.querySelector(containerId);
+    if (!container) return; // filtrele sunt ascunse -- containerul nu exista in pagina
     const html = [
       `<button class="status-pill ${!activeValue ? 'active' : ''}" data-value="">↺ ${allLabel}</button>`,
       ...entries.map(({ value, label, count, dot }) =>
         `<button class="status-pill ${activeValue === value ? 'active' : ''}" data-value="${value}">${dot ? `<span class="status-pill-dot" style="background:${dot}"></span>` : ''}${label}<span class="status-pill-count">${count}</span></button>`
       ),
     ].join('');
-    const container = content.querySelector(containerId);
     container.innerHTML = html;
     container.querySelectorAll('.status-pill').forEach((pill) => {
       pill.addEventListener('click', () => {
