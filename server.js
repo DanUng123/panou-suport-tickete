@@ -37,17 +37,84 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 const sessions = new Map();
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000; // 12 ore
 
+// ---------- pragul de la care comenzile apar in paginile de lucru ----------
+// Ziua se taie la 00:00 ORA ROMANIEI, nu UTC. Vara sunt 3 ore diferenta, deci
+// cu taietura in UTC comenzile de azi dintre 00:00 si 03:00 ora Romaniei ar
+// ajunge gresit in istoric -- exact orele in care un magazin online chiar
+// primeste comenzi.
+const FUS_ORAR = 'Europe/Bucharest';
+
+/** Decalajul zonei fata de UTC, in milisecunde, la momentul dat. */
+function decalajFusMs(date) {
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone: FUS_ORAR, hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  });
+  const p = Object.fromEntries(dtf.formatToParts(date).map((x) => [x.type, x.value]));
+  const caUtc = Date.UTC(+p.year, +p.month - 1, +p.day, (+p.hour) % 24, +p.minute, +p.second);
+  return caUtc - date.getTime();
+}
+
+/** "2026-09-12" (zi calendaristica romaneasca) -> momentul UTC al orei 00:00 din Romania. */
+function inceputZiRomaneascaISO(ymd) {
+  const presupus = new Date(`${ymd}T00:00:00Z`);
+  if (Number.isNaN(presupus.getTime())) return undefined;
+  try {
+    const d1 = decalajFusMs(presupus);
+    let rezultat = new Date(presupus.getTime() - d1);
+    // o singura corectie in plus acopera si ziua in care se schimba ora
+    const d2 = decalajFusMs(rezultat);
+    if (d2 !== d1) rezultat = new Date(presupus.getTime() - d2);
+    return rezultat.toISOString();
+  } catch (e) {
+    // fara date de fus orar in Node (build fara ICU complet), ramanem pe UTC
+    return presupus.toISOString();
+  }
+}
+
+/** Inceputul zilei romanesti in care cade momentul dat. */
+function inceputZileiPentru(instant) {
+  if (!instant) return undefined;
+  const d = new Date(instant);
+  if (Number.isNaN(d.getTime())) return undefined;
+  let ymd;
+  try {
+    ymd = new Intl.DateTimeFormat('en-CA', {
+      timeZone: FUS_ORAR, year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(d);
+  } catch (e) {
+    ymd = d.toISOString().slice(0, 10);
+  }
+  return inceputZiRomaneascaISO(ymd);
+}
+
+/** Ziua calendaristica romaneasca ("2026-09-12") in care cade momentul dat. */
+function ziRomaneasca(instant) {
+  if (!instant) return null;
+  const d = new Date(instant);
+  if (Number.isNaN(d.getTime())) return null;
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: FUS_ORAR, year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(d);
+  } catch (e) {
+    return d.toISOString().slice(0, 10);
+  }
+}
+
 /**
- * Inceputul zilei in care compania s-a inscris pe platforma (00:00 UTC).
- * Comenzile de dinainte de acest moment sunt istoric importat: exista in
- * contul magazinului, dar apar doar in tabul de istoric complet, nu si in
- * paginile de lucru de zi cu zi. Fara data de inscriere (caz care nu ar
- * trebui sa apara), nu filtram nimic.
+ * De la ce moment apar comenzile companiei in paginile de lucru.
+ *
+ * Intai ordersVisibleFrom -- pus automat cand magazinul si-a conectat prima
+ * data platforma de eCommerce, sau ales manual de manager din Setari.
+ * Daca lipseste (companii de dinaintea acestei coloane), cadem pe ziua
+ * crearii contului, ca inainte.
  */
-function signupDayStartISO(createdAt) {
-  if (!createdAt) return undefined;
-  const day = String(createdAt).slice(0, 10);
-  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? `${day}T00:00:00.000Z` : undefined;
+function pragComenzi(company) {
+  if (!company) return undefined;
+  if (company.ordersVisibleFrom) return company.ordersVisibleFrom;
+  return inceputZileiPentru(company.createdAt);
 }
 
 function createSession(agentId) {
@@ -529,7 +596,7 @@ async function handleApi(req, res, pathname, query) {
     // datele companiei (inclusiv credentialele decriptate GLS/Sameday/MerchantPro) --
     // preluate o singura data, disponibile pentru toate rutele de mai jos
     const company = db.getCompany(currentAgent.companyId);
-    const historyCutoff = signupDayStartISO(company && company.createdAt);
+    const historyCutoff = pragComenzi(company);
     const wantsFullHistory = query.scope === 'all';
     const orderCutoff = wantsFullHistory ? undefined : historyCutoff;
 
@@ -614,6 +681,13 @@ async function handleApi(req, res, pathname, query) {
         samedayPasswordSet: Boolean(samedayPassword),
         gomagApiKeySet: Boolean(gomagApiKey),
         pttPasswordSet: Boolean(pttPassword),
+        // pragul efectiv aplicat acum -- fie cel salvat, fie cel dedus din
+        // data contului; interfata arata ce se intampla, nu doar ce e in baza
+        ordersVisibleFromEffective: pragComenzi(company) || null,
+        // ziua romaneasca a pragului -- vara, momentul e 21:00 UTC din ziua
+        // precedenta, deci taierea din ISO ar arata o zi in urma in formular
+        ordersVisibleFromDay: ziRomaneasca(pragComenzi(company)),
+        ordersVisibleFromAuto: !company.ordersVisibleFrom,
       });
     }
 
@@ -629,6 +703,22 @@ async function handleApi(req, res, pathname, query) {
       if (patch.gomagApiKey === '') delete patch.gomagApiKey;
       if (patch.pttPassword === '') delete patch.pttPassword;
 
+      // Data de la care comenzile apar in paginile de lucru. Interfata trimite
+      // o zi calendaristica ("2026-09-12"); o transformam in momentul exact al
+      // orei 00:00 din Romania. Sir gol = revenim la comportamentul automat.
+      if (patch.ordersVisibleFrom !== undefined) {
+        const zi = String(patch.ordersVisibleFrom).trim();
+        if (!zi) {
+          patch.ordersVisibleFrom = null;
+        } else if (/^\d{4}-\d{2}-\d{2}$/.test(zi)) {
+          const moment = inceputZiRomaneascaISO(zi);
+          if (!moment) return sendJSON(res, 400, { error: 'Dată invalidă pentru afișarea comenzilor.' });
+          patch.ordersVisibleFrom = moment;
+        } else {
+          return sendJSON(res, 400, { error: 'Data de la care apar comenzile trebuie să fie în formatul AAAA-LL-ZZ.' });
+        }
+      }
+
       // retinem starea DINAINTE de salvare, ca sa detectam daca MerchantPro
       // sau GoMag tocmai au fost configurate pentru PRIMA DATA -- caz in
       // care pornim automat, silentios, importul complet de istoric (clientul
@@ -637,10 +727,20 @@ async function handleApi(req, res, pathname, query) {
       const wasMpConfigured = mp.isConfigured(company);
       const wasGomagConfigured = gomag.isConfigured(company);
 
-      const updated = db.updateCompanyCredentials(currentAgent.companyId, patch);
+      let updated = db.updateCompanyCredentials(currentAgent.companyId, patch);
       const merchantProJustConfigured = !wasMpConfigured && mp.isConfigured(updated);
       const gomagJustConfigured = !wasGomagConfigured && gomag.isConfigured(updated);
       if (merchantProJustConfigured || gomagJustConfigured) {
+        // Magazinul tocmai s-a conectat: de aici incolo comenzile intra in
+        // paginile de lucru, iar tot ce aduce importul din trecutul lui ramane
+        // in "Clienți totali". Nu suprascriem o data pusa deja (manual sau la
+        // o conectare anterioara).
+        if (!updated.ordersVisibleFrom) {
+          const prag = inceputZileiPentru(new Date().toISOString());
+          // reluam rezultatul in `updated`, altfel raspunsul catre interfata ar
+          // pleca cu valoarea dinainte de aceasta scriere
+          if (prag) updated = db.updateCompanyCredentials(currentAgent.companyId, { ordersVisibleFrom: prag });
+        }
         fullHistoryImport.maybeStartAutoImport(updated, { merchantProJustConfigured, gomagJustConfigured });
       }
 
@@ -1003,7 +1103,10 @@ async function handleApi(req, res, pathname, query) {
           minDateCreated: orderCutoff,
         }),
         historyCutoff: historyCutoff || null,
-        signupDate: (company && company.createdAt) || null,
+        // ziua de la care comenzile apar in paginile de lucru -- nu data
+        // crearii contului, care poate fi cu mult inainte
+        signupDate: historyCutoff || (company && company.createdAt) || null,
+        signupDay: ziRomaneasca(historyCutoff || (company && company.createdAt)),
         // indexul de cautare intoarce cel mult 5.000 de potriviri (plafon pus
         // ca sortarea sa ramana rapida la sute de mii de comenzi), deci la o
         // cautare foarte larga numarul e "cel putin atat", nu exact

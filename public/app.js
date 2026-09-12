@@ -98,7 +98,10 @@ function fmtDate(iso) {
 /** Data înscrierii, fără oră: „1 sept. 2026". */
 function fmtSignupDate(iso) {
   if (!iso) return '—';
-  const d = new Date(iso);
+  // O zi simplă ("2026-09-12") se citește ca atare, nu ca miezul nopții UTC —
+  // altfel, într-un browser aflat la vest de Greenwich s-ar afișa ziua dinainte.
+  const zi = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso));
+  const d = zi ? new Date(+zi[1], +zi[2] - 1, +zi[3]) : new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
   return d.toLocaleDateString('ro-RO', { day: 'numeric', month: 'short', year: 'numeric' });
 }
@@ -2941,7 +2944,7 @@ async function renderAllOrdersList() {
     const orders = ordersResult.value;
     const counts = countResult.status === 'fulfilled' ? countResult.value : {};
     const total = counts.total ?? null;
-    const signupDate = counts.signupDate || null;
+    const signupDate = counts.signupDay || counts.signupDate || null;
     // la o căutare foarte largă, indexul se oprește la 5.000 de potriviri --
     // arătăm „5.000+", nu un total exact care ar fi neadevărat
     const cappedHere = Boolean(counts.capped) && total === 5000;
@@ -2949,7 +2952,7 @@ async function renderAllOrdersList() {
 
     statsArea.innerHTML = `
       <div class="stat-tile accented"><span class="corner-dot" style="background:var(--accent);"></span><div class="label">${searchInput.value.trim() ? 'Comenzi găsite' : 'Comenzi în total'}</div><div class="value">${totalLabel}</div><div class="sub-line">${searchInput.value.trim() ? 'în tot istoricul' : 'tot istoricul preluat'}</div></div>
-      ${signupDate ? `<div class="stat-tile"><span class="corner-dot glow-dot" style="background:var(--status-in_progress);"></span><div class="label">Înscriere pe platformă</div><div class="value" style="font-size:20px;">${escapeHtml(fmtSignupDate(signupDate))}</div><div class="sub-line">de aici încolo apar și în Comenzi</div></div>` : ''}
+      ${signupDate ? `<div class="stat-tile"><span class="corner-dot glow-dot" style="background:var(--status-in_progress);"></span><div class="label">Comenzile apar în Comenzi din</div><div class="value" style="font-size:20px;">${escapeHtml(fmtSignupDate(signupDate))}</div><div class="sub-line">ce e mai vechi se vede doar aici</div></div>` : ''}
     `;
 
     if (!orders.length) {
@@ -4178,6 +4181,54 @@ async function renderSettings() {
       <button class="btn btn-primary" type="submit">Salvează setările</button>
     </form>
   `));
+
+  // ---- De când apar comenzile în paginile de lucru ----
+  // Se completează automat în ziua în care magazinul își conectează platforma
+  // de eCommerce. E vizibilă și modificabilă pentru că cele două momente pot
+  // să nu coincidă: un cont făcut acum două săptămâni și un magazin conectat
+  // azi ar arăta altfel comenzile decât se așteaptă cineva.
+  const pragZi = s.ordersVisibleFromDay || '';
+  body.appendChild(el(`
+    <section class="panel" id="ordersCutoffCard" style="margin-top:22px;">
+      <h2 style="margin:0 0 4px;font-size:16px;">Istoricul de comenzi</h2>
+      <div class="hint" style="margin-bottom:12px;">
+        În <strong>Comenzi</strong>, <strong>statistici</strong> și <strong>profilul clientului</strong> apar doar comenzile începând cu data de mai jos.
+        Tot ce e mai vechi — istoricul preluat din magazin — rămâne în <strong>Clienți totali</strong>.
+      </div>
+      <div class="form-row">
+        <div class="field">
+          <label for="s-orders-from">Comenzile apar începând cu</label>
+          <input type="date" id="s-orders-from" value="${escapeHtml(pragZi)}" />
+          <div class="hint" style="margin-top:6px;">
+            ${s.ordersVisibleFromAuto
+              ? 'Momentan e dedusă din data creării contului. Pune ziua în care ai conectat magazinul.'
+              : 'Setată pentru acest magazin. Golește câmpul ca să revii la valoarea automată.'}
+          </div>
+        </div>
+        <div class="field" style="align-self:end;">
+          <button type="button" class="btn" id="ordersCutoffSaveBtn">Salvează data</button>
+        </div>
+      </div>
+    </section>
+  `));
+
+  content.querySelector('#ordersCutoffSaveBtn').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    btn.textContent = 'Se salvează…';
+    try {
+      await api('/api/company/settings', {
+        method: 'PATCH',
+        body: JSON.stringify({ ordersVisibleFrom: content.querySelector('#s-orders-from').value || '' }),
+      });
+      showToast('Data a fost salvată');
+      renderSettings();
+    } catch (err) {
+      showToast('Eroare: ' + err.message);
+      btn.disabled = false;
+      btn.textContent = 'Salvează data';
+    }
+  });
 
   // ---- Zonă periculoasă: descărcarea datelor și ștergerea contului ----
   body.appendChild(el(`
