@@ -244,6 +244,14 @@ function navigate(hash) {
 // re-randarea inutila a fundalului cand deja arata ce trebuie
 let currentMainRoute = null;
 
+// Tabul „Clienți totali" (istoricul complet de comenzi) e ascuns temporar,
+// până revenim la el. Nu e șters: pagina, ruta și tot ce ține de ea rămân în
+// cod, iar pe false reapar imediat în meniu.
+// Cât e ascuns, comenzile de dinaintea zilei în care magazinul s-a conectat nu
+// se văd nicăieri în interfață — sunt în continuare în baza de date și în
+// exportul din Setări, doar că nu au ecran.
+const TAB_CLIENTI_TOTALI_ASCUNS = true;
+
 // Mai multe evenimente de schimbare a adresei pot surveni foarte apropiat in
 // timp (ex: o redirectionare interna care schimba adresa de doua ori la rand
 // -- vezi renderOrdersList). Fara aceasta amanare, fiecare ar declansa propria
@@ -1212,7 +1220,7 @@ function renderShell(activeRoute, contentNode) {
       <nav class="nav">
         <div class="nav-item" data-route="#/dashboard">${NAV_ICONS.dashboard}Panou Control</div>
         <div class="nav-item" data-route="#/orders">${NAV_ICONS.orders}Comenzi</div>
-        <div class="nav-item" data-route="#/clienti-totali"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h18"/><path d="M3 12h18"/><path d="M3 17h18"/><circle cx="7" cy="7" r="0.5" fill="currentColor"/></svg>Clienți totali</div>
+        ${TAB_CLIENTI_TOTALI_ASCUNS ? '' : `<div class="nav-item" data-route="#/clienti-totali"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h18"/><path d="M3 12h18"/><path d="M3 17h18"/><circle cx="7" cy="7" r="0.5" fill="currentColor"/></svg>Clienți totali</div>`}
         <div class="nav-item" data-route="#/tickets">${NAV_ICONS.tickets}Tichete</div>
         <div class="nav-item" data-route="#/service">${NAV_ICONS.service}Service</div>
         <div class="nav-item" data-route="#/retur">${NAV_ICONS.retur}Retur</div>
@@ -3068,11 +3076,11 @@ function wireOrderRows(container) {
   });
 }
 
-// Filtrele din pagina Comenzi (perioadă, status livrare, status plată, AWB)
-// sunt ascunse temporar, la cererea lui Dan, până reluăm partea de filtre.
-// Codul lor a rămas intact: pune steagul pe false și pagina revine exact cum
-// era, fără nicio altă modificare.
-const FILTRE_COMENZI_ASCUNSE = true;
+// Filtrele din pagina Comenzi (perioadă, status livrare, status plată, AWB).
+// Pune steagul pe true ca să le ascunzi din nou, fără altă modificare: cu ele
+// ascunse, pagina nu mai forțează nici perioada implicită „Azi", pentru că
+// fără selector lista ar rămâne blocată pe ziua curentă.
+const FILTRE_COMENZI_ASCUNSE = false;
 
 async function renderOrdersList() {
   const filters = parseListRoute(window.location.hash);
@@ -4476,7 +4484,7 @@ function render() {
     renderOrdersList();
   } else if (path === '#/clienti-totali') {
     hideDrawer();
-    renderAllOrdersList();
+    if (TAB_CLIENTI_TOTALI_ASCUNS) navigate('#/dashboard'); else renderAllOrdersList();
   } else if (path === '#/new') {
     renderNewTicket();
   } else if (path === '#/admin') {
