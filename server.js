@@ -28,6 +28,7 @@ const mp = require('./lib/merchantpro');
 const gomag = require('./lib/gomag');
 const resend = require('./lib/resend');
 const pdf = require('./lib/pdf');
+const backup = require('./lib/backup');
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -1974,19 +1975,33 @@ server.listen(PORT, () => {
   runAwbLabelCleanup();
   setInterval(runAwbLabelCleanup, 24 * 60 * 60 * 1000);
 
-  // backup complet, garantat corect, al bazei de date -- o data la pornire,
-  // apoi la fiecare 6 ore (limiteaza fereastra maxima de pierdere posibila,
-  // in caz de coruptie reala a bazei de date, la 6 ore, nu 24). Pastreaza
-  // ultimele 28 de fisiere (4/zi x 7 zile = o saptamana de istoric).
-  function runFrequentBackup() {
+  // Backup complet, garantat corect, al bazei de date, la fiecare 6 ore
+  // (limiteaza fereastra maxima de pierdere posibila, in caz de coruptie
+  // reala, la 6 ore, nu 24).
+  //
+  // Se pastreaza 4 fisiere, nu 28: la un magazin cu 300.000 de comenzi un
+  // backup are ~390MB, deci 28 de copii ar cere ~11GB pe discul persistent,
+  // iar verificarea de spatiu ar incepe sa sara peste backup-uri -- adica ai
+  // ramane fara copii de siguranta fara sa observi. Patru copii inseamna
+  // ultimele 24 de ore.
+  //
+  // Rularea e intr-un proces separat (lib/backup.js): VACUUM INTO e sincron
+  // si, executat aici, ar bloca tot serverul cateva secunde bune la fiecare
+  // rulare. Masurat pe 300.000 de comenzi: 4,98s de blocare inainte, 24ms acum.
+  const BACKUP_RETENTION = Number(process.env.BACKUP_RETENTION || 4);
+  async function runFrequentBackup() {
     try {
-      const backupPath = db.createBackup(28);
-      console.log(`Backup creat: ${backupPath}`);
+      const r = await backup.createBackupInBackground(BACKUP_RETENTION);
+      if (r.created) console.log(`Backup creat în ${(r.ms / 1000).toFixed(1)}s: ${r.path}`);
+      else console.warn(`Backup omis -- ${r.reason}. Mărește discul persistent pe Render, sau redu BACKUP_RETENTION.`);
     } catch (e) {
       console.error('Eroare la crearea backup-ului:', e.message);
     }
   }
-  runFrequentBackup();
+  // NU la pornire: dupa un deploy, primele minute sunt cele in care Render
+  // verifica daca serverul raspunde, iar un backup pornit exact atunci ar
+  // concura degeaba cu cererile reale. Primul vine dupa 5 minute.
+  setTimeout(runFrequentBackup, 5 * 60 * 1000);
   setInterval(runFrequentBackup, 6 * 60 * 60 * 1000);
 
   // orice cont a carui stergere a fost intrerupta (repornire, cadere) isi
