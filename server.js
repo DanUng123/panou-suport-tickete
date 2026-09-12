@@ -1619,6 +1619,29 @@ server.listen(PORT, () => {
   console.log(`Ticket support app rulează pe http://localhost:${PORT}`);
   const syncIntervalMs = Number(process.env.MERCHANTPRO_SYNC_INTERVAL_MS || 2 * 60 * 1000);
   orderSync.startBackgroundSync(syncIntervalMs);
+
+  // Completeaza indexul de cautare al comenzilor pentru randurile salvate
+  // inainte ca el sa existe. Ruleaza in loturi mici, cu pauza intre ele:
+  // node:sqlite e sincron, deci un lot mare ar tine serverul blocat.
+  (function completeazaIndexulDeCautare() {
+    let total = 0;
+    const pas = () => {
+      let procesate = 0;
+      try {
+        procesate = db.backfillOrderSearchIndex(1000);
+      } catch (e) {
+        console.error('Indexare comenzi pentru căutare — eroare:', e.message);
+        return;
+      }
+      total += procesate;
+      if (procesate > 0) {
+        setTimeout(pas, 250);
+      } else if (total > 0) {
+        console.log(`Index de căutare completat pentru ${total} comenzi existente.`);
+      }
+    };
+    setTimeout(pas, 5000); // lasam serverul sa porneasca linistit
+  }());
   // NOTA: job-ul de polling (samedayTrackingPoller) nu mai e necesar --
   // am descoperit si confirmat live un endpoint real, per-AWB
   // (GET /api/client/parcel/{awb}/status-history), care ofera istoric
