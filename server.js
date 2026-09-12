@@ -117,6 +117,57 @@ function pragComenzi(company) {
   return inceputZileiPentru(company.createdAt);
 }
 
+// ---------- ștergerea contului, în fundal ----------
+// Contul e deja marcat si scos din circulatie in momentul in care ajungem
+// aici; ce ramane e sa dispara randurile. Le stergem in portii, cu o pauza
+// intre ele: node:sqlite e sincron, deci o singura tranzactie peste 900.000 de
+// comenzi ar tine tot serverul blocat zeci de secunde, pentru toate
+// companiile. Pauza lasa cererile celorlalti sa fie servite intre portii.
+const stergeriInCurs = new Set();
+
+function stergeContulInFundal(companyId, companyName) {
+  if (stergeriInCurs.has(companyId)) return;
+  stergeriInCurs.add(companyId);
+
+  const total = {};
+  const inceput = Date.now();
+  const portie = () => {
+    let rezultat;
+    try {
+      rezultat = db.deleteCompanyChunk(companyId);
+    } catch (e) {
+      stergeriInCurs.delete(companyId);
+      // contul ramane marcat, deci e in continuare inaccesibil; stergerea se
+      // reia la urmatoarea pornire a serverului
+      console.error(`Ștergere cont ${companyName} (${companyId}) întreruptă: ${e.message}. Se reia la repornire.`);
+      return;
+    }
+    for (const [k, v] of Object.entries(rezultat.deleted)) total[k] = (total[k] || 0) + v;
+    if (rezultat.done) {
+      stergeriInCurs.delete(companyId);
+      console.log(`Cont șters definitiv: ${companyName} (${companyId}) în ${Math.round((Date.now() - inceput) / 1000)}s`, total);
+      return;
+    }
+    setTimeout(portie, 20);
+  };
+  setTimeout(portie, 0);
+}
+
+/** La pornire, reluam orice ștergere rămasă neterminată dintr-o rulare anterioară. */
+function reiaStergerileNeterminate() {
+  let inCurs;
+  try {
+    inCurs = db.listCompaniesPendingDeletion();
+  } catch (e) {
+    console.error('Nu am putut verifica ștergerile neterminate:', e.message);
+    return;
+  }
+  for (const c of inCurs) {
+    console.log(`Reiau ștergerea contului ${c.name} (${c.id}), cerută la ${c.deletionStartedAt}`);
+    stergeContulInFundal(c.id, c.name);
+  }
+}
+
 function createSession(agentId) {
   const token = crypto.randomBytes(24).toString('hex');
   sessions.set(token, { agentId, expiresAt: Date.now() + SESSION_TTL_MS });
@@ -895,7 +946,7 @@ async function handleApi(req, res, pathname, query) {
       return;
     }
 
-    // Ștergerea propriu-zisă. Ireversibilă, imediată.
+    // Ștergerea propriu-zisă. Ireversibilă.
     if (pathname === '/api/company/delete' && req.method === 'POST') {
       if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot șterge contul companiei' });
       const body = await readBody(req);
@@ -917,17 +968,23 @@ async function handleApi(req, res, pathname, query) {
         if (agentIds.has(entry.agentId)) sessions.delete(token);
       }
 
-      let result;
+      // Contul e scos din circulație ACUM, printr-o singură scriere: nu se
+      // mai poate intra în el, nu mai apare nicăieri și nu se mai
+      // sincronizează. Ștergerea rândurilor -- care la sute de mii de comenzi
+      // durează -- se face după ce am răspuns, ca managerul să nu aștepte în
+      // fața unui ecran blocat.
+      let marcat;
       try {
-        result = db.deleteCompanyCompletely(currentAgent.companyId);
+        marcat = db.markCompanyForDeletion(currentAgent.companyId);
       } catch (e) {
-        return sendJSON(res, 500, { error: `Ștergerea nu a putut fi finalizată: ${e.message}` });
+        return sendJSON(res, 500, { error: `Ștergerea nu a putut fi pornită: ${e.message}` });
       }
-      if (!result) return sendJSON(res, 404, { error: 'Companie negăsită' });
+      if (!marcat) return sendJSON(res, 404, { error: 'Companie negăsită' });
 
-      console.log(`Cont șters definitiv: ${result.companyName} (${currentAgent.companyId})`, result.deleted);
+      console.log(`Ștergere cont pornită: ${marcat.companyName} (${currentAgent.companyId})`);
+      stergeContulInFundal(currentAgent.companyId, marcat.companyName);
       res.setHeader('Set-Cookie', 'session=; HttpOnly; Secure; Path=/; Max-Age=0');
-      return sendJSON(res, 200, { ok: true, deleted: result.deleted });
+      return sendJSON(res, 200, { ok: true, deletionStarted: true });
     }
 
     if (pathname === '/api/stats' && req.method === 'GET') {
@@ -1931,4 +1988,8 @@ server.listen(PORT, () => {
   }
   runFrequentBackup();
   setInterval(runFrequentBackup, 6 * 60 * 60 * 1000);
+
+  // orice cont a carui stergere a fost intrerupta (repornire, cadere) isi
+  // continua stergerea de aici; el e deja inaccesibil, doar randurile au ramas
+  reiaStergerileNeterminate();
 });
