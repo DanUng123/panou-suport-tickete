@@ -4182,54 +4182,6 @@ async function renderSettings() {
     </form>
   `));
 
-  // ---- De când apar comenzile în paginile de lucru ----
-  // Se completează automat în ziua în care magazinul își conectează platforma
-  // de eCommerce. E vizibilă și modificabilă pentru că cele două momente pot
-  // să nu coincidă: un cont făcut acum două săptămâni și un magazin conectat
-  // azi ar arăta altfel comenzile decât se așteaptă cineva.
-  const pragZi = s.ordersVisibleFromDay || '';
-  body.appendChild(el(`
-    <section class="panel" id="ordersCutoffCard" style="margin-top:22px;">
-      <h2 style="margin:0 0 4px;font-size:16px;">Istoricul de comenzi</h2>
-      <div class="hint" style="margin-bottom:12px;">
-        În <strong>Comenzi</strong>, <strong>statistici</strong> și <strong>profilul clientului</strong> apar doar comenzile începând cu data de mai jos.
-        Tot ce e mai vechi — istoricul preluat din magazin — rămâne în <strong>Clienți totali</strong>.
-      </div>
-      <div class="form-row">
-        <div class="field">
-          <label for="s-orders-from">Comenzile apar începând cu</label>
-          <input type="date" id="s-orders-from" value="${escapeHtml(pragZi)}" />
-          <div class="hint" style="margin-top:6px;">
-            ${s.ordersVisibleFromAuto
-              ? 'Momentan e dedusă din data creării contului. Pune ziua în care ai conectat magazinul.'
-              : 'Setată pentru acest magazin. Golește câmpul ca să revii la valoarea automată.'}
-          </div>
-        </div>
-        <div class="field" style="align-self:end;">
-          <button type="button" class="btn" id="ordersCutoffSaveBtn">Salvează data</button>
-        </div>
-      </div>
-    </section>
-  `));
-
-  content.querySelector('#ordersCutoffSaveBtn').addEventListener('click', async (e) => {
-    const btn = e.currentTarget;
-    btn.disabled = true;
-    btn.textContent = 'Se salvează…';
-    try {
-      await api('/api/company/settings', {
-        method: 'PATCH',
-        body: JSON.stringify({ ordersVisibleFrom: content.querySelector('#s-orders-from').value || '' }),
-      });
-      showToast('Data a fost salvată');
-      renderSettings();
-    } catch (err) {
-      showToast('Eroare: ' + err.message);
-      btn.disabled = false;
-      btn.textContent = 'Salvează data';
-    }
-  });
-
   // ---- Zonă periculoasă: descărcarea datelor și ștergerea contului ----
   body.appendChild(el(`
     <section class="danger-zone" id="dangerZone">

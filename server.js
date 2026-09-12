@@ -681,13 +681,6 @@ async function handleApi(req, res, pathname, query) {
         samedayPasswordSet: Boolean(samedayPassword),
         gomagApiKeySet: Boolean(gomagApiKey),
         pttPasswordSet: Boolean(pttPassword),
-        // pragul efectiv aplicat acum -- fie cel salvat, fie cel dedus din
-        // data contului; interfata arata ce se intampla, nu doar ce e in baza
-        ordersVisibleFromEffective: pragComenzi(company) || null,
-        // ziua romaneasca a pragului -- vara, momentul e 21:00 UTC din ziua
-        // precedenta, deci taierea din ISO ar arata o zi in urma in formular
-        ordersVisibleFromDay: ziRomaneasca(pragComenzi(company)),
-        ordersVisibleFromAuto: !company.ordersVisibleFrom,
       });
     }
 
@@ -703,9 +696,12 @@ async function handleApi(req, res, pathname, query) {
       if (patch.gomagApiKey === '') delete patch.gomagApiKey;
       if (patch.pttPassword === '') delete patch.pttPassword;
 
-      // Data de la care comenzile apar in paginile de lucru. Interfata trimite
-      // o zi calendaristica ("2026-09-12"); o transformam in momentul exact al
-      // orei 00:00 din Romania. Sir gol = revenim la comportamentul automat.
+      // Data de la care comenzile apar in paginile de lucru. Se completeaza
+      // singura cand magazinul se conecteaza prima data, deci nu are camp in
+      // Setari -- ruta o accepta totusi, ca sa poata fi corectata punctual un
+      // magazin conectat inainte ca mecanismul sa existe. Se trimite o zi
+      // calendaristica ("2026-09-12"), transformata in ora 00:00 din Romania;
+      // sir gol = revenire la comportamentul automat.
       if (patch.ordersVisibleFrom !== undefined) {
         const zi = String(patch.ordersVisibleFrom).trim();
         if (!zi) {
