@@ -4202,33 +4202,15 @@ async function renderSettings() {
       <div class="dz-row dz-row-danger">
         <div class="dz-text">
           <div class="dz-title">Șterge contul companiei</div>
-          <div class="dz-desc" id="dzDeleteDesc">Șterge definitiv compania și toate datele ei. Ireversibil — nu există coș de gunoi și nu putem recupera nimic după.</div>
+          <div class="dz-desc">Se șterg definitiv toate comenzile, tichetele, comentariile, fotografiile și conturile de utilizator ale companiei, împreună cu credențialele de integrare. Ireversibil — nu există coș de gunoi și nu putem recupera nimic după.</div>
         </div>
         <button type="button" class="btn btn-danger dz-btn" id="dzDeleteBtn">Șterge contul</button>
       </div>
     </section>
   `));
 
-  // sumarul a ce se va șterge, adus în fundal (nu blochează afișarea paginii)
-  let deletionSummary = null;
-  api('/api/company/deletion-summary').then((sum) => {
-    deletionSummary = sum;
-    const c = sum.counts || {};
-    const parts = [];
-    const add = (n, unu, multe) => { if (n > 0) parts.push(`${n.toLocaleString('ro-RO')} ${n === 1 ? unu : multe}`); };
-    add(c.orders, 'comandă', 'comenzi');
-    add(c.tickets, 'tichet', 'tichete');
-    add(c.comments, 'comentariu', 'comentarii');
-    add(c.ticketPhotos, 'fotografie', 'fotografii');
-    add(c.agents, 'cont de utilizator', 'conturi de utilizator');
-    const descEl = content.querySelector('#dzDeleteDesc');
-    if (descEl && parts.length) {
-      descEl.textContent = `Se vor șterge definitiv ${parts.join(', ')}, împreună cu credențialele de integrare. Ireversibil — nu există coș de gunoi și nu putem recupera nimic după.`;
-    }
-  }).catch(() => { /* sumarul e informativ; butonul funcționează și fără el */ });
-
   content.querySelector('#dzDeleteBtn').addEventListener('click', () => {
-    const companyName = (deletionSummary && deletionSummary.companyName) || '';
+    const companyName = s.name || '';
     const form = el(`
       <div class="dz-modal">
         <p class="dz-warn">Această acțiune șterge definitiv compania <strong>${escapeHtml(companyName)}</strong> și toate datele ei din Easy-Ticket. Nu se poate anula.</p>

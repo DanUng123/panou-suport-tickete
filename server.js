@@ -839,15 +839,6 @@ async function handleApi(req, res, pathname, query) {
 
     // ---------- ștergerea contului de companie (GDPR art. 17) ----------
 
-    // Ce se va șterge -- afișat în interfață, înainte de confirmare.
-    if (pathname === '/api/company/deletion-summary' && req.method === 'GET') {
-      if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot șterge contul companiei' });
-      return sendJSON(res, 200, {
-        companyName: company.name,
-        counts: db.getCompanyDataCounts(currentAgent.companyId),
-      });
-    }
-
     // Exportul complet al datelor, înainte de ștergere. Scris în flux, lot cu
     // lot: la sute de mii de comenzi, un JSON construit întâi în memorie ar
     // depăși memoria serverului.
