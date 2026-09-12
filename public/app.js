@@ -4190,7 +4190,7 @@ async function renderSettings() {
     </form>
   `));
 
-  // ---- Zonă periculoasă: descărcarea datelor și ștergerea contului ----
+  // ---- Zonă periculoasă: ștergerea contului ----
   body.appendChild(el(`
     <section class="danger-zone" id="dangerZone">
       <div class="dz-head">
@@ -4199,13 +4199,6 @@ async function renderSettings() {
           <h2>Zonă periculoasă</h2>
           <div class="dz-sub">Acțiuni care nu pot fi anulate.</div>
         </div>
-      </div>
-      <div class="dz-row">
-        <div class="dz-text">
-          <div class="dz-title">Descarcă datele companiei</div>
-          <div class="dz-desc">Un singur fișier JSON cu tot ce ține de compania ta: comenzi, tichete, comentarii, note și istoric. Fotografiile atașate tichetelor și PDF-urile AWB nu sunt incluse.</div>
-        </div>
-        <a class="btn dz-btn" id="dzExportBtn" href="/api/company/export" download>↓ Descarcă</a>
       </div>
       <div class="dz-row dz-row-danger">
         <div class="dz-text">
@@ -4222,7 +4215,6 @@ async function renderSettings() {
     const form = el(`
       <div class="dz-modal">
         <p class="dz-warn">Această acțiune șterge definitiv compania <strong>${escapeHtml(companyName)}</strong> și toate datele ei din Easy-Ticket. Nu se poate anula.</p>
-        <p class="dz-hint">Dacă vrei să păstrezi o copie, închide fereastra și apasă întâi <strong>Descarcă</strong>.</p>
         <div class="field">
           <label>Scrie numele companiei, exact: <code>${escapeHtml(companyName)}</code></label>
           <input type="text" id="dzConfirmName" autocomplete="off" placeholder="${escapeHtml(companyName)}" />
