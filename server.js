@@ -399,6 +399,7 @@ async function handleApi(req, res, pathname, query) {
         companyName: magazin.name,
         theme: magazin.formTheme === 'dark' ? 'dark' : 'light',
         accent: magazin.formAccent || null,
+        autoColors: magazin.formAutoColors !== 0,
       });
     }
 

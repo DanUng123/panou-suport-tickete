@@ -2076,16 +2076,29 @@ html.mod-integrat #app { min-height: 0; display: block; }
   min-height: 0;
   padding: 0;
   background: transparent;
-  align-items: flex-start;
+  align-items: center;
   justify-content: flex-start;
 }
 .cerere-screen.integrat .cerere-card {
-  max-width: none;
+  /* îngust și centrat: pe un magazin lat, un formular întins pe toată pagina
+     arată a pagină străină lipită acolo, nu a secțiune din site */
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
   border: none;
   box-shadow: none;
   background: transparent;
   padding: 4px 2px 8px;
 }
+
+/* densitate mai strânsă în formular — trei pași care încap fără derulare */
+.cerere-card h1 { font-size: 19px; }
+.cerere-card .sub { font-size: 14px; margin-bottom: 16px; }
+.cerere-card .field { margin-bottom: 12px; }
+.cerere-card .cerere-eticheta { margin: 14px 0 6px; }
+.cerere-card .cerere-tip { padding: 9px 12px; }
+.cerere-card .cerere-produs { padding: 7px 9px; }
+.cerere-card .form-actions { margin-top: 14px; }
 .cerere-screen.integrat .auth-brand,
 .cerere-screen.integrat .cerere-subsol { display: none; }
 

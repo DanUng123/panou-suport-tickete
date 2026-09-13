@@ -1028,6 +1028,39 @@ function renderCerereClient(slug, { integrat = false } = {}) {
     ultimaInaltime = h;
     try { window.parent.postMessage({ type: 'easyticket:inaltime', slug, height: h }, '*'); } catch (e) { /* gazda o ignora */ }
   };
+  // ---- culorile magazinului, citite de scriptul de pe pagina lui ----
+  // Din cadru nu putem vedea cum arata site-ul gazda (origini diferite), asa ca
+  // ni le trimite el. Validam fiecare valoare: o culoare inseamna doar #rrggbb
+  // sau rgb(...), iar fontul doar nume de familii -- nimic altceva nu ajunge
+  // intr-un stil.
+  let autoCulori = true;
+  let temaPrimita = null;
+  const eCuloare = (v) => /^#[0-9a-fA-F]{3,8}$/.test(String(v || '')) || /^rgba?\([\d.,\s/%]+\)$/.test(String(v || ''));
+  const eFont = (v) => /^[\w\s,'"\-]{1,200}$/.test(String(v || ''));
+
+  function aplicaTemaGazdei(tema) {
+    if (!autoCulori || !tema) return;
+    const pune = (nume, valoare, verifica) => { if (verifica(valoare)) ecran.style.setProperty(nume, valoare); };
+    pune('--accent', tema.accent, eCuloare);
+    pune('--accent-text', tema.accentText, eCuloare);
+    pune('--text', tema.text, eCuloare);
+    if (eFont(tema.font)) ecran.style.setProperty('font-family', tema.font);
+    // fundalul gazdei ne spune daca site-ul e deschis sau inchis la culoare --
+    // mai de incredere decat setarea din platforma, pentru ca e chiar pagina lui
+    const f = String(tema.bg || '');
+    if (/^#[0-9a-fA-F]{6}$/.test(f)) {
+      const lum = (0.299 * parseInt(f.slice(1, 3), 16) + 0.587 * parseInt(f.slice(3, 5), 16) + 0.114 * parseInt(f.slice(5, 7), 16)) / 255;
+      ecran.classList.toggle('tema-deschisa', lum > 0.5);
+    }
+    requestAnimationFrame(anuntaInaltimea);
+  }
+
+  window.addEventListener('message', (e) => {
+    if (!e.data || e.data.type !== 'easyticket:tema') return;
+    temaPrimita = e.data.tema || null;
+    aplicaTemaGazdei(temaPrimita);
+  });
+
   // dupa fiecare schimbare de continut, plus la incarcarea imaginilor de produs
   const observator = new MutationObserver(() => requestAnimationFrame(anuntaInaltimea));
   observator.observe(ecran, { childList: true, subtree: true });
@@ -1239,7 +1272,9 @@ function renderCerereClient(slug, { integrat = false } = {}) {
       ecran.querySelector('#cerereMagazin').textContent = info.companyName;
       // tema si culoarea alese de magazin, ca formularul sa semene cu site-ul lui
       if (info.theme !== 'dark') ecran.classList.add('tema-deschisa');
+      autoCulori = info.autoColors !== false;
       if (/^#[0-9a-fA-F]{6}$/.test(info.accent || '')) ecran.style.setProperty('--accent', info.accent);
+      if (temaPrimita) aplicaTemaGazdei(temaPrimita);
       pasIdentificare();
     } catch (e) {
       ecran.querySelector('#cerereMagazin').textContent = '';
@@ -4363,19 +4398,8 @@ async function renderSettings() {
   // ---- Formularul integrat în magazin ----
   const bazaSite = location.origin;
   const slugFormular = s.publicFormSlug || '';
-  const codIntegrare = (slug) => `<!-- Formular retur / service -->
-<iframe id="formular-cereri" src="${bazaSite}/embed/${slug}"
-        style="width:100%;border:0;min-height:320px" loading="lazy"
-        title="Formular cereri"></iframe>
-<script>
-window.addEventListener('message', function (e) {
-  if (e.origin !== '${bazaSite}') return;
-  if (!e.data || e.data.type !== 'easyticket:inaltime') return;
-  var c = document.getElementById('formular-cereri');
-  c.style.height = e.data.height + 'px';
-  c.style.minHeight = '0';   // inaltimea de pornire a fost doar un loc rezervat
-});
-<\/script>`;
+  const codIntegrare = (slug) => `<div id="easyticket-formular"></div>
+<script src="${bazaSite}/formular.js" data-slug="${slug}" async><\/script>`;
 
   body.appendChild(el(`
     <section class="panel" id="cardFormular" style="margin-top:22px;">
@@ -4386,7 +4410,14 @@ window.addEventListener('message', function (e) {
         clientul nu pleacă de pe site.
       </div>
 
-      <div class="form-row">
+      <label class="cerere-produs" style="margin-bottom:12px;">
+        <input type="checkbox" id="s-form-auto" ${s.formAutoColors !== 0 ? 'checked' : ''} />
+        <span class="cerere-produs-text">
+          <span class="cerere-produs-nume">Preia automat culorile magazinului</span>
+          <span class="cerere-produs-sub">Formularul citește culoarea, fundalul și fontul din pagina în care e pus, și se potrivește singur.</span>
+        </span>
+      </label>
+      <div class="form-row" id="culoriManuale">
         <div class="field">
           <label for="s-form-tema">Temă</label>
           <select id="s-form-tema">
@@ -4418,11 +4449,15 @@ window.addEventListener('message', function (e) {
         <a class="btn" href="/cerere/${escapeHtml(slugFormular)}" target="_blank" rel="noopener">Deschide separat</a>
       </div>
       <div class="hint" style="margin-top:8px;">
-        În MerchantPro: creează o pagină nouă (ex. „Retur și service"), treci editorul pe HTML și lipește codul.
-        Cadrul își potrivește singur înălțimea, deci nu apar bare de derulare.
+        În MerchantPro: creează o pagină nouă (ex. „Retur și service"), treci editorul pe HTML și lipește cele două rânduri.
+        Formularul își potrivește singur înălțimea și se așază centrat în pagină.
       </div>
 
       <div class="cerere-eticheta" style="margin-top:18px;">Așa îl vede clientul tău</div>
+      <div class="hint" style="margin-bottom:2px;">
+        Previzualizarea folosește culorile alese mai jos. În magazin, dacă preluarea automată e pornită,
+        formularul își ia culorile chiar de acolo.
+      </div>
       <div class="previzualizare-formular" id="previzualizare"></div>
     </section>
   `));
@@ -4432,6 +4467,15 @@ window.addEventListener('message', function (e) {
     gazda.innerHTML = `<iframe src="/embed/${encodeURIComponent(slugFormular)}?v=${Date.now()}" style="height:320px"></iframe>`;
   }
   reincarcaPrevizualizarea();
+
+  function actualizeazaCulorileManuale() {
+    const auto = content.querySelector('#s-form-auto').checked;
+    const zona = content.querySelector('#culoriManuale');
+    zona.style.opacity = auto ? '0.5' : '1';
+    zona.querySelectorAll('input, select').forEach((c) => { c.disabled = auto; });
+  }
+  content.querySelector('#s-form-auto').addEventListener('change', actualizeazaCulorileManuale);
+  actualizeazaCulorileManuale();
 
   // previzualizarea isi potriveste inaltimea la fel ca la magazin -- ca sa vada
   // exact ce va vedea si clientul lui
@@ -4464,6 +4508,7 @@ window.addEventListener('message', function (e) {
           formTheme: content.querySelector('#s-form-tema').value,
           formAccent: content.querySelector('#s-form-culoare').value,
           formEmbedDomains: content.querySelector('#s-form-domenii').value.trim(),
+          formAutoColors: content.querySelector('#s-form-auto').checked,
         }),
       });
       showToast('Aspect salvat');
