@@ -1307,7 +1307,7 @@ function renderCerereClient(slug, { integrat = false } = {}) {
 
     zona.innerHTML = `
       <h1>Câteva detalii</h1>
-      <p class="sub">Cu cât ne spui mai clar ce s-a întâmplat, cu atât rezolvăm mai repede.</p>
+      <p class="sub">Mai avem nevoie doar de câteva lucruri și trimitem cererea.</p>
       ${mesaj ? eroare(mesaj) : ''}
       <form id="formDetalii" autocomplete="off">
         <input type="text" id="cCapcana" name="website" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px;" aria-hidden="true" />
@@ -1321,10 +1321,6 @@ function renderCerereClient(slug, { integrat = false } = {}) {
             : '<input type="text" id="cMotiv" maxlength="200" placeholder="ex. Produsul nu pornește" />'}
         </div>
         ${eSchimb ? blocSchimb() : ''}
-        <div class="field">
-          <label for="cDesc">Descrie problema</label>
-          <textarea id="cDesc" rows="4" maxlength="4000" required placeholder="Ce s-a întâmplat, când ai observat, ce ai încercat…"></textarea>
-        </div>
         <div class="field" id="campPoze">
           <label for="cPoze">Fotografii <span id="cPozeCerinta">(opțional, maximum 6)</span></label>
           <input type="file" id="cPoze" accept="image/*" multiple />
@@ -1332,7 +1328,12 @@ function renderCerereClient(slug, { integrat = false } = {}) {
         </div>
         ${cost > 0 && tip !== 'service' ? `
         <div class="cerere-cost">
-          Transportul ${eSchimb ? 'coletului la schimb' : 'returului'} costă <strong>${bani(cost)}</strong> și se reține din suma care ți se rambursează.
+          ${eSchimb
+            // La schimb nu exista rambursare din care sa se retina ceva:
+            // clientul primeste alt produs, nu bani inapoi. Deci costul e o
+            // informare, iar magazinul ii spune cum se achita.
+            ? `Transportul coletului la schimb costă <strong>${bani(cost)}</strong>. ${escapeHtml(magazin || 'Magazinul')} îți spune cum se achită, odată cu confirmarea cererii.`
+            : `Transportul returului costă <strong>${bani(cost)}</strong> și se reține din suma care ți se rambursează.`}
         </div>` : ''}
         ${cereIban ? `
         <div class="cerere-eticheta">Unde îți trimitem banii</div>
@@ -1408,10 +1409,17 @@ function renderCerereClient(slug, { integrat = false } = {}) {
       const campulCautarii = zona.querySelector('#cCautaProdus').closest('.field');
 
       // „cod · preț", dar fără punctul despărțitor când unul dintre ele lipsește
-      const subtitluProdus = (p) => [
-        p.sku ? escapeHtml(p.sku) : null,
-        p.price != null ? `${escapeHtml(Number(p.price).toFixed(2))} ${escapeHtml(p.currency || comanda.currency || 'RON')}` : null,
-      ].filter(Boolean).join(' · ');
+      const subtitluProdus = (p) => {
+        const moneda = escapeHtml(p.currency || comanda.currency || 'RON');
+        // la reducere aratam pretul vechi taiat, ca pe raftul magazinului --
+        // altfel clientul care stie ca produsul e la promotie n-ar avea de unde
+        // sti ca pretul de aici e chiar cel redus
+        const pret = p.price == null ? null
+          : (p.oldPrice != null && p.oldPrice > p.price
+            ? `<s>${escapeHtml(Number(p.oldPrice).toFixed(2))}</s> ${escapeHtml(Number(p.price).toFixed(2))} ${moneda}`
+            : `${escapeHtml(Number(p.price).toFixed(2))} ${moneda}`);
+        return [p.sku ? escapeHtml(p.sku) : null, pret].filter(Boolean).join(' · ');
+      };
 
       function deseneazaAles() {
         campulCautarii.hidden = Boolean(produsAles);
@@ -1539,7 +1547,7 @@ function renderCerereClient(slug, { integrat = false } = {}) {
             slug, type: tip,
             orderNumber: comanda.number, phone: comanda.phone,
             itemIndexes: alese,
-            reason: q('#cMotiv'), description: q('#cDesc'),
+            reason: q('#cMotiv'),
             exchangeMode: eSchimb ? modSchimb : undefined,
             wantedProductId: eSchimb && modSchimb === 'other' && produsAles ? produsAles.id : undefined,
             wantedVariantId: eSchimb && modSchimb === 'other' ? variantaAleasa : undefined,
@@ -1564,7 +1572,9 @@ function renderCerereClient(slug, { integrat = false } = {}) {
         <p class="sub">${rezultat.autoApproved
           ? `${escapeHtml(magazin || 'Magazinul')} acceptă cererea și îți trimite pașii următori pentru trimiterea coletului.`
           : `${escapeHtml(magazin || 'Magazinul')} a fost anunțat și îți va răspunde în cel mai scurt timp.`}</p>
-        ${rezultat.transportCost > 0 ? `<div class="cerere-cost">Din suma rambursată se reține <strong>${Number(rezultat.transportCost).toFixed(2)} ${escapeHtml(rezultat.currency || 'RON')}</strong>, costul transportului.</div>` : ''}
+        ${rezultat.transportCost > 0 ? `<div class="cerere-cost">${rezultat.transportDeducted
+          ? `Din suma rambursată se reține <strong>${Number(rezultat.transportCost).toFixed(2)} ${escapeHtml(rezultat.currency || 'RON')}</strong>, costul transportului.`
+          : `Transportul coletului la schimb costă <strong>${Number(rezultat.transportCost).toFixed(2)} ${escapeHtml(rezultat.currency || 'RON')}</strong>.`}</div>` : ''}
         ${rezultat.reference ? `<div class="cerere-referinta">Număr cerere<strong>${escapeHtml(rezultat.reference)}</strong></div>` : ''}
         <p class="hint">Poți închide pagina. Dacă mai ai o problemă, deschide din nou linkul primit de la magazin.</p>
       </div>
@@ -4882,15 +4892,17 @@ async function renderSettings() {
       <div class="catalog-stare" id="catalogStare">Se verifică catalogul…</div>
 
       <div class="cerere-eticheta" style="margin-top:18px;">Costul transportului</div>
-      <div class="hint" style="margin-bottom:10px;">Se reține din suma rambursată, iar clientul vede cât i se reține înainte să trimită cererea. Lasă 0 dacă transportul e pe seama ta.</div>
+      <div class="hint" style="margin-bottom:10px;">În ambele cazuri clientul vede costul înainte să trimită cererea. Lasă 0 dacă transportul e pe seama ta.</div>
       <div class="form-row">
         <div class="field">
           <label for="r-cost-retur">Transport retur</label>
           <input type="number" id="r-cost-retur" min="0" step="0.01" value="${Number(R.transportCost) || 0}" />
+          <div class="hint" style="margin-top:6px;">Se reține din suma rambursată.</div>
         </div>
         <div class="field">
           <label for="r-cost-schimb">Transport colet la schimb</label>
           <input type="number" id="r-cost-schimb" min="0" step="0.01" value="${Number(R.exchangeTransportCost) || 0}" />
+          <div class="hint" style="margin-top:6px;">Doar informare — la schimb nu rambursezi nimic, deci nu ai din ce reține. Costul apare și în tichet, ca să știi să-l încasezi.</div>
         </div>
       </div>
 

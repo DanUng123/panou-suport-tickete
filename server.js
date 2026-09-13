@@ -559,9 +559,10 @@ async function handleApi(req, res, pathname, query) {
         return sendJSON(res, 409, { error: 'Există deja o cerere trimisă pentru această comandă. Magazinul o are în lucru — așteaptă te rog răspunsul lor.' });
       }
 
-      const descriere = String(body.description || '').trim();
-      if (!descriere) return sendJSON(res, 400, { error: 'Scrie te rog câteva cuvinte despre problemă.' });
-      if (descriere.length > 4000) return sendJSON(res, 400, { error: 'Descrierea e prea lungă.' });
+      // Descrierea libera a fost scoasa din formular: motivul se alege dintr-o
+      // lista, iar un camp gol de text nu adauga nimic peste el. Ruta o
+      // accepta in continuare, daca vine, dar nu o mai cere.
+      const descriere = String(body.description || '').trim().slice(0, 4000);
 
       const toateProdusele = comanda.lineItems || [];
       const alese = Array.isArray(body.itemIndexes)
@@ -655,6 +656,8 @@ async function handleApi(req, res, pathname, query) {
       // primeste.
       const costTransport = body.type === 'schimb' ? reguli.exchangeTransportCost : reguli.transportCost;
       const monedaComanda = comanda.currency || 'RON';
+      // doar returul produce o rambursare din care se poate retine ceva
+      const retineDinRambursare = body.type === 'retur';
 
       const descriereCompleta = [
         `Cerere trimisă de client prin formularul online.`,
@@ -664,13 +667,19 @@ async function handleApi(req, res, pathname, query) {
         produsDorit ? `\nProdusul dorit la schimb: ${produsDorit}` : null,
         ``,
         motiv ? `Motiv: ${motiv}` : null,
-        costTransport > 0 && body.type !== 'service'
+        // La retur exista o suma de rambursat, deci transportul se scade din
+        // ea. La schimb NU se ramburseaza nimic -- clientul primeste alt
+        // produs -- deci acolo costul e doar o informare, si scrie asa si in
+        // tichet, ca sa nu retina cineva din nimic.
+        costTransport > 0 && retineDinRambursare
           ? `Transport de reținut din rambursare: ${costTransport.toFixed(2)} ${monedaComanda} (clientul a fost informat)`
+          : null,
+        costTransport > 0 && body.type === 'schimb'
+          ? `Transport schimb: ${costTransport.toFixed(2)} ${monedaComanda} — de încasat de la client (la schimb nu există sumă de rambursat). Clientul a fost informat de cost.`
           : null,
         termen.unlimited ? null : `Termen: cerere trimisă cu ${termen.daysLeft} ${termen.daysLeft === 1 ? 'zi' : 'zile'} înainte de expirare (${termen.deadline}).`,
         reguli.autoApprove ? 'Aprobare automată: da (magazinul a ales să accepte cererile fără verificare prealabilă).' : null,
-        `Mesajul clientului:`,
-        descriere,
+        descriere ? `Mesajul clientului:\n${descriere}` : null,
       ].filter((l) => l !== null).join('\n');
 
       const adresa = String(body.pickupAddress || comanda.shippingAddress || '').trim().slice(0, 300);
@@ -712,6 +721,7 @@ async function handleApi(req, res, pathname, query) {
         type: tip.eticheta,
         autoApproved: reguli.autoApprove,
         transportCost: body.type !== 'service' ? costTransport : 0,
+        transportDeducted: retineDinRambursare,
         currency: monedaComanda,
       });
     }
@@ -1060,6 +1070,23 @@ async function handleApi(req, res, pathname, query) {
     if (pathname === '/api/company/catalog' && req.method === 'GET') {
       if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot vedea catalogul.' });
       return sendJSON(res, 200, catalog.catalogState(currentAgent.companyId));
+    }
+
+    // Diagnostic: raspunsul BRUT al magazinului pentru un produs, ca sa putem
+    // vedea cum isi tine el preturile de promotie -- numele campurilor difera
+    // de la un magazin la altul si nu sunt documentate complet. Doar date de
+    // produs, niciun client, nicio credentiala.
+    if (pathname === '/api/company/catalog/diagnostic' && req.method === 'GET') {
+      if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot rula diagnosticul.' });
+      const company = db.getCompany(currentAgent.companyId);
+      if (!mp.isConfigured(company)) return sendJSON(res, 400, { error: 'Integrarea MerchantPro nu e configurată.' });
+      try {
+        const cale = `/api/v2/products?include=images,variants&limit=2${query.q ? `&name=${encodeURIComponent(String(query.q).slice(0, 100))}` : ''}`;
+        const brut = await mp.requestRaw(company, 'GET', cale);
+        return sendJSON(res, 200, brut);
+      } catch (e) {
+        return sendJSON(res, 502, { error: e.message });
+      }
     }
 
     if (pathname === '/api/company/catalog/sync' && req.method === 'POST') {
