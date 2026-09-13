@@ -1407,6 +1407,12 @@ function renderCerereClient(slug, { integrat = false } = {}) {
       // rezultatele nu se mai deseneaza peste o alegere facuta.
       const campulCautarii = zona.querySelector('#cCautaProdus').closest('.field');
 
+      // „cod · preț", dar fără punctul despărțitor când unul dintre ele lipsește
+      const subtitluProdus = (p) => [
+        p.sku ? escapeHtml(p.sku) : null,
+        p.price != null ? `${escapeHtml(Number(p.price).toFixed(2))} ${escapeHtml(p.currency || comanda.currency || 'RON')}` : null,
+      ].filter(Boolean).join(' · ');
+
       function deseneazaAles() {
         campulCautarii.hidden = Boolean(produsAles);
         if (!produsAles) { cutieAles.innerHTML = ''; return; }
@@ -1418,7 +1424,7 @@ function renderCerereClient(slug, { integrat = false } = {}) {
               : '<div class="cerere-produs-poza-goala">—</div>'}
             <div class="cerere-produs-ales-text">
               <strong>${escapeHtml(produsAles.name)}</strong>
-              <span>${produsAles.sku ? escapeHtml(produsAles.sku) + ' · ' : ''}${produsAles.price != null ? escapeHtml(Number(produsAles.price).toFixed(2)) + ' ' + escapeHtml(produsAles.currency || comanda.currency || 'RON') : ''}</span>
+              <span>${subtitluProdus(produsAles)}</span>
             </div>
             <button type="button" class="btn btn-sm" id="renuntaProdus">Schimbă</button>
           </div>
@@ -1429,7 +1435,14 @@ function renderCerereClient(slug, { integrat = false } = {}) {
                  peste formularul unui magazin romanesc. Verificam noi. -->
             <select id="cVarianta">
               <option value="">Alege varianta…</option>
-              ${v.map((x) => `<option value="${escapeHtml(String(x.id))}"${String(variantaAleasa) === String(x.id) ? ' selected' : ''}>${escapeHtml(x.name || x.sku || ('Varianta ' + x.id))}</option>`).join('')}
+              ${v.map((x) => {
+                // pretul variantei apare doar cand difera de al produsului --
+                // repetat identic pe fiecare rand ar fi doar zgomot
+                const dif = x.price != null && x.price !== produsAles.price;
+                const eticheta = (x.name || x.sku || ('Varianta ' + x.id))
+                  + (dif ? ` — ${Number(x.price).toFixed(2)} ${produsAles.currency || comanda.currency || 'RON'}` : '');
+                return `<option value="${escapeHtml(String(x.id))}"${String(variantaAleasa) === String(x.id) ? ' selected' : ''}>${escapeHtml(eticheta)}</option>`;
+              }).join('')}
             </select>
           </div>` : ''}`;
         cutieAles.querySelector('#renuntaProdus').addEventListener('click', () => {
@@ -1457,7 +1470,7 @@ function renderCerereClient(slug, { integrat = false } = {}) {
               : '<div class="cerere-produs-poza-goala">—</div>'}
             <span class="cerere-produs-text">
               <span class="cerere-produs-nume">${escapeHtml(p.name)}</span>
-              <span class="cerere-produs-sub">${p.sku ? escapeHtml(p.sku) + ' · ' : ''}${p.price != null ? escapeHtml(Number(p.price).toFixed(2)) + ' ' + escapeHtml(p.currency || comanda.currency || 'RON') : ''}</span>
+              <span class="cerere-produs-sub">${subtitluProdus(p)}</span>
             </span>
           </button>`).join('');
         rezultate.querySelectorAll('.cerere-produs-optiune').forEach((b) => b.addEventListener('click', () => {

@@ -631,11 +631,14 @@ async function handleApi(req, res, pathname, query) {
           if (Array.isArray(ales.variants) && ales.variants.length && !variantaAleasa) {
             return sendJSON(res, 400, { error: 'Alege te rog varianta dorită (mărime, culoare).' });
           }
+          // o varianta poate avea pretul ei (marimea mare costa mai mult);
+          // cand il are, el e pretul cererii, nu cel al produsului de baza
+          const pretulAles = (variantaAleasa && variantaAleasa.price != null) ? variantaAleasa.price : ales.price;
           produsDorit = [
             ales.name,
             variantaAleasa && variantaAleasa.name ? `— ${variantaAleasa.name}` : null,
-            ales.sku ? `(cod ${ales.sku})` : null,
-            ales.price != null ? `· ${Number(ales.price).toFixed(2)} ${ales.currency || comanda.currency || 'RON'}` : null,
+            (variantaAleasa && variantaAleasa.sku) || ales.sku ? `(cod ${(variantaAleasa && variantaAleasa.sku) || ales.sku})` : null,
+            pretulAles != null ? `· ${Number(pretulAles).toFixed(2)} ${ales.currency || comanda.currency || 'RON'}` : null,
           ].filter(Boolean).join(' ');
         } else if (!reguli.exchangeSame) {
           return sendJSON(res, 400, { error: 'Alege te rog produsul dorit din listă.' });
