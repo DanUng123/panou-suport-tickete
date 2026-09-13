@@ -1080,10 +1080,32 @@ async function handleApi(req, res, pathname, query) {
       if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot rula diagnosticul.' });
       const company = db.getCompany(currentAgent.companyId);
       if (!mp.isConfigured(company)) return sendJSON(res, 400, { error: 'Integrarea MerchantPro nu e configurată.' });
+      // MerchantPro nu are un filtru "name" pe produse -- cererea e respinsa cu
+      // "No such filter `name` defined". Deci nu cautam la ei dupa nume:
+      // gasim produsul in catalogul nostru local, care are deja denumirile, si
+      // cerem apoi de la ei exact produsul acela, dupa id.
+      const cautat = String(query.q || '').trim();
+      let idCerut = null;
+      if (cautat) {
+        if (/^\d+$/.test(cautat)) {
+          idCerut = cautat; // omul a scris direct id-ul sau codul
+        } else {
+          const gasite = db.searchCompanyProducts(currentAgent.companyId, cautat, 1);
+          if (!gasite.length) {
+            return sendJSON(res, 404, { error: 'Nu am găsit produsul în catalogul adus. Încearcă alt cuvânt din denumire, sau adu întâi catalogul.' });
+          }
+          idCerut = gasite[0].id;
+        }
+      }
       try {
-        const cale = `/api/v2/products?include=images,variants&limit=2${query.q ? `&name=${encodeURIComponent(String(query.q).slice(0, 100))}` : ''}`;
-        const brut = await mp.requestRaw(company, 'GET', cale);
-        return sendJSON(res, 200, brut);
+        const brut = idCerut
+          ? await mp.requestRaw(company, 'GET', `/api/v2/products/${encodeURIComponent(idCerut)}?include=images,variants`)
+          : await mp.requestRaw(company, 'GET', '/api/v2/products?include=images,variants&limit=2');
+        // raspunsul pentru un singur produs vine ca obiect, cel pentru o lista
+        // ca tablou -- il aducem mereu la tablou, ca sa nu stie interfata de
+        // diferenta asta
+        const lista = Array.isArray(brut && brut.data) ? brut.data : (brut && brut.data ? [brut.data] : []);
+        return sendJSON(res, 200, { data: lista });
       } catch (e) {
         return sendJSON(res, 502, { error: e.message });
       }
