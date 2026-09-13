@@ -95,6 +95,34 @@ function fmtDate(iso) {
     d.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' });
 }
 
+/** „13 sept. 2026, 14:32" — pentru panoul de administrare, unde ora conteaza. */
+function fmtDateTime(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString('ro-RO', { day: 'numeric', month: 'short', year: 'numeric' })
+    + ', ' + d.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' });
+}
+
+/** „acum 3 ore", „acum 2 zile" — cat de proaspata e o data. */
+function fmtRelativ(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const sec = Math.max(0, Math.round((Date.now() - d.getTime()) / 1000));
+  if (sec < 90) return 'acum câteva secunde';
+  const min = Math.round(sec / 60);
+  if (min < 60) return `acum ${min} ${min === 1 ? 'minut' : 'minute'}`;
+  const ore = Math.round(min / 60);
+  if (ore < 24) return `acum ${ore} ${ore === 1 ? 'oră' : 'ore'}`;
+  const zile = Math.round(ore / 24);
+  if (zile < 30) return `acum ${zile} ${zile === 1 ? 'zi' : 'zile'}`;
+  const luni = Math.round(zile / 30);
+  if (luni < 12) return `acum ${luni} ${luni === 1 ? 'lună' : 'luni'}`;
+  const ani = Math.round(luni / 12);
+  return `acum ${ani} ${ani === 1 ? 'an' : 'ani'}`;
+}
+
 function fmtShortDate(date) {
   if (!date) return '—';
   return date.toLocaleDateString('ro-RO', { day: '2-digit', month: 'short' });
@@ -688,6 +716,7 @@ async function renderPlatformAdminPanel() {
         <div style="display:flex;align-items:center;gap:12px;padding:6px 0 8px;border-bottom:2px solid var(--border);font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.03em;">
           <div style="flex:1.5;min-width:0;">Companie</div>
           <div style="flex:1;min-width:0;">Înregistrată</div>
+          <div style="flex:1.3;min-width:0;">Ultima autentificare</div>
           <div style="flex:0.7;min-width:0;">Agenți</div>
           <div style="flex:0.8;min-width:0;">Status</div>
           <div style="flex-shrink:0;width:110px;"></div>
@@ -697,6 +726,12 @@ async function renderPlatformAdminPanel() {
         <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);font-size:13px;">
           <div style="flex:1.5;min-width:0;font-weight:500;">${escapeHtml(c.name)}${c.isTestAccount ? ' <span class="badge" style="background:rgba(59,130,246,0.15);color:var(--accent);font-size:10.5px;">contul tău</span>' : ''}</div>
           <div style="flex:1;min-width:0;color:var(--text-secondary);">${escapeHtml(fmtDate(c.createdAt))}</div>
+          <div style="flex:1.3;min-width:0;">
+            ${c.lastLoginAt
+              ? `<div style="color:var(--text);">${escapeHtml(fmtDateTime(c.lastLoginAt))}</div>
+                 <div style="font-size:11.5px;color:var(--text-dim);">${escapeHtml(fmtRelativ(c.lastLoginAt))}${c.lastLoginAgentName ? ' · ' + escapeHtml(c.lastLoginAgentName) : ''}</div>`
+              : '<span style="color:var(--text-dim);">niciodată</span>'}
+          </div>
           <div style="flex:0.7;min-width:0;color:var(--text-secondary);">${c.agentCount}</div>
           <div style="flex:0.8;min-width:0;">
             <span class="badge" style="background:${c.active ? 'rgba(52,211,153,0.18)' : 'rgba(248,113,113,0.18)'};color:${c.active ? 'var(--status-resolved)' : 'var(--priority-urgent)'};">${c.active ? '✓ Activă' : '✕ Dezactivată'}</span>

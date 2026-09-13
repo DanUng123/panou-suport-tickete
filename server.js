@@ -396,6 +396,7 @@ async function handleApi(req, res, pathname, query) {
       }
       try {
         const { company, agent } = db.createCompany({ companyName, agentName, email, password });
+        db.recordAgentLogin(agent.id);
         const token = createSession(agent.id);
         res.setHeader('Set-Cookie', `session=${token}; HttpOnly; Secure; Path=/; SameSite=Lax`);
         return sendJSON(res, 201, { company, agent });
@@ -420,6 +421,7 @@ async function handleApi(req, res, pathname, query) {
         return sendJSON(res, 401, { error: 'Credențiale invalide' });
       }
       clearFailedAttempts(email);
+      db.recordAgentLogin(agent.id);
       const token = createSession(agent.id);
       res.setHeader('Set-Cookie', `session=${token}; HttpOnly; Secure; Path=/; SameSite=Lax`);
       return sendJSON(res, 200, agent);
