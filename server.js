@@ -29,6 +29,7 @@ const gomag = require('./lib/gomag');
 const resend = require('./lib/resend');
 const pdf = require('./lib/pdf');
 const backup = require('./lib/backup');
+const catalog = require('./lib/catalog');
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -427,6 +428,25 @@ async function handleApi(req, res, pathname, query) {
       });
     }
 
+    // Produsele din care alege clientul la "colet la schimb". Cautarea e
+    // locala, in catalogul copiat de la magazin -- nu atinge API-ul lui.
+    const cautareProduseMatch = pathname.match(/^\/api\/public\/cerere\/([^/]+)\/produse$/);
+    if (cautareProduseMatch && req.method === 'GET') {
+      // plafon larg: clientul scrie, deci vin mai multe cereri la rand de la
+      // acelasi om, iar operatorii de mobil pun mii de abonati pe un IP
+      if (isRateLimited('cerere-produse', req, 120, 10 * 60 * 1000)) {
+        return sendJSON(res, 429, { error: 'Prea multe căutări. Încearcă din nou peste puțin timp.' });
+      }
+      const magazin = db.findCompanyByPublicSlug(cautareProduseMatch[1]);
+      if (!magazin) return sendJSON(res, 404, { error: 'Formular inexistent.' });
+      const reguli = db.getReturSettings(magazin);
+      // catalogul nu se expune decat daca magazinul chiar ofera schimbul cu
+      // alt produs -- altfel ar fi doar o cale de a citi ce vinde, fara cont
+      if (!reguli.exchangeOther) return sendJSON(res, 403, { error: 'Magazinul nu oferă schimbul cu alt produs.' });
+      const produse = db.searchCompanyProducts(magazin.id, String(query.q || '').slice(0, 100), 12);
+      return sendJSON(res, 200, { products: produse });
+    }
+
     // Pasul 1: clientul isi dovedeste comanda cu numarul ei si telefonul.
     if (pathname === '/api/public/cerere/verificare' && req.method === 'POST') {
       // Doua plase diferite, pentru doua probleme diferite.
@@ -589,18 +609,36 @@ async function handleApi(req, res, pathname, query) {
         if (titular.length > 120) return sendJSON(res, 400, { error: 'Numele titularului e prea lung.' });
       }
 
-      // La schimb, cand magazinul permite si alt produs, clientul poate scrie
-      // ce vrea in loc. Deocamdata e text liber -- alegerea din catalog vine
-      // cand punem citirea catalogului in integrare.
+      // La schimb: fie acelasi produs, fie altul ales din catalogul
+      // magazinului. Produsul ales se re-citeste din catalogul nostru dupa id,
+      // nu se preia numele trimis de client -- altfel oricine ar putea scrie
+      // in tichet ce produs vrea, la ce pret vrea.
       let produsDorit = null;
       if (body.type === 'schimb') {
-        produsDorit = String(body.wantedProduct || '').trim().slice(0, 300);
-        if (!reguli.exchangeOther && produsDorit) produsDorit = null;
         if (!reguli.exchangeSame && !reguli.exchangeOther) {
           return sendJSON(res, 400, { error: 'Magazinul nu face schimburi prin formular.' });
         }
-        if (!reguli.exchangeSame && !produsDorit) {
-          return sendJSON(res, 400, { error: 'Scrie te rog cu ce produs vrei să faci schimbul.' });
+        const vreaAltul = body.exchangeMode === 'other' || (!reguli.exchangeSame && reguli.exchangeOther);
+        if (vreaAltul) {
+          if (!reguli.exchangeOther) return sendJSON(res, 400, { error: 'Magazinul înlocuiește doar cu același produs.' });
+          const ales = body.wantedProductId ? db.getCompanyProduct(magazin.id, String(body.wantedProductId)) : null;
+          if (!ales) return sendJSON(res, 400, { error: 'Alege te rog produsul dorit din listă.' });
+          // varianta (marime/culoare), daca produsul are asa ceva
+          let variantaAleasa = null;
+          if (body.wantedVariantId && Array.isArray(ales.variants)) {
+            variantaAleasa = ales.variants.find((v) => String(v.id) === String(body.wantedVariantId)) || null;
+          }
+          if (Array.isArray(ales.variants) && ales.variants.length && !variantaAleasa) {
+            return sendJSON(res, 400, { error: 'Alege te rog varianta dorită (mărime, culoare).' });
+          }
+          produsDorit = [
+            ales.name,
+            variantaAleasa && variantaAleasa.name ? `— ${variantaAleasa.name}` : null,
+            ales.sku ? `(cod ${ales.sku})` : null,
+            ales.price != null ? `· ${Number(ales.price).toFixed(2)} ${ales.currency || comanda.currency || 'RON'}` : null,
+          ].filter(Boolean).join(' ');
+        } else if (!reguli.exchangeSame) {
+          return sendJSON(res, 400, { error: 'Alege te rog produsul dorit din listă.' });
         }
       }
 
@@ -1003,10 +1041,32 @@ async function handleApi(req, res, pathname, query) {
       if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot modifica setările de retur.' });
       const body = await readBody(req);
       try {
-        return sendJSON(res, 200, db.saveReturSettings(currentAgent.companyId, body));
+        const salvat = db.saveReturSettings(currentAgent.companyId, body);
+        // Cand magazinul tocmai a pornit schimbul cu alt produs, are nevoie de
+        // catalog ca sa aiba clientul din ce alege. Il aducem pe loc, in
+        // fundal, nu la prima cerere a unui client.
+        if (salvat.exchangeOther) {
+          try { catalog.refreshIfStale(db.getCompany(currentAgent.companyId)); } catch (e) { /* raportat in log */ }
+        }
+        return sendJSON(res, 200, salvat);
       } catch (e) {
         return sendJSON(res, 400, { error: e.message });
       }
+    }
+
+    if (pathname === '/api/company/catalog' && req.method === 'GET') {
+      if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot vedea catalogul.' });
+      return sendJSON(res, 200, catalog.catalogState(currentAgent.companyId));
+    }
+
+    if (pathname === '/api/company/catalog/sync' && req.method === 'POST') {
+      if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot aduce catalogul.' });
+      const company = db.getCompany(currentAgent.companyId);
+      if (!mp.isConfigured(company)) {
+        return sendJSON(res, 400, { error: 'Completează întâi datele de MerchantPro în Setări — de acolo luăm catalogul.' });
+      }
+      const pornit = catalog.startImport(company);
+      return sendJSON(res, 202, { started: pornit, ...catalog.catalogState(currentAgent.companyId) });
     }
 
     const toggleIntegrationMatch = pathname.match(/^\/api\/company\/integrations\/([^/]+)\/active$/);
@@ -2202,4 +2262,8 @@ server.listen(PORT, () => {
   // orice cont a carui stergere a fost intrerupta (repornire, cadere) isi
   // continua stergerea de aici; el e deja inaccesibil, doar randurile au ramas
   reiaStergerileNeterminate();
+
+  // catalogul magazinelor care folosesc schimbul cu alt produs, reimprospatat
+  // o data pe zi -- ca sa nu ofere formularul produse scoase de la vanzare
+  catalog.startBackgroundCatalogSync();
 });

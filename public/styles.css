@@ -1982,6 +1982,35 @@ a { color: inherit; text-decoration: none; }
   color: var(--text);
 }
 
+/* alegerea produsului la „colet la schimb" */
+.cerere-mod-schimb { margin-bottom: 10px; }
+/* rezultatele cautarii sunt butoane, nu etichete cu bifa: se apasa, nu se bifeaza */
+.cerere-produs-optiune {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.cerere-produs-optiune:hover { border-color: var(--accent); }
+.cerere-produs-ales {
+  display: flex; align-items: center; gap: 10px;
+  margin: 4px 0 12px;
+  padding: 10px;
+  border-radius: 9px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.cerere-produs-ales img {
+  width: 44px; height: 44px; flex: 0 0 44px;
+  object-fit: cover; border-radius: 7px;
+}
+.cerere-produs-ales-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 auto; }
+.cerere-produs-ales-text strong {
+  font-size: 13.5px; font-weight: 600; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cerere-produs-ales-text span { font-size: 12px; color: var(--text-dim); }
+
 /* Cate zile mai are clientul. Sta sus, langa numarul comenzii: e prima
    intrebare pe care si-o pune cineva care vrea sa returneze ceva. */
 .cerere-termen {
@@ -2018,6 +2047,15 @@ a { color: inherit; text-decoration: none; }
    .hint și în afara unui .field, ca text explicativ sub un titlu, iar acolo
    rămânea cât textul normal. */
 #cardRetur .hint, #cardFormular .hint { font-size: 12.5px; line-height: 1.5; color: var(--text-dim); }
+
+/* starea catalogului de produse, în Setări */
+.catalog-stare {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 2px 0 4px 34px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+.catalog-stare .catalog-eroare { color: var(--priority-urgent); }
 
 /* un rând din editorul de motive, în Setări */
 .motiv-rand {

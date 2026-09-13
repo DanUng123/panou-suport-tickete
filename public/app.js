@@ -1102,6 +1102,11 @@ function renderCerereClient(slug, { integrat = false } = {}) {
   let reguli = REGULI_CERERE_IMPLICITE;
   let fereastra = null;   // termenul de retur calculat pentru comanda gasita
   let dejaCerut = false;  // comanda are deja o cerere, iar magazinul nu accepta mai multe
+  // alegerea pentru "colet la schimb"; stau aici, nu in pasul de detalii, ca sa
+  // nu se piarda daca pasul se redeseneaza dupa o eroare
+  let modSchimb = 'same';   // 'same' = acelasi produs, 'other' = alt produs din magazin
+  let produsAles = null;
+  let variantaAleasa = null;
 
   const eroare = (mesaj) => `<div class="error-msg">${escapeHtml(mesaj)}</div>`;
 
@@ -1233,6 +1238,7 @@ function renderCerereClient(slug, { integrat = false } = {}) {
       </div>
     `;
     zona.querySelectorAll('.cerere-tip').forEach((b) => b.addEventListener('click', () => {
+      if (tip !== b.dataset.tip) { produsAles = null; variantaAleasa = null; }
       tip = b.dataset.tip;
       zona.querySelectorAll('.cerere-tip').forEach((x) => x.classList.toggle('ales', x.dataset.tip === tip));
     }));
@@ -1263,6 +1269,42 @@ function renderCerereClient(slug, { integrat = false } = {}) {
       return ales ? ales.photo : 'optional';
     };
 
+    // Magazinul poate oferi una dintre variante, sau pe amandoua. Cand oferă
+    // doar una, nu punem clientul sa aleaga intre o singura optiune.
+    if (!reguli.exchangeOther) modSchimb = 'same';
+    else if (!reguli.exchangeSame) modSchimb = 'other';
+
+    function blocSchimb() {
+      const ambele = reguli.exchangeSame && reguli.exchangeOther;
+      return `
+        <div class="cerere-eticheta">Cu ce înlocuim</div>
+        ${ambele ? `
+        <div class="cerere-mod-schimb">
+          <label class="cerere-produs">
+            <input type="radio" name="modSchimb" value="same" ${modSchimb === 'same' ? 'checked' : ''} />
+            <span class="cerere-produs-text">
+              <span class="cerere-produs-nume">Același produs</span>
+              <span class="cerere-produs-sub">Îl înlocuiți bucată cu bucată, aceeași referință.</span>
+            </span>
+          </label>
+          <label class="cerere-produs">
+            <input type="radio" name="modSchimb" value="other" ${modSchimb === 'other' ? 'checked' : ''} />
+            <span class="cerere-produs-text">
+              <span class="cerere-produs-nume">Alt produs din magazin</span>
+              <span class="cerere-produs-sub">Alegi tu produsul dorit din lista de mai jos.</span>
+            </span>
+          </label>
+        </div>` : ''}
+        <div id="alegereProdus" ${modSchimb === 'other' ? '' : 'hidden'}>
+          <div class="field">
+            <label for="cCautaProdus">Caută produsul dorit</label>
+            <input type="text" id="cCautaProdus" autocomplete="off" placeholder="Scrie numele sau codul produsului" />
+          </div>
+          <div id="rezultateProduse" class="cerere-produse"></div>
+          <div id="produsAlesCutie"></div>
+        </div>`;
+    }
+
     zona.innerHTML = `
       <h1>Câteva detalii</h1>
       <p class="sub">Cu cât ne spui mai clar ce s-a întâmplat, cu atât rezolvăm mai repede.</p>
@@ -1278,14 +1320,7 @@ function renderCerereClient(slug, { integrat = false } = {}) {
             </select>`
             : '<input type="text" id="cMotiv" maxlength="200" placeholder="ex. Produsul nu pornește" />'}
         </div>
-        ${eSchimb && reguli.exchangeOther ? `
-        <div class="field">
-          <label for="cProdusDorit">Cu ce produs vrei să faci schimbul${reguli.exchangeSame ? ' (opțional)' : ''}</label>
-          <input type="text" id="cProdusDorit" maxlength="300" ${reguli.exchangeSame ? '' : 'required'} placeholder="Numele sau codul produsului dorit" />
-          <div class="hint" style="margin-top:6px;">${reguli.exchangeSame
-            ? 'Lasă gol dacă vrei același produs, doar înlocuit.'
-            : 'Magazinul înlocuiește doar cu alt produs, nu cu același.'}</div>
-        </div>` : ''}
+        ${eSchimb ? blocSchimb() : ''}
         <div class="field">
           <label for="cDesc">Descrie problema</label>
           <textarea id="cDesc" rows="4" maxlength="4000" required placeholder="Ce s-a întâmplat, când ai observat, ce ai încercat…"></textarea>
@@ -1360,6 +1395,112 @@ function renderCerereClient(slug, { integrat = false } = {}) {
       if (poze.length) info.textContent = `${poze.length} ${poze.length === 1 ? 'fotografie pregătită' : 'fotografii pregătite'}.`;
     });
 
+    // ---- alegerea produsului la schimb ----
+    if (eSchimb) {
+      const zonaAlegere = zona.querySelector('#alegereProdus');
+      const rezultate = zona.querySelector('#rezultateProduse');
+      const cutieAles = zona.querySelector('#produsAlesCutie');
+      const campCauta = zona.querySelector('#cCautaProdus');
+
+      // Campul de cautare dispare cat timp exista un produs ales, si revine la
+      // "Schimbă". Altfel ramanea acolo, primea text, si nu se intampla nimic:
+      // rezultatele nu se mai deseneaza peste o alegere facuta.
+      const campulCautarii = zona.querySelector('#cCautaProdus').closest('.field');
+
+      function deseneazaAles() {
+        campulCautarii.hidden = Boolean(produsAles);
+        if (!produsAles) { cutieAles.innerHTML = ''; return; }
+        const v = produsAles.variants || [];
+        cutieAles.innerHTML = `
+          <div class="cerere-produs-ales">
+            ${produsAles.imageUrl
+              ? `<img src="${escapeHtml(produsAles.imageUrl)}" alt="" onerror="this.remove()" />`
+              : '<div class="cerere-produs-poza-goala">—</div>'}
+            <div class="cerere-produs-ales-text">
+              <strong>${escapeHtml(produsAles.name)}</strong>
+              <span>${produsAles.sku ? escapeHtml(produsAles.sku) + ' · ' : ''}${produsAles.price != null ? escapeHtml(Number(produsAles.price).toFixed(2)) + ' ' + escapeHtml(produsAles.currency || comanda.currency || 'RON') : ''}</span>
+            </div>
+            <button type="button" class="btn btn-sm" id="renuntaProdus">Schimbă</button>
+          </div>
+          ${v.length ? `
+          <div class="field">
+            <label for="cVarianta">Varianta dorită</label>
+            <!-- fara "required": browserul ar afisa mesajul lui, in limba lui,
+                 peste formularul unui magazin romanesc. Verificam noi. -->
+            <select id="cVarianta">
+              <option value="">Alege varianta…</option>
+              ${v.map((x) => `<option value="${escapeHtml(String(x.id))}"${String(variantaAleasa) === String(x.id) ? ' selected' : ''}>${escapeHtml(x.name || x.sku || ('Varianta ' + x.id))}</option>`).join('')}
+            </select>
+          </div>` : ''}`;
+        cutieAles.querySelector('#renuntaProdus').addEventListener('click', () => {
+          produsAles = null; variantaAleasa = null;
+          deseneazaAles();
+          campCauta.value = '';
+          rezultate.innerHTML = '';
+          campCauta.focus();
+        });
+        const selVar = cutieAles.querySelector('#cVarianta');
+        if (selVar) selVar.addEventListener('change', () => { variantaAleasa = selVar.value; });
+        rezultate.innerHTML = '';
+      }
+
+      function deseneazaRezultate(produse) {
+        if (produsAles) return;
+        if (!produse.length) {
+          rezultate.innerHTML = '<div class="hint">Niciun produs găsit. Încearcă alt cuvânt din denumire.</div>';
+          return;
+        }
+        rezultate.innerHTML = produse.map((p) => `
+          <button type="button" class="cerere-produs cerere-produs-optiune" data-id="${escapeHtml(String(p.id))}">
+            ${p.imageUrl
+              ? `<img src="${escapeHtml(p.imageUrl)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'cerere-produs-poza-goala',textContent:'—'}))" />`
+              : '<div class="cerere-produs-poza-goala">—</div>'}
+            <span class="cerere-produs-text">
+              <span class="cerere-produs-nume">${escapeHtml(p.name)}</span>
+              <span class="cerere-produs-sub">${p.sku ? escapeHtml(p.sku) + ' · ' : ''}${p.price != null ? escapeHtml(Number(p.price).toFixed(2)) + ' ' + escapeHtml(p.currency || comanda.currency || 'RON') : ''}</span>
+            </span>
+          </button>`).join('');
+        rezultate.querySelectorAll('.cerere-produs-optiune').forEach((b) => b.addEventListener('click', () => {
+          produsAles = produse.find((p) => String(p.id) === b.dataset.id) || null;
+          // cand produsul are o singura varianta, nu are ce alege clientul
+          variantaAleasa = produsAles && produsAles.variants && produsAles.variants.length === 1
+            ? String(produsAles.variants[0].id) : null;
+          deseneazaAles();
+        }));
+      }
+
+      // Cautam la o scurta pauza dupa ce omul s-a oprit din scris, nu la
+      // fiecare tasta -- si ignoram raspunsurile intarziate ale unei cautari
+      // vechi, care altfel ar suprascrie rezultatele celei noi.
+      let ceas = null;
+      let ultimaCerere = 0;
+      async function cauta() {
+        const q = campCauta.value.trim();
+        const semn = ++ultimaCerere;
+        try {
+          const r = await api(`/api/public/cerere/${encodeURIComponent(slug)}/produse?q=${encodeURIComponent(q)}`);
+          if (semn !== ultimaCerere) return;
+          deseneazaRezultate(r.products || []);
+        } catch (e) {
+          if (semn !== ultimaCerere) return;
+          rezultate.innerHTML = '<div class="hint">Lista de produse nu e disponibilă acum. Scrie în descriere ce produs vrei în loc.</div>';
+        }
+      }
+      campCauta.addEventListener('input', () => {
+        clearTimeout(ceas);
+        ceas = setTimeout(cauta, 250);
+      });
+
+      zona.querySelectorAll('input[name=modSchimb]').forEach((r) => r.addEventListener('change', () => {
+        modSchimb = r.value;
+        zonaAlegere.hidden = modSchimb !== 'other';
+        if (modSchimb === 'other' && !produsAles && !rezultate.children.length) cauta();
+      }));
+
+      deseneazaAles();
+      if (modSchimb === 'other' && !produsAles) cauta(); // primele produse, ca punct de plecare
+    }
+
     zona.querySelector('#cerereInapoi2').addEventListener('click', () => pasTipSiProduse());
     zona.querySelector('#formDetalii').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -1367,6 +1508,12 @@ function renderCerereClient(slug, { integrat = false } = {}) {
       // scris pe drum
       if (regulaFotoCurenta() === 'required' && !poze.length) {
         return pasDetalii(alese, 'Pentru motivul ales avem nevoie de cel puțin o fotografie a produsului.');
+      }
+      if (eSchimb && modSchimb === 'other') {
+        if (!produsAles) return pasDetalii(alese, 'Alege te rog produsul cu care vrei să faci schimbul.');
+        if ((produsAles.variants || []).length && !variantaAleasa) {
+          return pasDetalii(alese, 'Alege te rog varianta dorită (mărime, culoare).');
+        }
       }
       const btn = zona.querySelector('button[type=submit]');
       btn.disabled = true;
@@ -1380,7 +1527,9 @@ function renderCerereClient(slug, { integrat = false } = {}) {
             orderNumber: comanda.number, phone: comanda.phone,
             itemIndexes: alese,
             reason: q('#cMotiv'), description: q('#cDesc'),
-            wantedProduct: q('#cProdusDorit'),
+            exchangeMode: eSchimb ? modSchimb : undefined,
+            wantedProductId: eSchimb && modSchimb === 'other' && produsAles ? produsAles.id : undefined,
+            wantedVariantId: eSchimb && modSchimb === 'other' ? variantaAleasa : undefined,
             iban: q('#cIban'), accountHolder: q('#cTitular'),
             pickupAddress: q('#cAdresa'), pickupCity: q('#cOras'), pickupPostalCode: q('#cCod'),
             website: q('#cCapcana'),
@@ -4716,7 +4865,8 @@ async function renderSettings() {
 
       <div class="cerere-eticheta" style="margin-top:18px;">Schimbul cu alt produs</div>
       ${bifa('r-schimb-acelasi', R.exchangeSame, 'Schimb cu același produs', 'Înlocuire bucată cu bucată, aceeași referință.')}
-      ${bifa('r-schimb-altul', R.exchangeOther, 'Schimb cu alt produs', 'Clientul scrie ce produs vrea în loc. Când legăm catalogul magazinului, va putea alege direct din el.')}
+      ${bifa('r-schimb-altul', R.exchangeOther, 'Schimb cu alt produs', 'Clientul alege produsul dorit direct din catalogul magazinului tău.')}
+      <div class="catalog-stare" id="catalogStare">Se verifică catalogul…</div>
 
       <div class="cerere-eticheta" style="margin-top:18px;">Costul transportului</div>
       <div class="hint" style="margin-bottom:10px;">Se reține din suma rambursată, iar clientul vede cât i se reține înainte să trimită cererea. Lasă 0 dacă transportul e pe seama ta.</div>
@@ -4766,6 +4916,50 @@ async function renderSettings() {
   (R.reasons || []).forEach(randMotiv);
   content.querySelector('#adaugaMotiv').addEventListener('click', () => randMotiv({ text: '', photo: 'optional' }));
 
+  // ---- catalogul din care alege clientul la schimb ----
+  // Îl ținem copiat la noi, ca să nu depindă căutarea clientului de viteza
+  // magazinului; aici arătăm cât de proaspătă e copia și dăm un buton de
+  // reîmprospătare pentru cine tocmai a adăugat produse noi.
+  const zonaCatalog = content.querySelector('#catalogStare');
+  let ceasCatalog = null;
+  async function aratăCatalogul() {
+    let stare;
+    try {
+      stare = await api('/api/company/catalog');
+    } catch (e) {
+      zonaCatalog.textContent = 'Catalogul nu a putut fi verificat.';
+      return;
+    }
+    const cand = stare.lastSyncedAt ? fmtDateTime(stare.lastSyncedAt) : null;
+    const rand = stare.running
+      ? 'Se aduce catalogul din magazin…'
+      : stare.count
+        ? `${stare.count} produse în catalog${cand ? `, aduse ${escapeHtml(cand)}` : ''}.`
+        : 'Catalogul nu a fost adus încă — fără el, clientul nu are din ce alege.';
+    const eroare = !stare.running && stare.last && stare.last.ok === false ? stare.last.error : null;
+    zonaCatalog.innerHTML = `
+      <span>${rand}</span>
+      ${eroare ? `<span class="catalog-eroare">${escapeHtml(eroare)}</span>` : ''}
+      <button type="button" class="btn btn-sm" id="aduCatalog" ${stare.running ? 'disabled' : ''}>
+        ${stare.count ? 'Reîmprospătează' : 'Adu catalogul'}
+      </button>`;
+    const btn = zonaCatalog.querySelector('#aduCatalog');
+    if (btn) btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        await api('/api/company/catalog/sync', { method: 'POST' });
+        showToast('Aducem catalogul — durează un minut la magazinele mari.');
+      } catch (err) {
+        showToast('Eroare: ' + err.message);
+      }
+      aratăCatalogul();
+    });
+    // cât timp importul rulează, ne uităm din nou peste câteva secunde
+    clearTimeout(ceasCatalog);
+    if (stare.running) ceasCatalog = setTimeout(aratăCatalogul, 4000);
+  }
+  aratăCatalogul();
+
   content.querySelector('#salveazaRetur').addEventListener('click', async (e) => {
     const btn = e.currentTarget;
     const tipuri = ['retur', 'service', 'schimb'].filter((t) => content.querySelector(`#r-tip-${t}`).checked);
@@ -4795,6 +4989,7 @@ async function renderSettings() {
       });
       showToast('Regulile de retur au fost salvate');
       reincarcaPrevizualizarea();
+      aratăCatalogul();
     } catch (err) {
       showToast('Eroare: ' + err.message);
     } finally {
