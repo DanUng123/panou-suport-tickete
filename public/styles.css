@@ -1982,6 +1982,68 @@ a { color: inherit; text-decoration: none; }
   color: var(--text);
 }
 
+/* Cate zile mai are clientul. Sta sus, langa numarul comenzii: e prima
+   intrebare pe care si-o pune cineva care vrea sa returneze ceva. */
+.cerere-termen {
+  margin: 10px 0 4px;
+  padding: 9px 12px;
+  border-radius: 9px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
+}
+.cerere-termen strong { color: var(--text); font-weight: 600; }
+
+/* Scazamantul din rambursare. Nu e o eroare, dar e o veste pe care clientul
+   trebuie s-o vada inainte sa trimita, nu dupa. */
+.cerere-cost {
+  margin: 4px 0 16px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--status-waiting) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--status-waiting) 32%, transparent);
+}
+.cerere-cost strong { color: var(--text); font-weight: 600; }
+.cerere-screen.tema-deschisa .cerere-termen,
+.cerere-screen.tema-deschisa .cerere-cost { color: var(--text-secondary); }
+.cerere-screen.tema-deschisa .cerere-termen strong,
+.cerere-screen.tema-deschisa .cerere-cost strong { color: var(--text); }
+
+/* Aceeași poveste ca la .cerere-card: în cele două carduri de mai jos folosim
+   .hint și în afara unui .field, ca text explicativ sub un titlu, iar acolo
+   rămânea cât textul normal. */
+#cardRetur .hint, #cardFormular .hint { font-size: 12.5px; line-height: 1.5; color: var(--text-dim); }
+
+/* un rând din editorul de motive, în Setări */
+.motiv-rand {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 8px;
+}
+.motiv-rand .motiv-text { flex: 1 1 auto; min-width: 0; }
+.motiv-rand .motiv-foto { flex: 0 0 190px; }
+.motiv-rand input, .motiv-rand select {
+  /* stilul general de formular tinteste doar campurile din .field */
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+}
+.motiv-rand .motiv-sterge { flex: 0 0 auto; }
+@media (max-width: 620px) {
+  .motiv-rand { flex-wrap: wrap; }
+  .motiv-rand .motiv-text { flex: 1 1 100%; }
+  .motiv-rand .motiv-foto { flex: 1 1 auto; }
+}
+
 /* linkul, în Setări */
 .link-formular {
   display: flex; align-items: center; gap: 8px;
@@ -2045,6 +2107,12 @@ a { color: inherit; text-decoration: none; }
      pe fond alb. */
   color: var(--text);
 }
+/* .hint isi ia marimea mica doar in interiorul unui .field; in formularul de
+   cereri il folosim si de sine statator (sub o listă, sub un titlu), iar acolo
+   ramanea la marimea textului normal -- adica mai mare decat eticheta de
+   deasupra lui. */
+.cerere-card .hint { font-size: 12.5px; line-height: 1.5; color: var(--text-dim); }
+
 .cerere-screen.tema-deschisa h1,
 .cerere-screen.tema-deschisa .cerere-tip-titlu,
 .cerere-screen.tema-deschisa .cerere-produs-nume,

@@ -993,6 +993,28 @@ const TIPURI_CERERE_PUBLICE = [
   { cod: 'schimb', titlu: 'Colet la schimb', descriere: 'Vreau să înlocuiesc produsul cu altul.' },
 ];
 
+// Regulile pe care le presupunem cat timp nu am primit inca raspunsul
+// magazinului. Sunt cele mai permisive posibile: mai bine desenam un camp in
+// plus, pe care serverul il ignora, decat sa ascundem unul de care clientul
+// are nevoie.
+const REGULI_CERERE_IMPLICITE = {
+  types: ['retur', 'service', 'schimb'],
+  reasons: [],
+  refundToBank: true,
+  partial: true,
+  exchangeSame: true,
+  exchangeOther: false,
+  transportCost: 0,
+  exchangeTransportCost: 0,
+  windowDays: 14,
+};
+
+const ETICHETE_ANCORA = {
+  delivered: 'de la livrare',
+  shipped: 'de la expediere',
+  created: 'de la plasarea comenzii',
+};
+
 function renderCerereClient(slug, { integrat = false } = {}) {
   const ecran = el(`
     <div class="cerere-screen${integrat ? ' integrat' : ''}">
@@ -1077,8 +1099,22 @@ function renderCerereClient(slug, { integrat = false } = {}) {
   let magazin = null;
   let comanda = null;
   let tip = null;
+  let reguli = REGULI_CERERE_IMPLICITE;
+  let fereastra = null;   // termenul de retur calculat pentru comanda gasita
+  let dejaCerut = false;  // comanda are deja o cerere, iar magazinul nu accepta mai multe
 
   const eroare = (mesaj) => `<div class="error-msg">${escapeHtml(mesaj)}</div>`;
+
+  /** Tipurile pe care clientul le poate alege ACUM: pornite de magazin si, la retur/schimb, cu termenul neexpirat. */
+  const tipuriDisponibile = () => TIPURI_CERERE_PUBLICE.filter((t) => {
+    if (!reguli.types.includes(t.cod)) return false;
+    if (t.cod === 'schimb' && !reguli.exchangeSame && !reguli.exchangeOther) return false;
+    if (fereastra && fereastra.expired && t.cod !== 'service') return false;
+    return true;
+  });
+
+  const costTransport = (codTip) => (codTip === 'schimb' ? reguli.exchangeTransportCost : reguli.transportCost) || 0;
+  const bani = (suma) => `${Number(suma).toFixed(2)} ${escapeHtml(comanda && comanda.currency || 'RON')}`;
 
   // ---- pasul 1: ce comandă ----
   async function pasIdentificare(mesaj) {
@@ -1109,6 +1145,8 @@ function renderCerereClient(slug, { integrat = false } = {}) {
           body: JSON.stringify({ slug, orderNumber: zona.querySelector('#cNr').value, phone: zona.querySelector('#cTel').value }),
         });
         comanda = rezultat.order;
+        fereastra = rezultat.window || null;
+        dejaCerut = Boolean(rezultat.alreadyRequested);
         pasTipSiProduse();
       } catch (err) {
         pasIdentificare(err.message);
@@ -1118,13 +1156,55 @@ function renderCerereClient(slug, { integrat = false } = {}) {
 
   // ---- pasul 2: ce fel de cerere și pentru care produse ----
   function pasTipSiProduse(mesaj) {
+    const disponibile = tipuriDisponibile();
+    // Cand magazinul nu accepta a doua cerere pe aceeasi comanda, ne oprim
+    // aici: nu are rost sa-l lasam pe client sa completeze tot, ca sa afle la
+    // final ca nu se putea.
+    if (dejaCerut) {
+      zona.innerHTML = `
+        <h1>Comanda #${escapeHtml(String(comanda.number))}</h1>
+        <p class="sub">Pentru această comandă există deja o cerere trimisă.</p>
+        <div class="hint">${escapeHtml(magazin || 'Magazinul')} o are în lucru și îți va răspunde. Dacă între timp a apărut altceva, răspunde la mesajul primit de la ei.</div>
+        <div class="form-actions" style="justify-content:flex-start;">
+          <button type="button" class="btn" id="cerereInapoi">← Altă comandă</button>
+        </div>`;
+      zona.querySelector('#cerereInapoi').addEventListener('click', () => { comanda = null; tip = null; pasIdentificare(); });
+      return;
+    }
+    if (!disponibile.length) {
+      const expirat = fereastra && fereastra.expired;
+      zona.innerHTML = `
+        <h1>Comanda #${escapeHtml(String(comanda.number))}</h1>
+        <p class="sub">${expirat
+          ? `Termenul de ${fereastra.days} zile pentru retur a trecut${fereastra.deadline ? ` pe ${escapeHtml(fmtDate(fereastra.deadline))}` : ''}.`
+          : 'Magazinul nu primește cereri prin acest formular momentan.'}</p>
+        <div class="hint">Dacă e vorba de o defecțiune în garanție, scrie direct magazinului — garanția nu ține de termenul de retur.</div>
+        <div class="form-actions" style="justify-content:flex-start;">
+          <button type="button" class="btn" id="cerereInapoi">← Altă comandă</button>
+        </div>`;
+      zona.querySelector('#cerereInapoi').addEventListener('click', () => { comanda = null; tip = null; pasIdentificare(); });
+      return;
+    }
+    if (tip && !disponibile.some((t) => t.cod === tip)) tip = null;
+
+    // Cand magazinul nu accepta retururi partiale, nu-l punem pe client sa
+    // bifeze tot manual ca sa afle apoi ca era obligatoriu: bifam noi si
+    // spunem de ce nu se poate altfel.
+    const totSauNimic = !reguli.partial && comanda.items.length > 1;
+
     zona.innerHTML = `
       <h1>Comanda #${escapeHtml(String(comanda.number))}</h1>
       <p class="sub">${escapeHtml(comanda.customerName)} · ${comanda.date ? escapeHtml(fmtDate(comanda.date)) : ''}</p>
+      ${fereastra && !fereastra.unlimited && !fereastra.expired ? `
+        <div class="cerere-termen">
+          ${fereastra.daysLeft === 0
+            ? 'Azi e ultima zi în care poți cere retur pentru această comandă.'
+            : `Mai ai <strong>${fereastra.daysLeft} ${fereastra.daysLeft === 1 ? 'zi' : 'zile'}</strong> pentru retur${fereastra.anchorKind ? ` (${fereastra.days} de zile ${ETICHETE_ANCORA[fereastra.anchorKind] || ''})` : ''}.`}
+        </div>` : ''}
       ${mesaj ? eroare(mesaj) : ''}
       <div class="cerere-eticheta">Ce s-a întâmplat?</div>
       <div class="cerere-tipuri">
-        ${TIPURI_CERERE_PUBLICE.map((t) => `
+        ${disponibile.map((t) => `
           <button type="button" class="cerere-tip ${tip === t.cod ? 'ales' : ''}" data-tip="${t.cod}">
             <span class="cerere-tip-titlu">${escapeHtml(t.titlu)}</span>
             <span class="cerere-tip-desc">${escapeHtml(t.descriere)}</span>
@@ -1132,10 +1212,11 @@ function renderCerereClient(slug, { integrat = false } = {}) {
         `).join('')}
       </div>
       <div class="cerere-eticheta">Ce produse sunt vizate?</div>
+      ${totSauNimic ? '<div class="hint" style="margin:-4px 0 8px;">Magazinul primește doar comanda întreagă înapoi, nu produse separate.</div>' : ''}
       <div class="cerere-produse">
         ${comanda.items.length ? comanda.items.map((it) => `
           <label class="cerere-produs">
-            <input type="checkbox" value="${it.index}" />
+            <input type="checkbox" value="${it.index}" ${totSauNimic ? 'checked disabled' : ''} />
             ${it.imageUrl
               ? `<img src="${escapeHtml(it.imageUrl)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'cerere-produs-poza-goala',textContent:'—'}))" />`
               : '<div class="cerere-produs-poza-goala">—</div>'}
@@ -1157,7 +1238,11 @@ function renderCerereClient(slug, { integrat = false } = {}) {
     }));
     zona.querySelector('#cerereInapoi').addEventListener('click', () => { comanda = null; tip = null; pasIdentificare(); });
     zona.querySelector('#cerereContinua').addEventListener('click', () => {
-      const alese = [...zona.querySelectorAll('.cerere-produse input:checked')].map((i) => Number(i.value));
+      // casutele dezactivate nu apar la :checked, deci la tot-sau-nimic luam
+      // pur si simplu toate produsele
+      const alese = totSauNimic
+        ? comanda.items.map((it) => it.index)
+        : [...zona.querySelectorAll('.cerere-produse input:checked')].map((i) => Number(i.value));
       if (!tip) return pasTipSiProduse('Alege întâi ce fel de cerere ai.');
       if (!alese.length) return pasTipSiProduse('Bifează cel puțin un produs.');
       pasDetalii(alese);
@@ -1167,6 +1252,17 @@ function renderCerereClient(slug, { integrat = false } = {}) {
   // ---- pasul 3: detalii, poze, iar la retur datele bancare ----
   function pasDetalii(alese, mesaj) {
     const eRetur = tip === 'retur';
+    const cereIban = eRetur && reguli.refundToBank;
+    const eSchimb = tip === 'schimb';
+    const motive = reguli.reasons || [];
+    const cost = costTransport(tip);
+    // regula de fotografie a motivului ales; pana alege unul, cea mai blanda
+    const regulaFotoCurenta = () => {
+      const camp = zona.querySelector('#cMotiv');
+      const ales = camp && motive.find((m) => m.text === camp.value);
+      return ales ? ales.photo : 'optional';
+    };
+
     zona.innerHTML = `
       <h1>Câteva detalii</h1>
       <p class="sub">Cu cât ne spui mai clar ce s-a întâmplat, cu atât rezolvăm mai repede.</p>
@@ -1174,19 +1270,36 @@ function renderCerereClient(slug, { integrat = false } = {}) {
       <form id="formDetalii" autocomplete="off">
         <input type="text" id="cCapcana" name="website" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px;" aria-hidden="true" />
         <div class="field">
-          <label for="cMotiv">Motiv pe scurt</label>
-          <input type="text" id="cMotiv" maxlength="200" placeholder="ex. Produsul nu pornește" />
+          <label for="cMotiv">Motivul cererii</label>
+          ${motive.length ? `
+            <select id="cMotiv" required>
+              <option value="">Alege motivul…</option>
+              ${motive.map((m) => `<option value="${escapeHtml(m.text)}" data-foto="${escapeHtml(m.photo)}">${escapeHtml(m.text)}</option>`).join('')}
+            </select>`
+            : '<input type="text" id="cMotiv" maxlength="200" placeholder="ex. Produsul nu pornește" />'}
         </div>
+        ${eSchimb && reguli.exchangeOther ? `
+        <div class="field">
+          <label for="cProdusDorit">Cu ce produs vrei să faci schimbul${reguli.exchangeSame ? ' (opțional)' : ''}</label>
+          <input type="text" id="cProdusDorit" maxlength="300" ${reguli.exchangeSame ? '' : 'required'} placeholder="Numele sau codul produsului dorit" />
+          <div class="hint" style="margin-top:6px;">${reguli.exchangeSame
+            ? 'Lasă gol dacă vrei același produs, doar înlocuit.'
+            : 'Magazinul înlocuiește doar cu alt produs, nu cu același.'}</div>
+        </div>` : ''}
         <div class="field">
           <label for="cDesc">Descrie problema</label>
           <textarea id="cDesc" rows="4" maxlength="4000" required placeholder="Ce s-a întâmplat, când ai observat, ce ai încercat…"></textarea>
         </div>
-        <div class="field">
-          <label for="cPoze">Fotografii (opțional, maximum 6)</label>
+        <div class="field" id="campPoze">
+          <label for="cPoze">Fotografii <span id="cPozeCerinta">(opțional, maximum 6)</span></label>
           <input type="file" id="cPoze" accept="image/*" multiple />
           <div class="hint" id="cPozeInfo" style="margin-top:6px;"></div>
         </div>
-        ${eRetur ? `
+        ${cost > 0 && tip !== 'service' ? `
+        <div class="cerere-cost">
+          Transportul ${eSchimb ? 'coletului la schimb' : 'returului'} costă <strong>${bani(cost)}</strong> și se reține din suma care ți se rambursează.
+        </div>` : ''}
+        ${cereIban ? `
         <div class="cerere-eticheta">Unde îți trimitem banii</div>
         <div class="field">
           <label for="cTitular">Titularul contului</label>
@@ -1196,6 +1309,8 @@ function renderCerereClient(slug, { integrat = false } = {}) {
           <label for="cIban">IBAN</label>
           <input type="text" id="cIban" required placeholder="RO49 AAAA 1B31 0075 9384 0000" />
         </div>` : ''}
+        ${eRetur && !reguli.refundToBank ? `
+        <div class="hint" style="margin-bottom:14px;">Magazinul îți returnează banii pe aceeași cale pe care ai plătit — nu e nevoie de IBAN.</div>` : ''}
         <div class="cerere-eticheta">De unde ridicăm coletul</div>
         <div class="field">
           <label for="cAdresa">Adresă</label>
@@ -1220,6 +1335,20 @@ function renderCerereClient(slug, { integrat = false } = {}) {
 
     let poze = [];
     const info = zona.querySelector('#cPozeInfo');
+    const cerinta = zona.querySelector('#cPozeCerinta');
+    const campPoze = zona.querySelector('#campPoze');
+
+    // Regula de fotografie se schimba odata cu motivul: „m-am răzgândit" nu
+    // are ce poza, „a ajuns deteriorat" nu are sens fara.
+    function actualizeazaCerintaFoto() {
+      const regula = regulaFotoCurenta();
+      campPoze.style.display = regula === 'off' ? 'none' : '';
+      if (cerinta) cerinta.textContent = regula === 'required' ? '(obligatoriu — cel puțin una)' : '(opțional, maximum 6)';
+    }
+    const campMotiv = zona.querySelector('#cMotiv');
+    if (campMotiv) campMotiv.addEventListener('change', actualizeazaCerintaFoto);
+    actualizeazaCerintaFoto();
+
     zona.querySelector('#cPoze').addEventListener('change', async (e) => {
       const fisiere = [...e.target.files].slice(0, 6);
       poze = [];
@@ -1234,6 +1363,11 @@ function renderCerereClient(slug, { integrat = false } = {}) {
     zona.querySelector('#cerereInapoi2').addEventListener('click', () => pasTipSiProduse());
     zona.querySelector('#formDetalii').addEventListener('submit', async (e) => {
       e.preventDefault();
+      // verificam aici, nu doar pe server, ca sa nu piarda clientul tot ce a
+      // scris pe drum
+      if (regulaFotoCurenta() === 'required' && !poze.length) {
+        return pasDetalii(alese, 'Pentru motivul ales avem nevoie de cel puțin o fotografie a produsului.');
+      }
       const btn = zona.querySelector('button[type=submit]');
       btn.disabled = true;
       btn.textContent = 'Se trimite…';
@@ -1246,6 +1380,7 @@ function renderCerereClient(slug, { integrat = false } = {}) {
             orderNumber: comanda.number, phone: comanda.phone,
             itemIndexes: alese,
             reason: q('#cMotiv'), description: q('#cDesc'),
+            wantedProduct: q('#cProdusDorit'),
             iban: q('#cIban'), accountHolder: q('#cTitular'),
             pickupAddress: q('#cAdresa'), pickupCity: q('#cOras'), pickupPostalCode: q('#cCod'),
             website: q('#cCapcana'),
@@ -1263,8 +1398,11 @@ function renderCerereClient(slug, { integrat = false } = {}) {
     zona.innerHTML = `
       <div class="cerere-gata">
         <div class="cerere-bifa">✓</div>
-        <h1>Am primit cererea ta</h1>
-        <p class="sub">${escapeHtml(magazin || 'Magazinul')} a fost anunțat și îți va răspunde în cel mai scurt timp.</p>
+        <h1>${rezultat.autoApproved ? 'Cererea ta e acceptată' : 'Am primit cererea ta'}</h1>
+        <p class="sub">${rezultat.autoApproved
+          ? `${escapeHtml(magazin || 'Magazinul')} acceptă cererea și îți trimite pașii următori pentru trimiterea coletului.`
+          : `${escapeHtml(magazin || 'Magazinul')} a fost anunțat și îți va răspunde în cel mai scurt timp.`}</p>
+        ${rezultat.transportCost > 0 ? `<div class="cerere-cost">Din suma rambursată se reține <strong>${Number(rezultat.transportCost).toFixed(2)} ${escapeHtml(rezultat.currency || 'RON')}</strong>, costul transportului.</div>` : ''}
         ${rezultat.reference ? `<div class="cerere-referinta">Număr cerere<strong>${escapeHtml(rezultat.reference)}</strong></div>` : ''}
         <p class="hint">Poți închide pagina. Dacă mai ai o problemă, deschide din nou linkul primit de la magazin.</p>
       </div>
@@ -1275,6 +1413,7 @@ function renderCerereClient(slug, { integrat = false } = {}) {
     try {
       const info = await api(`/api/public/cerere/${encodeURIComponent(slug)}`);
       magazin = info.companyName;
+      if (info.rules) reguli = { ...REGULI_CERERE_IMPLICITE, ...info.rules };
       ecran.querySelector('#cerereMagazin').textContent = info.companyName;
       // tema si culoarea alese de magazin, ca formularul sa semene cu site-ul lui
       if (info.theme !== 'dark') ecran.classList.add('tema-deschisa');
@@ -4524,6 +4663,143 @@ async function renderSettings() {
     } finally {
       btn.disabled = false;
       btn.textContent = 'Salvează aspectul';
+    }
+  });
+
+  // ---- Regulile de retur ale magazinului ----
+  // Astea nu sunt setari de aspect, sunt regulile dupa care formularul accepta
+  // sau refuza o cerere. De-aia stau intr-un card separat, cu salvarea lui.
+  const R = s.retur || {};
+  const bifa = (id, pornit, titlu, sub) => `
+    <label class="cerere-produs" style="margin-bottom:8px;">
+      <input type="checkbox" id="${id}" ${pornit ? 'checked' : ''} />
+      <span class="cerere-produs-text">
+        <span class="cerere-produs-nume">${titlu}</span>
+        <span class="cerere-produs-sub">${sub}</span>
+      </span>
+    </label>`;
+
+  body.appendChild(el(`
+    <section class="panel" id="cardRetur" style="margin-top:22px;">
+      <h2 style="margin:0 0 4px;font-size:16px;">Reguli de retur</h2>
+      <div class="hint" style="margin-bottom:16px;">
+        Ce poate cere clientul prin formular și în ce condiții. Regulile se aplică în momentul în care el trimite cererea.
+      </div>
+
+      <div class="cerere-eticheta">Ce poate cere clientul</div>
+      ${bifa('r-tip-retur', (R.types || []).includes('retur'), 'Retur produs', 'Returnează produsul și primește banii înapoi.')}
+      ${bifa('r-tip-service', (R.types || []).includes('service'), 'Produs defect / service', 'Reparație sau înlocuire pentru un produs stricat. Nu ține de termenul de retur — garanția are termenul ei.')}
+      ${bifa('r-tip-schimb', (R.types || []).includes('schimb'), 'Colet la schimb', 'Înlocuirea produsului cu altul.')}
+
+      <div class="cerere-eticheta" style="margin-top:18px;">Termenul de retur</div>
+      <div class="form-row">
+        <div class="field">
+          <label for="r-zile">Câte zile are clientul</label>
+          <input type="number" id="r-zile" min="0" max="3650" value="${Number(R.windowDays) || 0}" />
+          <div class="hint" style="margin-top:6px;">0 înseamnă fără termen — cererile se pot trimite oricând.</div>
+        </div>
+        <div class="field">
+          <label for="r-de-la">Se numără de la</label>
+          <select id="r-de-la">
+            <option value="delivery"${R.windowFrom !== 'order' ? ' selected' : ''}>Livrarea comenzii (recomandat)</option>
+            <option value="order"${R.windowFrom === 'order' ? ' selected' : ''}>Plasarea comenzii</option>
+          </select>
+          <div class="hint" style="margin-top:6px;">Legea numără de la primirea produsului. Dacă magazinul tău nu ne trimite data livrării, folosim data expedierii, iar în ultimă instanță data comenzii.</div>
+        </div>
+      </div>
+
+      <div class="cerere-eticheta" style="margin-top:18px;">Ce se poate returna</div>
+      ${bifa('r-partial', R.partial, 'Retururi parțiale', 'Clientul poate alege doar unele produse din comandă. Oprit, cererea se face pe comanda întreagă.')}
+      ${bifa('r-multiple', R.multiplePerOrder, 'Mai multe cereri pe aceeași comandă', 'Oprit, o comandă care are deja o cerere nu mai primește alta prin formular.')}
+      ${bifa('r-banca', R.refundToBank, 'Cer IBAN pentru rambursare', 'Clientul completează contul în care vrea banii. Oprit, presupunem că îi returnezi pe aceeași cale pe care a plătit.')}
+      ${bifa('r-auto', R.autoApprove, 'Aprobare automată', 'Clientul primește pe loc confirmarea că cererea e acceptată, în loc de „așteaptă răspunsul magazinului". Cererea îți apare la fel în „Cereri noi" — AWB-ul de ridicare tot tu îl emiți.')}
+
+      <div class="cerere-eticheta" style="margin-top:18px;">Schimbul cu alt produs</div>
+      ${bifa('r-schimb-acelasi', R.exchangeSame, 'Schimb cu același produs', 'Înlocuire bucată cu bucată, aceeași referință.')}
+      ${bifa('r-schimb-altul', R.exchangeOther, 'Schimb cu alt produs', 'Clientul scrie ce produs vrea în loc. Când legăm catalogul magazinului, va putea alege direct din el.')}
+
+      <div class="cerere-eticheta" style="margin-top:18px;">Costul transportului</div>
+      <div class="hint" style="margin-bottom:10px;">Se reține din suma rambursată, iar clientul vede cât i se reține înainte să trimită cererea. Lasă 0 dacă transportul e pe seama ta.</div>
+      <div class="form-row">
+        <div class="field">
+          <label for="r-cost-retur">Transport retur</label>
+          <input type="number" id="r-cost-retur" min="0" step="0.01" value="${Number(R.transportCost) || 0}" />
+        </div>
+        <div class="field">
+          <label for="r-cost-schimb">Transport colet la schimb</label>
+          <input type="number" id="r-cost-schimb" min="0" step="0.01" value="${Number(R.exchangeTransportCost) || 0}" />
+        </div>
+      </div>
+
+      <div class="cerere-eticheta" style="margin-top:18px;">Motivele din care alege clientul</div>
+      <div class="hint" style="margin-bottom:10px;">
+        Pentru fiecare motiv alegi ce se întâmplă cu fotografiile. „Obligatoriu" înseamnă că fără o poză cererea nu poate fi trimisă — util la produse deteriorate sau greșite.
+      </div>
+      <div id="listaMotive"></div>
+      <div class="form-actions" style="justify-content:flex-start;margin-top:2px;">
+        <button type="button" class="btn btn-sm" id="adaugaMotiv">+ Adaugă un motiv</button>
+      </div>
+
+      <div class="form-actions" style="justify-content:flex-start;margin-top:18px;">
+        <button type="button" class="btn btn-primary" id="salveazaRetur">Salvează regulile</button>
+      </div>
+    </section>
+  `));
+
+  // Editorul de motive: randurile traiesc in DOM, nu intr-o structura paralela,
+  // ca sa nu existe doua adevaruri care se pot dezacorda.
+  const listaMotive = content.querySelector('#listaMotive');
+  function randMotiv(motiv) {
+    const rand = el(`
+      <div class="motiv-rand">
+        <input type="text" class="motiv-text" maxlength="120" value="${escapeHtml(motiv.text || '')}" placeholder="ex. Produsul a ajuns deteriorat" />
+        <select class="motiv-foto">
+          <option value="off"${motiv.photo === 'off' ? ' selected' : ''}>Fără fotografii</option>
+          <option value="optional"${motiv.photo === 'optional' || !motiv.photo ? ' selected' : ''}>Fotografii opționale</option>
+          <option value="required"${motiv.photo === 'required' ? ' selected' : ''}>Fotografii obligatorii</option>
+        </select>
+        <button type="button" class="btn btn-sm motiv-sterge" title="Elimină motivul">✕</button>
+      </div>`);
+    rand.querySelector('.motiv-sterge').addEventListener('click', () => rand.remove());
+    listaMotive.appendChild(rand);
+  }
+  (R.reasons || []).forEach(randMotiv);
+  content.querySelector('#adaugaMotiv').addEventListener('click', () => randMotiv({ text: '', photo: 'optional' }));
+
+  content.querySelector('#salveazaRetur').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    const tipuri = ['retur', 'service', 'schimb'].filter((t) => content.querySelector(`#r-tip-${t}`).checked);
+    const motive = [...listaMotive.querySelectorAll('.motiv-rand')]
+      .map((rand) => ({ text: rand.querySelector('.motiv-text').value.trim(), photo: rand.querySelector('.motiv-foto').value }))
+      .filter((m) => m.text);
+    if (!motive.length) return showToast('Lasă cel puțin un motiv în listă — din el alege clientul.');
+    btn.disabled = true;
+    btn.textContent = 'Se salvează…';
+    try {
+      await api('/api/company/retur-settings', {
+        method: 'PUT',
+        body: JSON.stringify({
+          types: tipuri,
+          windowDays: Number(content.querySelector('#r-zile').value),
+          windowFrom: content.querySelector('#r-de-la').value,
+          partial: content.querySelector('#r-partial').checked,
+          multiplePerOrder: content.querySelector('#r-multiple').checked,
+          refundToBank: content.querySelector('#r-banca').checked,
+          autoApprove: content.querySelector('#r-auto').checked,
+          exchangeSame: content.querySelector('#r-schimb-acelasi').checked,
+          exchangeOther: content.querySelector('#r-schimb-altul').checked,
+          transportCost: Number(content.querySelector('#r-cost-retur').value),
+          exchangeTransportCost: Number(content.querySelector('#r-cost-schimb').value),
+          reasons: motive,
+        }),
+      });
+      showToast('Regulile de retur au fost salvate');
+      reincarcaPrevizualizarea();
+    } catch (err) {
+      showToast('Eroare: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Salvează regulile';
     }
   });
 

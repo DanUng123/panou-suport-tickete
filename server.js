@@ -393,16 +393,37 @@ async function handleApi(req, res, pathname, query) {
     const MAX_FOTO_CERERE = 6;
     const MAX_OCTETI_FOTO = 3 * 1024 * 1024; // per fotografie, dupa decodare
 
-    /** Datele publice ale magazinului din spatele adresei -- doar numele, ca sa stie clientul unde a ajuns. */
+    // Termenul de retur se aplica cererilor care tin de dreptul de retragere:
+    // returul si schimbul. Service-ul nu -- acolo vorbim de garantie, care are
+    // alt termen si alt temei, iar un magazin care pune 14 zile la retur nu
+    // vrea sa refuze o reparatie in garantie in ziua 15.
+    const TIPURI_CU_TERMEN = ['retur', 'schimb'];
+
+    /** Datele publice ale magazinului din spatele adresei: numele, aspectul si regulile lui de retur. */
     const magazinPublicMatch = pathname.match(/^\/api\/public\/cerere\/([^/]+)$/);
     if (magazinPublicMatch && req.method === 'GET') {
       const magazin = db.findCompanyByPublicSlug(magazinPublicMatch[1]);
       if (!magazin) return sendJSON(res, 404, { error: 'Formular inexistent.' });
+      const reguli = db.getReturSettings(magazin);
       return sendJSON(res, 200, {
         companyName: magazin.name,
         theme: magazin.formTheme === 'dark' ? 'dark' : 'light',
         accent: magazin.formAccent || null,
         autoColors: magazin.formAutoColors !== 0,
+        // regulile de care are nevoie formularul ca sa se deseneze corect;
+        // deciziile se iau tot pe server, astea sunt doar ca sa nu ceara
+        // clientului lucruri pe care oricum le-am refuza
+        rules: {
+          types: reguli.types,
+          reasons: reguli.reasons,
+          refundToBank: reguli.refundToBank,
+          partial: reguli.partial,
+          exchangeSame: reguli.exchangeSame,
+          exchangeOther: reguli.exchangeOther,
+          transportCost: reguli.transportCost,
+          exchangeTransportCost: reguli.exchangeTransportCost,
+          windowDays: reguli.windowDays,
+        },
       });
     }
 
@@ -438,11 +459,25 @@ async function handleApi(req, res, pathname, query) {
         return sendJSON(res, 404, { error: 'Nu am găsit o comandă cu acest număr și acest telefon. Verifică-le și încearcă din nou.' });
       }
       clearFailedAttempts(cheieIncercari);
+      const reguli = db.getReturSettings(magazin);
+      const termen = db.returWindowStatus(comanda, reguli);
+      const cereriExistente = db.countPublicRequestsForOrder(magazin.id, comanda.id);
       return sendJSON(res, 200, {
         companyName: magazin.name,
+        // ce poate face clientul cu ACEASTA comanda, nu doar in general
+        window: {
+          unlimited: termen.unlimited,
+          expired: termen.expired,
+          daysLeft: termen.daysLeft,
+          deadline: termen.deadline,
+          anchorKind: termen.anchorKind,
+          days: reguli.windowDays,
+        },
+        alreadyRequested: cereriExistente > 0 && !reguli.multiplePerOrder,
         order: {
           number: comanda.mpId,
           date: comanda.dateCreated,
+          deliveredAt: comanda.dateDelivered || null,
           total: comanda.totalAmount,
           currency: comanda.currency,
           customerName: comanda.shippingName || comanda.billingName || '',
@@ -481,10 +516,28 @@ async function handleApi(req, res, pathname, query) {
       const tip = TIPURI_CERERE[body.type];
       if (!tip) return sendJSON(res, 400, { error: 'Tip de cerere invalid.' });
 
+      const reguli = db.getReturSettings(magazin);
+      if (!reguli.types.includes(body.type)) {
+        return sendJSON(res, 400, { error: 'Magazinul nu primește acest tip de cerere prin formular.' });
+      }
+
       // comanda se re-verifica aici, nu ne bazam pe pasul anterior: altfel
       // cineva ar putea sari peste el si trimite direct ce vrea
       const comanda = db.findOrderForPublicRequest(magazin.id, body.orderNumber, body.phone);
       if (!comanda) return sendJSON(res, 404, { error: 'Nu am găsit o comandă cu acest număr și acest telefon.' });
+
+      // Fiecare regula de mai jos e verificata AICI, nu doar in formular.
+      // Formularul ascunde ce nu se poate, dar cine trimite direct catre ruta
+      // asta nu trece prin formular deloc.
+
+      const termen = db.returWindowStatus(comanda, reguli);
+      if (TIPURI_CU_TERMEN.includes(body.type) && termen.expired) {
+        return sendJSON(res, 409, { error: `Termenul de ${reguli.windowDays} zile pentru această comandă a expirat pe ${termen.deadline}. Scrie-ne totuși dacă e o problemă de garanție.` });
+      }
+
+      if (!reguli.multiplePerOrder && db.countPublicRequestsForOrder(magazin.id, comanda.id) > 0) {
+        return sendJSON(res, 409, { error: 'Există deja o cerere trimisă pentru această comandă. Magazinul o are în lucru — așteaptă te rog răspunsul lor.' });
+      }
 
       const descriere = String(body.description || '').trim();
       if (!descriere) return sendJSON(res, 400, { error: 'Scrie te rog câteva cuvinte despre problemă.' });
@@ -495,10 +548,38 @@ async function handleApi(req, res, pathname, query) {
         ? [...new Set(body.itemIndexes.map(Number))].filter((i) => Number.isInteger(i) && i >= 0 && i < toateProdusele.length)
         : [];
       if (!alese.length) return sendJSON(res, 400, { error: 'Alege cel puțin un produs din comandă.' });
+      if (!reguli.partial && toateProdusele.length && alese.length !== toateProdusele.length) {
+        return sendJSON(res, 400, { error: 'Magazinul acceptă doar returul comenzii întregi, nu al unor produse din ea.' });
+      }
+
+      // Motivul: cand magazinul si-a definit lista, alegerea trebuie sa fie din
+      // ea. Regula de fotografie atarna de motivul ales, deci un motiv scris
+      // liber ar ocoli si cerinta de fotografii.
+      const motiveleMagazinului = reguli.reasons.map((m) => m.text);
+      let motiv = String(body.reason || '').trim().slice(0, 200);
+      let regulaFoto = 'optional';
+      if (TIPURI_CU_TERMEN.includes(body.type) || body.type === 'service') {
+        const gasit = reguli.reasons.find((m) => m.text === motiv);
+        if (!gasit) return sendJSON(res, 400, { error: 'Alege un motiv din listă.' });
+        regulaFoto = gasit.photo;
+      }
+      void motiveleMagazinului;
+
+      // fotografiile se citesc inainte de a crea tichetul, ca sa putem refuza
+      // cererea cand motivul le cere si ele lipsesc -- altfel am fi lasat in
+      // urma un tichet incomplet
+      const pozeValide = (Array.isArray(body.photos) ? body.photos : [])
+        .slice(0, MAX_FOTO_CERERE)
+        .filter((p) => /^image\/(png|jpe?g|webp|gif)$/.test(String(p && p.mimeType || ''))
+          && String(p && p.dataBase64 || '')
+          && String(p.dataBase64).length * 0.75 <= MAX_OCTETI_FOTO);
+      if (regulaFoto === 'required' && !pozeValide.length) {
+        return sendJSON(res, 400, { error: 'Pentru motivul ales avem nevoie de cel puțin o fotografie a produsului.' });
+      }
 
       let iban = null;
       let titular = null;
-      if (body.type === 'retur') {
+      if (body.type === 'retur' && reguli.refundToBank) {
         iban = String(body.iban || '').replace(/\s+/g, '').toUpperCase();
         titular = String(body.accountHolder || '').trim();
         if (!iban || !titular) return sendJSON(res, 400, { error: 'Pentru retur avem nevoie de IBAN și de numele titularului de cont.' });
@@ -508,19 +589,45 @@ async function handleApi(req, res, pathname, query) {
         if (titular.length > 120) return sendJSON(res, 400, { error: 'Numele titularului e prea lung.' });
       }
 
+      // La schimb, cand magazinul permite si alt produs, clientul poate scrie
+      // ce vrea in loc. Deocamdata e text liber -- alegerea din catalog vine
+      // cand punem citirea catalogului in integrare.
+      let produsDorit = null;
+      if (body.type === 'schimb') {
+        produsDorit = String(body.wantedProduct || '').trim().slice(0, 300);
+        if (!reguli.exchangeOther && produsDorit) produsDorit = null;
+        if (!reguli.exchangeSame && !reguli.exchangeOther) {
+          return sendJSON(res, 400, { error: 'Magazinul nu face schimburi prin formular.' });
+        }
+        if (!reguli.exchangeSame && !produsDorit) {
+          return sendJSON(res, 400, { error: 'Scrie te rog cu ce produs vrei să faci schimbul.' });
+        }
+      }
+
       const numeProduse = alese.map((i) => {
         const p = toateProdusele[i];
         return `- ${p.product_name || 'Produs'}${p.product_sku ? ` (${p.product_sku})` : ''} × ${p.quantity || 1}`;
       }).join('\n');
-      const motiv = String(body.reason || '').trim().slice(0, 200);
+
+      // Costul de transport se retine din suma rambursata. Il scriem in tichet
+      // ca sa stie si operatorul cat are de scazut, nu doar clientul cat
+      // primeste.
+      const costTransport = body.type === 'schimb' ? reguli.exchangeTransportCost : reguli.transportCost;
+      const monedaComanda = comanda.currency || 'RON';
 
       const descriereCompleta = [
         `Cerere trimisă de client prin formularul online.`,
         ``,
         `Produse vizate:`,
         numeProduse,
+        produsDorit ? `\nProdusul dorit la schimb: ${produsDorit}` : null,
         ``,
         motiv ? `Motiv: ${motiv}` : null,
+        costTransport > 0 && body.type !== 'service'
+          ? `Transport de reținut din rambursare: ${costTransport.toFixed(2)} ${monedaComanda} (clientul a fost informat)`
+          : null,
+        termen.unlimited ? null : `Termen: cerere trimisă cu ${termen.daysLeft} ${termen.daysLeft === 1 ? 'zi' : 'zile'} înainte de expirare (${termen.deadline}).`,
+        reguli.autoApprove ? 'Aprobare automată: da (magazinul a ales să accepte cererile fără verificare prealabilă).' : null,
         `Mesajul clientului:`,
         descriere,
       ].filter((l) => l !== null).join('\n');
@@ -552,18 +659,20 @@ async function handleApi(req, res, pathname, query) {
         return sendJSON(res, 500, { error: 'Cererea nu a putut fi înregistrată. Încearcă din nou.' });
       }
 
-      // fotografiile, plafonate ca numar si ca marime
-      const poze = Array.isArray(body.photos) ? body.photos.slice(0, MAX_FOTO_CERERE) : [];
-      for (const poza of poze) {
-        const mime = String(poza && poza.mimeType || '');
-        const date = String(poza && poza.dataBase64 || '');
-        if (!/^image\/(png|jpe?g|webp|gif)$/.test(mime)) continue;
-        if (!date || date.length * 0.75 > MAX_OCTETI_FOTO) continue;
-        try { db.addTicketPhoto(magazin.id, tichet.id, { dataBase64: date, mimeType: mime }); } catch (e) { /* peste limita -- sarim */ }
+      // fotografiile, deja plafonate ca numar si ca marime mai sus
+      for (const poza of pozeValide) {
+        try { db.addTicketPhoto(magazin.id, tichet.id, { dataBase64: poza.dataBase64, mimeType: poza.mimeType }); } catch (e) { /* peste limita -- sarim */ }
       }
 
       console.log(`Cerere nouă din formularul public: ${tip.eticheta}, comanda #${comanda.mpId}, ${magazin.name}`);
-      return sendJSON(res, 201, { ok: true, reference: tichet.id, type: tip.eticheta });
+      return sendJSON(res, 201, {
+        ok: true,
+        reference: tichet.id,
+        type: tip.eticheta,
+        autoApproved: reguli.autoApprove,
+        transportCost: body.type !== 'service' ? costTransport : 0,
+        currency: monedaComanda,
+      });
     }
 
     if (pathname === '/api/signup' && req.method === 'POST') {
@@ -878,6 +987,26 @@ async function handleApi(req, res, pathname, query) {
         pttPasswordSet: Boolean(pttPassword),
         accountPreparing: merchantProJustConfigured || gomagJustConfigured,
       });
+    }
+
+    // ---- regulile de retur ale magazinului ----
+    // Separate de restul setarilor: acolo sunt credentiale si adrese de
+    // expeditor, aici sunt regulile dupa care formularul public accepta sau
+    // refuza o cerere. Doua formulare diferite, doua rute diferite.
+
+    if (pathname === '/api/company/retur-settings' && req.method === 'GET') {
+      if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot accesa setările de retur.' });
+      return sendJSON(res, 200, db.getReturSettings(currentAgent.companyId));
+    }
+
+    if (pathname === '/api/company/retur-settings' && req.method === 'PUT') {
+      if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot modifica setările de retur.' });
+      const body = await readBody(req);
+      try {
+        return sendJSON(res, 200, db.saveReturSettings(currentAgent.companyId, body));
+      } catch (e) {
+        return sendJSON(res, 400, { error: e.message });
+      }
     }
 
     const toggleIntegrationMatch = pathname.match(/^\/api\/company\/integrations\/([^/]+)\/active$/);
