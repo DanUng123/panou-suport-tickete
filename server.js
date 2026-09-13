@@ -38,91 +38,11 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 const sessions = new Map();
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000; // 12 ore
 
-// ---------- pragul de la care comenzile apar in paginile de lucru ----------
-// Ziua se taie la 00:00 ORA ROMANIEI, nu UTC. Vara sunt 3 ore diferenta, deci
-// cu taietura in UTC comenzile de azi dintre 00:00 si 03:00 ora Romaniei ar
-// ajunge gresit in istoric -- exact orele in care un magazin online chiar
-// primeste comenzi.
-const FUS_ORAR = 'Europe/Bucharest';
-
-/** Decalajul zonei fata de UTC, in milisecunde, la momentul dat. */
-function decalajFusMs(date) {
-  const dtf = new Intl.DateTimeFormat('en-US', {
-    timeZone: FUS_ORAR, hour12: false,
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-  });
-  const p = Object.fromEntries(dtf.formatToParts(date).map((x) => [x.type, x.value]));
-  const caUtc = Date.UTC(+p.year, +p.month - 1, +p.day, (+p.hour) % 24, +p.minute, +p.second);
-  return caUtc - date.getTime();
-}
-
-/** "2026-09-12" (zi calendaristica romaneasca) -> momentul UTC al orei 00:00 din Romania. */
-function inceputZiRomaneascaISO(ymd) {
-  const presupus = new Date(`${ymd}T00:00:00Z`);
-  if (Number.isNaN(presupus.getTime())) return undefined;
-  try {
-    const d1 = decalajFusMs(presupus);
-    let rezultat = new Date(presupus.getTime() - d1);
-    // o singura corectie in plus acopera si ziua in care se schimba ora
-    const d2 = decalajFusMs(rezultat);
-    if (d2 !== d1) rezultat = new Date(presupus.getTime() - d2);
-    return rezultat.toISOString();
-  } catch (e) {
-    // fara date de fus orar in Node (build fara ICU complet), ramanem pe UTC
-    return presupus.toISOString();
-  }
-}
-
-/** Inceputul zilei romanesti in care cade momentul dat. */
-function inceputZileiPentru(instant) {
-  if (!instant) return undefined;
-  const d = new Date(instant);
-  if (Number.isNaN(d.getTime())) return undefined;
-  let ymd;
-  try {
-    ymd = new Intl.DateTimeFormat('en-CA', {
-      timeZone: FUS_ORAR, year: 'numeric', month: '2-digit', day: '2-digit',
-    }).format(d);
-  } catch (e) {
-    ymd = d.toISOString().slice(0, 10);
-  }
-  return inceputZiRomaneascaISO(ymd);
-}
-
-/** Ziua calendaristica romaneasca ("2026-09-12") in care cade momentul dat. */
-function ziRomaneasca(instant) {
-  if (!instant) return null;
-  const d = new Date(instant);
-  if (Number.isNaN(d.getTime())) return null;
-  try {
-    return new Intl.DateTimeFormat('en-CA', {
-      timeZone: FUS_ORAR, year: 'numeric', month: '2-digit', day: '2-digit',
-    }).format(d);
-  } catch (e) {
-    return d.toISOString().slice(0, 10);
-  }
-}
-
-/**
- * De la ce moment apar comenzile companiei in paginile de lucru.
- *
- * Intai ordersVisibleFrom -- pus automat cand magazinul si-a conectat prima
- * data platforma de eCommerce, sau ales manual de manager din Setari.
- * Daca lipseste (companii de dinaintea acestei coloane), cadem pe ziua
- * crearii contului, ca inainte.
- */
-function pragComenzi(company) {
-  if (!company) return undefined;
-  if (company.ordersVisibleFrom) return company.ordersVisibleFrom;
-  return inceputZileiPentru(company.createdAt);
-}
-
 // ---------- ștergerea contului, în fundal ----------
 // Contul e deja marcat si scos din circulatie in momentul in care ajungem
 // aici; ce ramane e sa dispara randurile. Le stergem in portii, cu o pauza
-// intre ele: node:sqlite e sincron, deci o singura tranzactie peste 900.000 de
-// comenzi ar tine tot serverul blocat zeci de secunde, pentru toate
+// intre ele: node:sqlite e sincron, deci o singura tranzactie peste sute de
+// mii de comenzi ar tine tot serverul blocat zeci de secunde, pentru toate
 // companiile. Pauza lasa cererile celorlalti sa fie servite intre portii.
 const stergeriInCurs = new Set();
 
@@ -638,19 +558,9 @@ async function handleApi(req, res, pathname, query) {
 
     const requireManager = () => currentAgent.role === 'manager';
 
-    // ---------- pragul de istoric ----------
-    // Paginile de zi cu zi (Comenzi, statistici, profil client) arata doar
-    // comenzile din ziua inscrierii magazinului incoace. Istoricul importat
-    // dinainte exista si e al magazinului -- il vede in tabul "Clienți totali",
-    // care trimite scope=all. Nu e o restrictie de securitate, ci un filtru
-    // implicit: altfel, un magazin cu 900.000 de comenzi vechi si-ar ineca
-    // paginile de lucru.
     // datele companiei (inclusiv credentialele decriptate GLS/Sameday/MerchantPro) --
     // preluate o singura data, disponibile pentru toate rutele de mai jos
     const company = db.getCompany(currentAgent.companyId);
-    const historyCutoff = pragComenzi(company);
-    const wantsFullHistory = query.scope === 'all';
-    const orderCutoff = wantsFullHistory ? undefined : historyCutoff;
 
     if (pathname === '/api/categories' && req.method === 'GET') {
       return sendJSON(res, 200, db.listCategories(currentAgent.companyId));
@@ -748,25 +658,6 @@ async function handleApi(req, res, pathname, query) {
       if (patch.gomagApiKey === '') delete patch.gomagApiKey;
       if (patch.pttPassword === '') delete patch.pttPassword;
 
-      // Data de la care comenzile apar in paginile de lucru. Se completeaza
-      // singura cand magazinul se conecteaza prima data, deci nu are camp in
-      // Setari -- ruta o accepta totusi, ca sa poata fi corectata punctual un
-      // magazin conectat inainte ca mecanismul sa existe. Se trimite o zi
-      // calendaristica ("2026-09-12"), transformata in ora 00:00 din Romania;
-      // sir gol = revenire la comportamentul automat.
-      if (patch.ordersVisibleFrom !== undefined) {
-        const zi = String(patch.ordersVisibleFrom).trim();
-        if (!zi) {
-          patch.ordersVisibleFrom = null;
-        } else if (/^\d{4}-\d{2}-\d{2}$/.test(zi)) {
-          const moment = inceputZiRomaneascaISO(zi);
-          if (!moment) return sendJSON(res, 400, { error: 'Dată invalidă pentru afișarea comenzilor.' });
-          patch.ordersVisibleFrom = moment;
-        } else {
-          return sendJSON(res, 400, { error: 'Data de la care apar comenzile trebuie să fie în formatul AAAA-LL-ZZ.' });
-        }
-      }
-
       // retinem starea DINAINTE de salvare, ca sa detectam daca MerchantPro
       // sau GoMag tocmai au fost configurate pentru PRIMA DATA -- caz in
       // care pornim automat, silentios, importul complet de istoric (clientul
@@ -775,20 +666,10 @@ async function handleApi(req, res, pathname, query) {
       const wasMpConfigured = mp.isConfigured(company);
       const wasGomagConfigured = gomag.isConfigured(company);
 
-      let updated = db.updateCompanyCredentials(currentAgent.companyId, patch);
+      const updated = db.updateCompanyCredentials(currentAgent.companyId, patch);
       const merchantProJustConfigured = !wasMpConfigured && mp.isConfigured(updated);
       const gomagJustConfigured = !wasGomagConfigured && gomag.isConfigured(updated);
       if (merchantProJustConfigured || gomagJustConfigured) {
-        // Magazinul tocmai s-a conectat: de aici incolo comenzile intra in
-        // paginile de lucru, iar tot ce aduce importul din trecutul lui ramane
-        // in "Clienți totali". Nu suprascriem o data pusa deja (manual sau la
-        // o conectare anterioara).
-        if (!updated.ordersVisibleFrom) {
-          const prag = inceputZileiPentru(new Date().toISOString());
-          // reluam rezultatul in `updated`, altfel raspunsul catre interfata ar
-          // pleca cu valoarea dinainte de aceasta scriere
-          if (prag) updated = db.updateCompanyCredentials(currentAgent.companyId, { ordersVisibleFrom: prag });
-        }
         fullHistoryImport.maybeStartAutoImport(updated, { merchantProJustConfigured, gomagJustConfigured });
       }
 
@@ -1101,7 +982,7 @@ async function handleApi(req, res, pathname, query) {
     }
 
     if (pathname === '/api/orders/stats' && req.method === 'GET') {
-      return sendJSON(res, 200, db.getOrderStats(currentAgent.companyId, { dateFrom: query.dateFrom || undefined, dateTo: query.dateTo || undefined, minDateCreated: orderCutoff }));
+      return sendJSON(res, 200, db.getOrderStats(currentAgent.companyId, { dateFrom: query.dateFrom || undefined, dateTo: query.dateTo || undefined }));
     }
 
     if (pathname === '/api/product-analytics' && req.method === 'GET') {
@@ -1123,40 +1004,10 @@ async function handleApi(req, res, pathname, query) {
         dateFrom: query.dateFrom || undefined,
         dateTo: query.dateTo || undefined,
         q: query.q || undefined,
-        minDateCreated: orderCutoff,
         limit: pageSize,
         offset: (page - 1) * pageSize,
       };
       return sendJSON(res, 200, db.listOrders(currentAgent.companyId, filters));
-    }
-
-    // Cate comenzi corespund filtrelor -- doar numarul, pentru paginare.
-    // Folosita de tabul de istoric complet, care poate avea sute de mii de
-    // randuri si are nevoie sa stie cate pagini sunt.
-    if (pathname === '/api/orders/count' && req.method === 'GET') {
-      return sendJSON(res, 200, {
-        total: db.countOrders(currentAgent.companyId, {
-          shippingStatus: query.shippingStatus || undefined,
-          paymentStatus: query.paymentStatus || undefined,
-          internalStatus: query.internalStatus || undefined,
-          assignedTo: query.assignedTo || undefined,
-          needsAwb: query.needsAwb === '1' ? true : undefined,
-          hasAwb: query.needsAwb === '0' ? true : undefined,
-          dateFrom: query.dateFrom || undefined,
-          dateTo: query.dateTo || undefined,
-          q: query.q || undefined,
-          minDateCreated: orderCutoff,
-        }),
-        historyCutoff: historyCutoff || null,
-        // ziua de la care comenzile apar in paginile de lucru -- nu data
-        // crearii contului, care poate fi cu mult inainte
-        signupDate: historyCutoff || (company && company.createdAt) || null,
-        signupDay: ziRomaneasca(historyCutoff || (company && company.createdAt)),
-        // indexul de cautare intoarce cel mult 5.000 de potriviri (plafon pus
-        // ca sortarea sa ramana rapida la sute de mii de comenzi), deci la o
-        // cautare foarte larga numarul e "cel putin atat", nu exact
-        capped: Boolean(query.q) ,
-      });
     }
 
     const orderMatch = pathname.match(/^\/api\/orders\/([^/]+)$/);
@@ -1758,7 +1609,7 @@ async function handleApi(req, res, pathname, query) {
     // ---- profil client (agregat din comenzi + tichete cu acelasi telefon/email) ----
 
     if (pathname === '/api/clients/lookup' && req.method === 'GET') {
-      const profile = db.getClientProfile(currentAgent.companyId, { phone: query.phone || undefined, email: query.email || undefined, minDateCreated: orderCutoff });
+      const profile = db.getClientProfile(currentAgent.companyId, { phone: query.phone || undefined, email: query.email || undefined });
       return sendJSON(res, 200, profile);
     }
 
