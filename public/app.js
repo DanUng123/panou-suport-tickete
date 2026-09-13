@@ -4890,6 +4890,7 @@ async function renderSettings() {
       ${bifa('r-schimb-acelasi', R.exchangeSame, 'Schimb cu același produs', 'Înlocuire bucată cu bucată, aceeași referință.')}
       ${bifa('r-schimb-altul', R.exchangeOther, 'Schimb cu alt produs', 'Clientul alege produsul dorit direct din catalogul magazinului tău.')}
       <div class="catalog-stare" id="catalogStare">Se verifică catalogul…</div>
+      <div id="diagnosticPreturi" style="margin:6px 0 4px 34px;" hidden></div>
 
       <div class="cerere-eticheta" style="margin-top:18px;">Costul transportului</div>
       <div class="hint" style="margin-bottom:10px;">În ambele cazuri clientul vede costul înainte să trimită cererea. Lasă 0 dacă transportul e pe seama ta.</div>
@@ -4967,7 +4968,9 @@ async function renderSettings() {
       ${eroare ? `<span class="catalog-eroare">${escapeHtml(eroare)}</span>` : ''}
       <button type="button" class="btn btn-sm" id="aduCatalog" ${stare.running ? 'disabled' : ''}>
         ${stare.count ? 'Reîmprospătează' : 'Adu catalogul'}
-      </button>`;
+      </button>
+      <button type="button" class="btn btn-sm" id="verificaPreturi">Verifică prețurile</button>`;
+    zonaCatalog.querySelector('#verificaPreturi').addEventListener('click', verificaPreturile);
     const btn = zonaCatalog.querySelector('#aduCatalog');
     if (btn) btn.addEventListener('click', async () => {
       btn.disabled = true;
@@ -4984,6 +4987,60 @@ async function renderSettings() {
     if (stare.running) ceasCatalog = setTimeout(aratăCatalogul, 4000);
   }
   aratăCatalogul();
+
+  // ---- „Verifică prețurile" ----
+  // Magazinele nu-și țin reducerile toate la fel, iar documentația MerchantPro
+  // nu acoperă toate variantele. Butonul cere un produs de la magazin și arată
+  // DOAR câmpurile care au legătură cu prețul, ca să se vadă negru pe alb unde
+  // stă prețul redus. Nimic despre clienți, nicio credențială.
+  async function verificaPreturile() {
+    const nume = prompt('Scrie o bucată din denumirea unui produs aflat ACUM la reducere:', '');
+    if (nume === null) return;
+    const cutie = content.querySelector('#diagnosticPreturi');
+    cutie.hidden = false;
+    cutie.innerHTML = '<div class="hint">Întrebăm magazinul…</div>';
+    let raspuns;
+    try {
+      raspuns = await api(`/api/company/catalog/diagnostic?q=${encodeURIComponent(nume.trim())}`);
+    } catch (err) {
+      cutie.innerHTML = `<div class="catalog-eroare">${escapeHtml(err.message)}</div>`;
+      return;
+    }
+    const produse = (raspuns && raspuns.data) || [];
+    if (!produse.length) {
+      cutie.innerHTML = '<div class="hint">Niciun produs găsit cu denumirea asta. Încearcă alt cuvânt.</div>';
+      return;
+    }
+    const arePret = (cheie) => /pret|price|reduc|discount|promo|special|sale/i.test(cheie);
+    const randuri = [];
+    for (const p of produse.slice(0, 2)) {
+      randuri.push(`# ${p.name || p.id}`);
+      for (const [k, v] of Object.entries(p)) {
+        if (arePret(k) && (typeof v !== 'object' || v === null)) randuri.push(`  ${k} = ${v}`);
+      }
+      const v0 = Array.isArray(p.variants) && p.variants[0];
+      if (v0) {
+        randuri.push('  (prima variantă)');
+        for (const [k, v] of Object.entries(v0)) {
+          if (arePret(k) && (typeof v !== 'object' || v === null)) randuri.push(`    ${k} = ${v}`);
+        }
+      }
+      randuri.push('');
+    }
+    const text = randuri.join('\n');
+    cutie.innerHTML = `
+      <div class="hint" style="margin-bottom:6px;">Câmpurile de preț, așa cum le trimite magazinul tău. Copiază-le și trimite-mi-le.</div>
+      <textarea class="cod-integrare" id="textPreturi" readonly rows="10">${escapeHtml(text)}</textarea>
+      <div class="form-actions" style="justify-content:flex-start;margin-top:6px;">
+        <button type="button" class="btn btn-sm" id="copiazaPreturi">Copiază</button>
+      </div>`;
+    cutie.querySelector('#copiazaPreturi').addEventListener('click', async () => {
+      const camp = cutie.querySelector('#textPreturi');
+      camp.select();
+      try { await navigator.clipboard.writeText(camp.value); showToast('Copiat'); }
+      catch (e) { showToast('Apasă Ctrl+C ca să copiezi textul selectat'); }
+    });
+  }
 
   content.querySelector('#salveazaRetur').addEventListener('click', async (e) => {
     const btn = e.currentTarget;
