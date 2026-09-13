@@ -993,22 +993,46 @@ const TIPURI_CERERE_PUBLICE = [
   { cod: 'schimb', titlu: 'Colet la schimb', descriere: 'Vreau să înlocuiesc produsul cu altul.' },
 ];
 
-function renderCerereClient(slug) {
+function renderCerereClient(slug, { integrat = false } = {}) {
   const ecran = el(`
-    <div class="cerere-screen">
+    <div class="cerere-screen${integrat ? ' integrat' : ''}">
       <div class="cerere-card">
         <div class="auth-brand">
-          <div class="mark"><svg width="18" height="18" viewBox="0 0 64 64"><path d="M34 6L14 34H26L20 58L50 24H36Z" fill="currentColor"/></svg></div>
           <div class="name" id="cerereMagazin">Se încarcă…</div>
         </div>
         <div id="cererePas">Se încarcă…</div>
       </div>
-      <div class="cerere-subsol">Formular de asistență · Easy-Ticket</div>
+      <div class="cerere-subsol" id="cerereSubsol"></div>
     </div>
   `);
   app.innerHTML = '';
   app.appendChild(ecran);
   currentMainRoute = null;
+  if (integrat) document.documentElement.classList.add('mod-integrat');
+
+  // Cand formularul e integrat in magazin, pagina-gazda nu stie cat de inalt e
+  // continutul, iar el se schimba de la un pas la altul. Ii spunem noi, la
+  // fiecare randare, ca sa nu apara o bara de derulare in interiorul cadrului.
+  let ultimaInaltime = 0;
+  const anuntaInaltimea = () => {
+    if (!integrat || window.parent === window) return;
+    // masuram CARDUL, nu ecranul: ecranul e element flex si s-ar putea intinde
+    // pe inaltimea cadrului, adica exact pe valoarea pe care tocmai am trimis-o
+    const cutie = ecran.querySelector('.cerere-card') || ecran;
+    const h = Math.ceil(cutie.getBoundingClientRect().height) + 8;
+    // Anuntam DOAR cand chiar s-a schimbat ceva. Fara garda asta se face o
+    // bucla: noi trimitem inaltimea, gazda redimensioneaza cadrul,
+    // redimensionarea declanseaza la noi evenimentul de resize, si o luam de la
+    // capat -- cadrul tremura la nesfarsit.
+    if (Math.abs(h - ultimaInaltime) < 2) return;
+    ultimaInaltime = h;
+    try { window.parent.postMessage({ type: 'easyticket:inaltime', slug, height: h }, '*'); } catch (e) { /* gazda o ignora */ }
+  };
+  // dupa fiecare schimbare de continut, plus la incarcarea imaginilor de produs
+  const observator = new MutationObserver(() => requestAnimationFrame(anuntaInaltimea));
+  observator.observe(ecran, { childList: true, subtree: true });
+  window.addEventListener('load', anuntaInaltimea);
+  window.addEventListener('resize', anuntaInaltimea);
 
   const zona = ecran.querySelector('#cererePas');
   let magazin = null;
@@ -1213,11 +1237,15 @@ function renderCerereClient(slug) {
       const info = await api(`/api/public/cerere/${encodeURIComponent(slug)}`);
       magazin = info.companyName;
       ecran.querySelector('#cerereMagazin').textContent = info.companyName;
+      // tema si culoarea alese de magazin, ca formularul sa semene cu site-ul lui
+      if (info.theme !== 'dark') ecran.classList.add('tema-deschisa');
+      if (/^#[0-9a-fA-F]{6}$/.test(info.accent || '')) ecran.style.setProperty('--accent', info.accent);
       pasIdentificare();
     } catch (e) {
-      ecran.querySelector('#cerereMagazin').textContent = 'Easy-Ticket';
+      ecran.querySelector('#cerereMagazin').textContent = '';
       zona.innerHTML = `<h1>Formular indisponibil</h1><p class="sub">Linkul nu mai este valid. Cere-i magazinului adresa corectă.</p>`;
     }
+    anuntaInaltimea();
   })();
 }
 
@@ -4332,36 +4360,119 @@ async function renderSettings() {
     </form>
   `));
 
-  // ---- Linkul formularului pentru clienți ----
+  // ---- Formularul integrat în magazin ----
+  const bazaSite = location.origin;
+  const slugFormular = s.publicFormSlug || '';
+  const codIntegrare = (slug) => `<!-- Formular retur / service -->
+<iframe id="formular-cereri" src="${bazaSite}/embed/${slug}"
+        style="width:100%;border:0;min-height:320px" loading="lazy"
+        title="Formular cereri"></iframe>
+<script>
+window.addEventListener('message', function (e) {
+  if (e.origin !== '${bazaSite}') return;
+  if (!e.data || e.data.type !== 'easyticket:inaltime') return;
+  var c = document.getElementById('formular-cereri');
+  c.style.height = e.data.height + 'px';
+  c.style.minHeight = '0';   // inaltimea de pornire a fost doar un loc rezervat
+});
+<\/script>`;
+
   body.appendChild(el(`
     <section class="panel" id="cardFormular" style="margin-top:22px;">
       <h2 style="margin:0 0 4px;font-size:16px;">Formular de cereri pentru clienți</h2>
-      <div class="hint">
-        Pune linkul de mai jos în magazinul tău — ca pagină „Retur și service", ca buton în emailul de confirmare
-        a comenzii, sau oriunde îl găsesc clienții. Ei completează singuri cererea de retur, service sau colet la
-        schimb, iar aceasta ajunge direct la voi, ca tichet legat de comandă.
+      <div class="hint" style="margin-bottom:14px;">
+        Clienții tăi completează singuri cererile de retur, service sau colet la schimb, iar acestea ajung
+        direct la voi ca tichete legate de comandă. Formularul se integrează în magazinul tău, sub numele tău:
+        clientul nu pleacă de pe site.
       </div>
-      <div class="link-formular">
-        <input type="text" id="linkFormular" readonly value="${escapeHtml(location.origin + '/#/cerere/' + (s.publicFormSlug || ''))}" />
-        <button type="button" class="btn" id="copiazaLink">Copiază</button>
-        <a class="btn" href="#/cerere/${escapeHtml(s.publicFormSlug || '')}" target="_blank" rel="noopener">Deschide</a>
+
+      <div class="form-row">
+        <div class="field">
+          <label for="s-form-tema">Temă</label>
+          <select id="s-form-tema">
+            <option value="light"${s.formTheme !== 'dark' ? ' selected' : ''}>Deschisă — pentru magazine pe fond alb</option>
+            <option value="dark"${s.formTheme === 'dark' ? ' selected' : ''}>Închisă — pentru magazine pe fond întunecat</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="s-form-culoare">Culoarea magazinului</label>
+          <input type="color" id="s-form-culoare" value="${escapeHtml(s.formAccent || '#3b82f6')}" style="height:38px;padding:4px;" />
+        </div>
+      </div>
+      <div class="field">
+        <label for="s-form-domenii">Domenii unde poate fi integrat</label>
+        <input type="text" id="s-form-domenii" value="${escapeHtml(s.formEmbedDomains || '')}" placeholder="magazinul-meu.ro, shop.magazinul-meu.ro" />
+        <div class="hint" style="margin-top:6px;">
+          Opțional. Domeniul din integrarea ta e deja permis; adaugă aici doar dacă pui formularul și pe altul.
+          Cât timp câmpul e gol și nu avem niciun domeniu cunoscut, formularul poate fi integrat oriunde.
+        </div>
+      </div>
+      <div class="form-actions" style="justify-content:flex-start;margin-top:4px;">
+        <button type="button" class="btn" id="salveazaAspect">Salvează aspectul</button>
+      </div>
+
+      <div class="cerere-eticheta" style="margin-top:18px;">Cod de lipit în pagina magazinului</div>
+      <textarea class="cod-integrare" id="codIntegrare" readonly>${escapeHtml(codIntegrare(slugFormular))}</textarea>
+      <div class="form-actions" style="justify-content:flex-start;margin-top:8px;">
+        <button type="button" class="btn" id="copiazaCod">Copiază codul</button>
+        <a class="btn" href="/cerere/${escapeHtml(slugFormular)}" target="_blank" rel="noopener">Deschide separat</a>
       </div>
       <div class="hint" style="margin-top:8px;">
-        Clientul își dovedește comanda cu numărul ei și telefonul cu care a comandat, apoi bifează produsele.
-        Nu are nevoie de cont.
+        În MerchantPro: creează o pagină nouă (ex. „Retur și service"), treci editorul pe HTML și lipește codul.
+        Cadrul își potrivește singur înălțimea, deci nu apar bare de derulare.
       </div>
+
+      <div class="cerere-eticheta" style="margin-top:18px;">Așa îl vede clientul tău</div>
+      <div class="previzualizare-formular" id="previzualizare"></div>
     </section>
   `));
 
-  content.querySelector('#copiazaLink').addEventListener('click', async () => {
-    const camp = content.querySelector('#linkFormular');
+  function reincarcaPrevizualizarea() {
+    const gazda = content.querySelector('#previzualizare');
+    gazda.innerHTML = `<iframe src="/embed/${encodeURIComponent(slugFormular)}?v=${Date.now()}" style="height:320px"></iframe>`;
+  }
+  reincarcaPrevizualizarea();
+
+  // previzualizarea isi potriveste inaltimea la fel ca la magazin -- ca sa vada
+  // exact ce va vedea si clientul lui
+  window.addEventListener('message', (e) => {
+    if (e.origin !== location.origin) return;
+    if (!e.data || e.data.type !== 'easyticket:inaltime') return;
+    const cadru = content.querySelector('#previzualizare iframe');
+    if (cadru) cadru.style.height = e.data.height + 'px';
+  });
+
+  content.querySelector('#copiazaCod').addEventListener('click', async () => {
+    const camp = content.querySelector('#codIntegrare');
     camp.select();
     try {
       await navigator.clipboard.writeText(camp.value);
-      showToast('Link copiat');
+      showToast('Cod copiat');
     } catch (e) {
-      // browsere fara acces la clipboard: textul e deja selectat, ramane Ctrl+C
-      showToast('Apasă Ctrl+C ca să copiezi linkul selectat');
+      showToast('Apasă Ctrl+C ca să copiezi codul selectat');
+    }
+  });
+
+  content.querySelector('#salveazaAspect').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    btn.textContent = 'Se salvează…';
+    try {
+      await api('/api/company/settings', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          formTheme: content.querySelector('#s-form-tema').value,
+          formAccent: content.querySelector('#s-form-culoare').value,
+          formEmbedDomains: content.querySelector('#s-form-domenii').value.trim(),
+        }),
+      });
+      showToast('Aspect salvat');
+      reincarcaPrevizualizarea();
+    } catch (err) {
+      showToast('Eroare: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Salvează aspectul';
     }
   });
 
@@ -4611,6 +4722,25 @@ function render() {
 
   // Formularul public de cereri se deschide indiferent daca in browserul asta
   // e logat cineva: e pagina clientului magazinului, nu a agentului.
+  //
+  // Trei adrese duc la el:
+  //   /embed/<slug>   -- varianta integrata in magazin, fara brandul nostru
+  //   /cerere/<slug>  -- adresa curata, de pus intr-un link sau email
+  //   #/cerere/<slug> -- aceeasi, pe rutarea veche cu diez
+  // Prima e pe cale, nu pe diez, dinadins: serverul trebuie sa vada carui
+  // magazin ii apartine, ca sa permita inglobarea doar in domeniul lui
+  // (diezul nu ajunge niciodata la server).
+  const caleDeSite = window.location.pathname || '/';
+  const potrivireIntegrat = caleDeSite.match(/^\/embed\/([^/]+)\/?$/);
+  if (potrivireIntegrat) {
+    renderCerereClient(decodeURIComponent(potrivireIntegrat[1]), { integrat: true });
+    return;
+  }
+  const potrivireCale = caleDeSite.match(/^\/cerere\/([^/]+)\/?$/);
+  if (potrivireCale) {
+    renderCerereClient(decodeURIComponent(potrivireCale[1]));
+    return;
+  }
   const caleaCurenta = (window.location.hash || '').split('?')[0];
   if (caleaCurenta.startsWith('#/cerere/')) {
     renderCerereClient(decodeURIComponent(caleaCurenta.slice('#/cerere/'.length)));

@@ -395,7 +395,11 @@ async function handleApi(req, res, pathname, query) {
     if (magazinPublicMatch && req.method === 'GET') {
       const magazin = db.findCompanyByPublicSlug(magazinPublicMatch[1]);
       if (!magazin) return sendJSON(res, 404, { error: 'Formular inexistent.' });
-      return sendJSON(res, 200, { companyName: magazin.name });
+      return sendJSON(res, 200, {
+        companyName: magazin.name,
+        theme: magazin.formTheme === 'dark' ? 'dark' : 'light',
+        accent: magazin.formAccent || null,
+      });
     }
 
     // Pasul 1: clientul isi dovedeste comanda cu numarul ei si telefonul.
@@ -1941,9 +1945,32 @@ const server = http.createServer((req, res) => {
   // externe chiar foloseste aplicatia (fonturi Google, biblioteca XLSX de pe
   // cdnjs), ca sa nu blocam din greseala ceva ce functioneaza deja
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains');
+
+  const parsed = url.parse(req.url, true);
+  const pathname = parsed.pathname;
+
+  // Toata platforma ramane neinglobabila -- singura exceptie e formularul de
+  // cereri, care TREBUIE sa poata sta intr-un cadru, in magazinul clientului.
+  // Si acolo restrangem: doar domeniul magazinului respectiv, nu oricine.
+  const potriviremInglobare = pathname.match(/^\/embed\/([^/]+)\/?$/);
+  let stramosiPermisi = "'none'";
+  if (potriviremInglobare) {
+    let origini = [];
+    try {
+      const magazin = db.findCompanyByPublicSlug(decodeURIComponent(potriviremInglobare[1]));
+      if (magazin) origini = db.getPublicFormEmbedOrigins(magazin);
+    } catch (e) { /* baza indisponibila -- ramanem pe varianta stransa */ }
+    // Fara niciun domeniu cunoscut nu putem restrange, iar un cadru blocat e o
+    // pagina alba fara niciun mesaj -- imposibil de diagnosticat pentru
+    // magazin. Preferam sa permitem, si sa se restranga singur din Setari,
+    // odata ce si-a trecut domeniul.
+    stramosiPermisi = origini.length ? `'self' ${origini.join(' ')}` : '*';
+  } else {
+    res.setHeader('X-Frame-Options', 'DENY');
+  }
+
   res.setHeader('Content-Security-Policy', [
     "default-src 'self'",
     "script-src 'self' https://cdnjs.cloudflare.com",
@@ -1951,11 +1978,8 @@ const server = http.createServer((req, res) => {
     "font-src 'self' https://fonts.gstatic.com",
     "img-src 'self' data: https:", // https: larg -- imaginile produselor vin de pe domeniul magazinului fiecarei companii, diferit de la una la alta
     "connect-src 'self'",
-    "frame-ancestors 'none'",
+    `frame-ancestors ${stramosiPermisi}`,
   ].join('; '));
-
-  const parsed = url.parse(req.url, true);
-  const pathname = parsed.pathname;
 
   if (pathname.startsWith('/api/')) {
     handleApi(req, res, pathname, parsed.query);

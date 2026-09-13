@@ -2010,3 +2010,141 @@ a { color: inherit; text-decoration: none; }
 @media (max-width: 560px) {
   .cerere-card { padding: 20px 16px; }
 }
+
+/* ---------------------------------------------------------------------------
+   Formularul integrat în magazinul clientului
+   ---------------------------------------------------------------------------
+   Când formularul stă într-un cadru, pe site-ul magazinului, nu are voie să
+   arate a platformă străină. Două lucruri fac diferența: paleta (magazinele
+   sunt aproape toate pe fond deschis, iar navy-ul nostru ar sări în ochi) și
+   fundalul, care aici e transparent, ca să preia exact fundalul paginii-gazdă.
+   --------------------------------------------------------------------------- */
+
+.cerere-screen.tema-deschisa {
+  --bg: transparent;
+  --surface: #ffffff;
+  --surface-card: #ffffff;
+  --surface-raised: #f6f7f9;
+  --surface-hover: #eef0f4;
+  --border: #e2e5ea;
+  --border-light: #cbd2dc;
+  --text: #14181f;
+  --text-secondary: #56606f;
+  --text-dim: #8a93a1;
+  --accent-dim: color-mix(in srgb, var(--accent) 10%, #ffffff);
+  --accent-border: color-mix(in srgb, var(--accent) 45%, #ffffff);
+  --status-resolved: #0f8a5f;
+  --priority-urgent: #c0392b;
+  /* Pe pagina de sine statatoare, fundalul trebuie sa fie si el deschis --
+     altfel iese un card alb pe fond navy. In cadru se face transparent, mai
+     jos, ca sa preia fundalul paginii magazinului. */
+  background: #f4f6f8;
+  /* Culoarea trebuie declarata AICI, nu doar prin jetoane: `body` si-a calculat
+     deja culoarea cu jetoanele temei intunecate, iar copiii o mostenesc gata
+     rezolvata. Fara linia asta, titlurile si numele de produse raman cenusii
+     pe fond alb. */
+  color: var(--text);
+}
+.cerere-screen.tema-deschisa h1,
+.cerere-screen.tema-deschisa .cerere-tip-titlu,
+.cerere-screen.tema-deschisa .cerere-produs-nume,
+.cerere-screen.tema-deschisa .cerere-referinta strong { color: var(--text); }
+.cerere-screen.tema-deschisa .sub,
+.cerere-screen.tema-deschisa .cerere-tip-desc { color: var(--text-secondary); }
+.cerere-screen.tema-deschisa .hint,
+.cerere-screen.tema-deschisa .cerere-eticheta,
+.cerere-screen.tema-deschisa .cerere-produs-sub { color: var(--text-dim); }
+.cerere-screen.tema-deschisa .cerere-card {
+  box-shadow: 0 1px 2px rgba(16,24,40,0.04), 0 8px 24px rgba(16,24,40,0.06);
+}
+.cerere-screen.tema-deschisa .error-msg {
+  background: #fdeceb;
+  border-color: #f3c5c0;
+  color: #a52a1f;
+}
+
+/* modul integrat: fără ecran plin, fără sigla și subsolul nostru — pagina
+   magazinului îi ține deja locul */
+/* În cadru, containerul aplicației nu are voie să se întindă pe toată
+   înălțimea ferestrei: acolo „înălțimea ferestrei" e chiar înălțimea cadrului,
+   pe care tot noi o setăm — s-ar face o buclă în care conținutul crește la
+   fiecare redimensionare. */
+html.mod-integrat, html.mod-integrat body { min-height: 0; background: transparent; }
+html.mod-integrat #app { min-height: 0; display: block; }
+
+.cerere-screen.integrat {
+  min-height: 0;
+  padding: 0;
+  background: transparent;
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+.cerere-screen.integrat .cerere-card {
+  max-width: none;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  padding: 4px 2px 8px;
+}
+.cerere-screen.integrat .auth-brand,
+.cerere-screen.integrat .cerere-subsol { display: none; }
+
+/* pe fond deschis, câmpurile de formular ale platformei au nevoie de aceleași
+   jetoane; le forțăm aici, fiindcă stilul lor de bază presupune fond întunecat */
+.cerere-screen.tema-deschisa .field input,
+.cerere-screen.tema-deschisa .field select,
+.cerere-screen.tema-deschisa .field textarea {
+  background: #ffffff;
+  border-color: var(--border);
+  color: var(--text);
+}
+.cerere-screen.tema-deschisa .field input::placeholder,
+.cerere-screen.tema-deschisa .field textarea::placeholder { color: #a6aebb; }
+.cerere-screen.tema-deschisa .btn {
+  background: #ffffff;
+  border-color: var(--border);
+  color: var(--text);
+}
+.cerere-screen.tema-deschisa .btn:hover { background: var(--surface-hover); }
+.cerere-screen.tema-deschisa .btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+.cerere-screen.tema-deschisa .cerere-tip,
+.cerere-screen.tema-deschisa .cerere-produs { background: #ffffff; }
+.cerere-screen.tema-deschisa .cerere-tip:hover,
+.cerere-screen.tema-deschisa .cerere-produs:hover { background: var(--surface-raised); }
+.cerere-screen.tema-deschisa .cerere-tip.ales,
+.cerere-screen.tema-deschisa .cerere-produs:has(input:checked) {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+}
+.cerere-screen.tema-deschisa .cerere-referinta { background: var(--surface-raised); }
+.cerere-screen.tema-deschisa .cerere-bifa {
+  background: color-mix(in srgb, var(--status-resolved) 12%, #ffffff);
+  border-color: color-mix(in srgb, var(--status-resolved) 35%, #ffffff);
+}
+
+/* previzualizarea din Setări */
+.previzualizare-formular {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #ffffff;
+  margin-top: 10px;
+}
+.previzualizare-formular iframe { display: block; width: 100%; border: 0; }
+.cod-integrare {
+  width: 100%;
+  min-height: 116px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--text);
+  resize: vertical;
+}
