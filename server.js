@@ -294,6 +294,9 @@ function sendLabelFile(res, buffer, baseName) {
 
 function serveStatic(req, res, pathname) {
   let filePath = pathname === '/' ? '/index.html' : pathname;
+  // Formularul integrat primeste propriul document: transparent din primul
+  // pixel si fara biblioteci de care nu are nevoie. Vezi public/embed.html.
+  if (/^\/embed\/[^/]+\/?$/.test(pathname)) filePath = '/embed.html';
   filePath = path.join(PUBLIC_DIR, filePath);
 
   // previne path traversal

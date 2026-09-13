@@ -1008,7 +1008,13 @@ function renderCerereClient(slug, { integrat = false } = {}) {
   app.innerHTML = '';
   app.appendChild(ecran);
   currentMainRoute = null;
-  if (integrat) document.documentElement.classList.add('mod-integrat');
+  if (integrat) {
+    document.documentElement.classList.add('mod-integrat');
+    // pornim pe deschis si corectam mai jos daca magazinul e pe fond inchis --
+    // altfel, cat dureaza cererea catre server, s-ar vedea o clipa text
+    // deschis pe alb
+    ecran.classList.add('tema-deschisa');
+  }
 
   // Cand formularul e integrat in magazin, pagina-gazda nu stie cat de inalt e
   // continutul, iar el se schimba de la un pas la altul. Ii spunem noi, la

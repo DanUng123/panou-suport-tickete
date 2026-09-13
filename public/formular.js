@@ -28,7 +28,7 @@
   cadru.src = origine + '/embed/' + encodeURIComponent(slug);
   cadru.title = 'Formular cereri';
   cadru.loading = 'lazy';
-  cadru.setAttribute('style', 'display:block;width:100%;border:0;min-height:320px;overflow:hidden');
+  cadru.setAttribute('style', 'display:block;width:100%;border:0;min-height:200px;overflow:hidden');
   var gazda = document.getElementById('easyticket-formular');
   if (gazda) gazda.appendChild(cadru);
   else script.parentNode.insertBefore(cadru, script);
