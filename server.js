@@ -376,6 +376,188 @@ async function handleApi(req, res, pathname, query) {
       return sendJSON(res, 201, result);
     }
 
+    // ---------- formularul public de cereri (retur / service / colet la schimb) ----------
+    // Clientul magazinului completeaza singur cererea, la adresa publica a
+    // magazinului, iar cererea ajunge direct ca tichet in sectiunea potrivita.
+    // Rutele astea sunt SINGURELE din platforma prin care intra date fara
+    // autentificare, deci fiecare camp e validat si plafonat aici.
+
+    const TIPURI_CERERE = {
+      retur: { section: 'retur', eticheta: 'Retur', category: 'Altele' },
+      service: { section: 'service', eticheta: 'Produs defect / service', category: 'Produs defect' },
+      schimb: { section: 'schimb', eticheta: 'Colet la schimb', category: 'Altele' },
+    };
+    const MAX_FOTO_CERERE = 6;
+    const MAX_OCTETI_FOTO = 3 * 1024 * 1024; // per fotografie, dupa decodare
+
+    /** Datele publice ale magazinului din spatele adresei -- doar numele, ca sa stie clientul unde a ajuns. */
+    const magazinPublicMatch = pathname.match(/^\/api\/public\/cerere\/([^/]+)$/);
+    if (magazinPublicMatch && req.method === 'GET') {
+      const magazin = db.findCompanyByPublicSlug(magazinPublicMatch[1]);
+      if (!magazin) return sendJSON(res, 404, { error: 'Formular inexistent.' });
+      return sendJSON(res, 200, { companyName: magazin.name });
+    }
+
+    // Pasul 1: clientul isi dovedeste comanda cu numarul ei si telefonul.
+    if (pathname === '/api/public/cerere/verificare' && req.method === 'POST') {
+      // Doua plase diferite, pentru doua probleme diferite.
+      //
+      // Prima e un plafon larg, impotriva inundarii cu cereri. Nu poate fi
+      // strans: la noi clientii vin de pe mobil, iar operatorii romanesti pun
+      // mii de abonati in spatele aceleiasi adrese IP -- o limita mica ar
+      // bloca oameni care nu au gresit cu nimic.
+      if (isRateLimited('cerere-verificare', req, 40, 10 * 60 * 1000)) {
+        return sendJSON(res, 429, { error: 'Prea multe cereri. Încearcă din nou peste câteva minute.' });
+      }
+      // A doua numara doar INCERCARILE GRESITE, si abia ele duc la blocare.
+      // Un client care greseste o data telefonul nu pateste nimic; cineva care
+      // incearca numere de comanda la rand greseste de fiecare data si se
+      // opreste singur in perete.
+      const cheieIncercari = `cerere:${getClientIp(req)}`;
+      const blocaj = checkLockout(cheieIncercari);
+      if (blocaj.locked) {
+        return sendJSON(res, 429, { error: `Prea multe încercări greșite. Încearcă din nou peste ${blocaj.minutesLeft} minut(e).` });
+      }
+      const body = await readBody(req);
+      const magazin = db.findCompanyByPublicSlug(body.slug);
+      if (!magazin) return sendJSON(res, 404, { error: 'Formular inexistent.' });
+
+      const comanda = db.findOrderForPublicRequest(magazin.id, body.orderNumber, body.phone);
+      // acelasi raspuns si cand comanda nu exista, si cand telefonul nu se
+      // potriveste -- altfel formularul ar confirma ce numere de comanda exista
+      if (!comanda) {
+        registerFailedAttempt(cheieIncercari);
+        return sendJSON(res, 404, { error: 'Nu am găsit o comandă cu acest număr și acest telefon. Verifică-le și încearcă din nou.' });
+      }
+      clearFailedAttempts(cheieIncercari);
+      return sendJSON(res, 200, {
+        companyName: magazin.name,
+        order: {
+          number: comanda.mpId,
+          date: comanda.dateCreated,
+          total: comanda.totalAmount,
+          currency: comanda.currency,
+          customerName: comanda.shippingName || comanda.billingName || '',
+          phone: comanda.shippingPhone || '',
+          email: comanda.customerEmail || '',
+          address: comanda.shippingAddress || '',
+          city: comanda.shippingCity || '',
+          postalCode: comanda.shippingPostalCode || '',
+          items: (comanda.lineItems || []).map((it, i) => ({
+            index: i,
+            name: it.product_name || 'Produs',
+            sku: it.product_sku || null,
+            quantity: it.quantity || 1,
+            imageUrl: it.product_image_url || null,
+          })),
+        },
+      });
+    }
+
+    // Pasul 2: cererea propriu-zisa devine tichet.
+    if (pathname === '/api/public/cerere' && req.method === 'POST') {
+      // Trimiterea presupune deja o comanda dovedita, deci riscul de abuz e
+      // mic; plafonul e doar impotriva inundarii, si la fel de larg ca mai sus,
+      // din acelasi motiv legat de adresele IP partajate.
+      if (isRateLimited('cerere-trimitere', req, 25, 10 * 60 * 1000)) {
+        return sendJSON(res, 429, { error: 'Prea multe cereri trimise. Încearcă din nou peste câteva minute.' });
+      }
+      const body = await readBody(req);
+      // capcana pentru roboti: un camp ascuns, pe care un om nu-l vede si nu-l
+      // completeaza niciodata
+      if (body.website) return sendJSON(res, 200, { ok: true, reference: null });
+
+      const magazin = db.findCompanyByPublicSlug(body.slug);
+      if (!magazin) return sendJSON(res, 404, { error: 'Formular inexistent.' });
+
+      const tip = TIPURI_CERERE[body.type];
+      if (!tip) return sendJSON(res, 400, { error: 'Tip de cerere invalid.' });
+
+      // comanda se re-verifica aici, nu ne bazam pe pasul anterior: altfel
+      // cineva ar putea sari peste el si trimite direct ce vrea
+      const comanda = db.findOrderForPublicRequest(magazin.id, body.orderNumber, body.phone);
+      if (!comanda) return sendJSON(res, 404, { error: 'Nu am găsit o comandă cu acest număr și acest telefon.' });
+
+      const descriere = String(body.description || '').trim();
+      if (!descriere) return sendJSON(res, 400, { error: 'Scrie te rog câteva cuvinte despre problemă.' });
+      if (descriere.length > 4000) return sendJSON(res, 400, { error: 'Descrierea e prea lungă.' });
+
+      const toateProdusele = comanda.lineItems || [];
+      const alese = Array.isArray(body.itemIndexes)
+        ? [...new Set(body.itemIndexes.map(Number))].filter((i) => Number.isInteger(i) && i >= 0 && i < toateProdusele.length)
+        : [];
+      if (!alese.length) return sendJSON(res, 400, { error: 'Alege cel puțin un produs din comandă.' });
+
+      let iban = null;
+      let titular = null;
+      if (body.type === 'retur') {
+        iban = String(body.iban || '').replace(/\s+/g, '').toUpperCase();
+        titular = String(body.accountHolder || '').trim();
+        if (!iban || !titular) return sendJSON(res, 400, { error: 'Pentru retur avem nevoie de IBAN și de numele titularului de cont.' });
+        // IBAN-ul romanesc are exact 24 de caractere: RO, doua cifre de
+        // control, patru litere de banca si 16 alfanumerice
+        if (!/^RO\d{2}[A-Z0-9]{20}$/.test(iban)) return sendJSON(res, 400, { error: 'IBAN-ul nu pare valid. Verifică-l te rog — trebuie să înceapă cu RO și să aibă 24 de caractere.' });
+        if (titular.length > 120) return sendJSON(res, 400, { error: 'Numele titularului e prea lung.' });
+      }
+
+      const numeProduse = alese.map((i) => {
+        const p = toateProdusele[i];
+        return `- ${p.product_name || 'Produs'}${p.product_sku ? ` (${p.product_sku})` : ''} × ${p.quantity || 1}`;
+      }).join('\n');
+      const motiv = String(body.reason || '').trim().slice(0, 200);
+
+      const descriereCompleta = [
+        `Cerere trimisă de client prin formularul online.`,
+        ``,
+        `Produse vizate:`,
+        numeProduse,
+        ``,
+        motiv ? `Motiv: ${motiv}` : null,
+        `Mesajul clientului:`,
+        descriere,
+      ].filter((l) => l !== null).join('\n');
+
+      const adresa = String(body.pickupAddress || comanda.shippingAddress || '').trim().slice(0, 300);
+      const oras = String(body.pickupCity || comanda.shippingCity || '').trim().slice(0, 120);
+      const codPostal = String(body.pickupPostalCode || comanda.shippingPostalCode || '').trim().slice(0, 20);
+
+      let tichet;
+      try {
+        tichet = db.createTicket(magazin.id, {
+          subject: `${tip.eticheta} — comanda #${comanda.mpId}`,
+          description: descriereCompleta,
+          requesterName: comanda.shippingName || comanda.billingName || 'Client',
+          requesterEmail: comanda.customerEmail || '',
+          requesterPhone: comanda.shippingPhone || '',
+          category: tip.category,
+          priority: 'medium',
+          section: tip.section,
+          relatedOrderId: comanda.id,
+          pickupAddress: adresa || null,
+          pickupCity: oras || null,
+          pickupPostalCode: codPostal || null,
+          pickupPhone: comanda.shippingPhone || null,
+          refundIban: iban,
+          refundAccountHolder: titular,
+        });
+      } catch (e) {
+        return sendJSON(res, 500, { error: 'Cererea nu a putut fi înregistrată. Încearcă din nou.' });
+      }
+
+      // fotografiile, plafonate ca numar si ca marime
+      const poze = Array.isArray(body.photos) ? body.photos.slice(0, MAX_FOTO_CERERE) : [];
+      for (const poza of poze) {
+        const mime = String(poza && poza.mimeType || '');
+        const date = String(poza && poza.dataBase64 || '');
+        if (!/^image\/(png|jpe?g|webp|gif)$/.test(mime)) continue;
+        if (!date || date.length * 0.75 > MAX_OCTETI_FOTO) continue;
+        try { db.addTicketPhoto(magazin.id, tichet.id, { dataBase64: date, mimeType: mime }); } catch (e) { /* peste limita -- sarim */ }
+      }
+
+      console.log(`Cerere nouă din formularul public: ${tip.eticheta}, comanda #${comanda.mpId}, ${magazin.name}`);
+      return sendJSON(res, 201, { ok: true, reference: tichet.id, type: tip.eticheta });
+    }
+
     if (pathname === '/api/signup' && req.method === 'POST') {
       if (isRateLimited('signup', req, 5, 10 * 60 * 1000)) {
         return sendJSON(res, 429, { error: 'Prea multe încercări. Încearcă din nou mai târziu.' });
@@ -645,6 +827,9 @@ async function handleApi(req, res, pathname, query) {
         samedayPasswordSet: Boolean(samedayPassword),
         gomagApiKeySet: Boolean(gomagApiKey),
         pttPasswordSet: Boolean(pttPassword),
+        // adresa publica a formularului de cereri -- se genereaza la prima
+        // deschidere a Setarilor si ramane apoi neschimbata
+        publicFormSlug: db.getOrCreatePublicFormSlug(currentAgent.companyId),
       });
     }
 

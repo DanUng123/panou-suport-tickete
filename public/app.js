@@ -979,6 +979,248 @@ async function renderPlatformClientsPanel() {
   });
 }
 
+// ---------------- Formularul public de cereri (retur / service / colet la schimb) ----------------
+// Pagina pe care o completeaza CLIENTUL magazinului, nu un agent. Se ajunge la
+// ea prin adresa publica a magazinului (#/cerere/<slug>), pe care magazinul o
+// pune in shop-ul lui. Nu presupune niciun cont si nicio sesiune.
+//
+// Trei pasi: isi dovedeste comanda, alege produsele si tipul cererii, scrie
+// detaliile. La final se creeaza direct tichetul, in sectiunea potrivita.
+
+const TIPURI_CERERE_PUBLICE = [
+  { cod: 'retur', titlu: 'Retur produs', descriere: 'Vreau să returnez produsul și să primesc banii înapoi.' },
+  { cod: 'service', titlu: 'Produs defect / service', descriere: 'Produsul s-a defectat sau a venit deteriorat.' },
+  { cod: 'schimb', titlu: 'Colet la schimb', descriere: 'Vreau să înlocuiesc produsul cu altul.' },
+];
+
+function renderCerereClient(slug) {
+  const ecran = el(`
+    <div class="cerere-screen">
+      <div class="cerere-card">
+        <div class="auth-brand">
+          <div class="mark"><svg width="18" height="18" viewBox="0 0 64 64"><path d="M34 6L14 34H26L20 58L50 24H36Z" fill="currentColor"/></svg></div>
+          <div class="name" id="cerereMagazin">Se încarcă…</div>
+        </div>
+        <div id="cererePas">Se încarcă…</div>
+      </div>
+      <div class="cerere-subsol">Formular de asistență · Easy-Ticket</div>
+    </div>
+  `);
+  app.innerHTML = '';
+  app.appendChild(ecran);
+  currentMainRoute = null;
+
+  const zona = ecran.querySelector('#cererePas');
+  let magazin = null;
+  let comanda = null;
+  let tip = null;
+
+  const eroare = (mesaj) => `<div class="error-msg">${escapeHtml(mesaj)}</div>`;
+
+  // ---- pasul 1: ce comandă ----
+  async function pasIdentificare(mesaj) {
+    zona.innerHTML = `
+      <h1>Ai o problemă cu o comandă?</h1>
+      <p class="sub">Completează numărul comenzii și telefonul cu care ai comandat, ca să găsim comanda ta.</p>
+      ${mesaj ? eroare(mesaj) : ''}
+      <form id="formIdent">
+        <div class="field">
+          <label for="cNr">Număr comandă</label>
+          <input type="text" id="cNr" inputmode="numeric" placeholder="ex. 62475169" required autofocus />
+        </div>
+        <div class="field">
+          <label for="cTel">Telefon</label>
+          <input type="tel" id="cTel" placeholder="07xx xxx xxx" required />
+        </div>
+        <button class="btn btn-primary btn-block" type="submit">Caută comanda</button>
+      </form>
+    `;
+    zona.querySelector('#formIdent').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = zona.querySelector('button[type=submit]');
+      btn.disabled = true;
+      btn.textContent = 'Căutăm…';
+      try {
+        const rezultat = await api('/api/public/cerere/verificare', {
+          method: 'POST',
+          body: JSON.stringify({ slug, orderNumber: zona.querySelector('#cNr').value, phone: zona.querySelector('#cTel').value }),
+        });
+        comanda = rezultat.order;
+        pasTipSiProduse();
+      } catch (err) {
+        pasIdentificare(err.message);
+      }
+    });
+  }
+
+  // ---- pasul 2: ce fel de cerere și pentru care produse ----
+  function pasTipSiProduse(mesaj) {
+    zona.innerHTML = `
+      <h1>Comanda #${escapeHtml(String(comanda.number))}</h1>
+      <p class="sub">${escapeHtml(comanda.customerName)} · ${comanda.date ? escapeHtml(fmtDate(comanda.date)) : ''}</p>
+      ${mesaj ? eroare(mesaj) : ''}
+      <div class="cerere-eticheta">Ce s-a întâmplat?</div>
+      <div class="cerere-tipuri">
+        ${TIPURI_CERERE_PUBLICE.map((t) => `
+          <button type="button" class="cerere-tip ${tip === t.cod ? 'ales' : ''}" data-tip="${t.cod}">
+            <span class="cerere-tip-titlu">${escapeHtml(t.titlu)}</span>
+            <span class="cerere-tip-desc">${escapeHtml(t.descriere)}</span>
+          </button>
+        `).join('')}
+      </div>
+      <div class="cerere-eticheta">Ce produse sunt vizate?</div>
+      <div class="cerere-produse">
+        ${comanda.items.length ? comanda.items.map((it) => `
+          <label class="cerere-produs">
+            <input type="checkbox" value="${it.index}" />
+            ${it.imageUrl
+              ? `<img src="${escapeHtml(it.imageUrl)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'cerere-produs-poza-goala',textContent:'—'}))" />`
+              : '<div class="cerere-produs-poza-goala">—</div>'}
+            <span class="cerere-produs-text">
+              <span class="cerere-produs-nume">${escapeHtml(it.name)}</span>
+              <span class="cerere-produs-sub">${it.sku ? escapeHtml(it.sku) + ' · ' : ''}bucăți: ${it.quantity}</span>
+            </span>
+          </label>
+        `).join('') : '<div class="hint">Comanda nu are produse înregistrate.</div>'}
+      </div>
+      <div class="form-actions" style="justify-content:space-between;">
+        <button type="button" class="btn" id="cerereInapoi">← Altă comandă</button>
+        <button type="button" class="btn btn-primary" id="cerereContinua">Continuă</button>
+      </div>
+    `;
+    zona.querySelectorAll('.cerere-tip').forEach((b) => b.addEventListener('click', () => {
+      tip = b.dataset.tip;
+      zona.querySelectorAll('.cerere-tip').forEach((x) => x.classList.toggle('ales', x.dataset.tip === tip));
+    }));
+    zona.querySelector('#cerereInapoi').addEventListener('click', () => { comanda = null; tip = null; pasIdentificare(); });
+    zona.querySelector('#cerereContinua').addEventListener('click', () => {
+      const alese = [...zona.querySelectorAll('.cerere-produse input:checked')].map((i) => Number(i.value));
+      if (!tip) return pasTipSiProduse('Alege întâi ce fel de cerere ai.');
+      if (!alese.length) return pasTipSiProduse('Bifează cel puțin un produs.');
+      pasDetalii(alese);
+    });
+  }
+
+  // ---- pasul 3: detalii, poze, iar la retur datele bancare ----
+  function pasDetalii(alese, mesaj) {
+    const eRetur = tip === 'retur';
+    zona.innerHTML = `
+      <h1>Câteva detalii</h1>
+      <p class="sub">Cu cât ne spui mai clar ce s-a întâmplat, cu atât rezolvăm mai repede.</p>
+      ${mesaj ? eroare(mesaj) : ''}
+      <form id="formDetalii" autocomplete="off">
+        <input type="text" id="cCapcana" name="website" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px;" aria-hidden="true" />
+        <div class="field">
+          <label for="cMotiv">Motiv pe scurt</label>
+          <input type="text" id="cMotiv" maxlength="200" placeholder="ex. Produsul nu pornește" />
+        </div>
+        <div class="field">
+          <label for="cDesc">Descrie problema</label>
+          <textarea id="cDesc" rows="4" maxlength="4000" required placeholder="Ce s-a întâmplat, când ai observat, ce ai încercat…"></textarea>
+        </div>
+        <div class="field">
+          <label for="cPoze">Fotografii (opțional, maximum 6)</label>
+          <input type="file" id="cPoze" accept="image/*" multiple />
+          <div class="hint" id="cPozeInfo" style="margin-top:6px;"></div>
+        </div>
+        ${eRetur ? `
+        <div class="cerere-eticheta">Unde îți trimitem banii</div>
+        <div class="field">
+          <label for="cTitular">Titularul contului</label>
+          <input type="text" id="cTitular" maxlength="120" required placeholder="Numele de pe cont" />
+        </div>
+        <div class="field">
+          <label for="cIban">IBAN</label>
+          <input type="text" id="cIban" required placeholder="RO49 AAAA 1B31 0075 9384 0000" />
+        </div>` : ''}
+        <div class="cerere-eticheta">De unde ridicăm coletul</div>
+        <div class="field">
+          <label for="cAdresa">Adresă</label>
+          <input type="text" id="cAdresa" maxlength="300" value="${escapeHtml(comanda.address || '')}" />
+        </div>
+        <div class="form-row">
+          <div class="field">
+            <label for="cOras">Localitate</label>
+            <input type="text" id="cOras" maxlength="120" value="${escapeHtml(comanda.city || '')}" />
+          </div>
+          <div class="field">
+            <label for="cCod">Cod poștal</label>
+            <input type="text" id="cCod" maxlength="20" value="${escapeHtml(comanda.postalCode || '')}" />
+          </div>
+        </div>
+        <div class="form-actions" style="justify-content:space-between;">
+          <button type="button" class="btn" id="cerereInapoi2">← Înapoi</button>
+          <button class="btn btn-primary" type="submit">Trimite cererea</button>
+        </div>
+      </form>
+    `;
+
+    let poze = [];
+    const info = zona.querySelector('#cPozeInfo');
+    zona.querySelector('#cPoze').addEventListener('change', async (e) => {
+      const fisiere = [...e.target.files].slice(0, 6);
+      poze = [];
+      for (const f of fisiere) {
+        if (f.size > 3 * 1024 * 1024) { info.textContent = `„${f.name}" e prea mare (peste 3 MB) și a fost sărită.`; continue; }
+        const dataUrl = await new Promise((rez) => { const r = new FileReader(); r.onload = () => rez(r.result); r.readAsDataURL(f); });
+        poze.push({ mimeType: f.type, dataBase64: String(dataUrl).split(',')[1] });
+      }
+      if (poze.length) info.textContent = `${poze.length} ${poze.length === 1 ? 'fotografie pregătită' : 'fotografii pregătite'}.`;
+    });
+
+    zona.querySelector('#cerereInapoi2').addEventListener('click', () => pasTipSiProduse());
+    zona.querySelector('#formDetalii').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = zona.querySelector('button[type=submit]');
+      btn.disabled = true;
+      btn.textContent = 'Se trimite…';
+      const q = (sel) => { const n = zona.querySelector(sel); return n ? n.value : ''; };
+      try {
+        const rezultat = await api('/api/public/cerere', {
+          method: 'POST',
+          body: JSON.stringify({
+            slug, type: tip,
+            orderNumber: comanda.number, phone: comanda.phone,
+            itemIndexes: alese,
+            reason: q('#cMotiv'), description: q('#cDesc'),
+            iban: q('#cIban'), accountHolder: q('#cTitular'),
+            pickupAddress: q('#cAdresa'), pickupCity: q('#cOras'), pickupPostalCode: q('#cCod'),
+            website: q('#cCapcana'),
+            photos: poze,
+          }),
+        });
+        pasGata(rezultat);
+      } catch (err) {
+        pasDetalii(alese, err.message);
+      }
+    });
+  }
+
+  function pasGata(rezultat) {
+    zona.innerHTML = `
+      <div class="cerere-gata">
+        <div class="cerere-bifa">✓</div>
+        <h1>Am primit cererea ta</h1>
+        <p class="sub">${escapeHtml(magazin || 'Magazinul')} a fost anunțat și îți va răspunde în cel mai scurt timp.</p>
+        ${rezultat.reference ? `<div class="cerere-referinta">Număr cerere<strong>${escapeHtml(rezultat.reference)}</strong></div>` : ''}
+        <p class="hint">Poți închide pagina. Dacă mai ai o problemă, deschide din nou linkul primit de la magazin.</p>
+      </div>
+    `;
+  }
+
+  (async () => {
+    try {
+      const info = await api(`/api/public/cerere/${encodeURIComponent(slug)}`);
+      magazin = info.companyName;
+      ecran.querySelector('#cerereMagazin').textContent = info.companyName;
+      pasIdentificare();
+    } catch (e) {
+      ecran.querySelector('#cerereMagazin').textContent = 'Easy-Ticket';
+      zona.innerHTML = `<h1>Formular indisponibil</h1><p class="sub">Linkul nu mai este valid. Cere-i magazinului adresa corectă.</p>`;
+    }
+  })();
+}
+
 function renderForgotPassword(statusMsg, isError) {
   app.innerHTML = '';
   const card = el(`
@@ -1595,10 +1837,16 @@ async function renderServiceReturnList(route, section) {
 
   // stare locala (nu mai citim din URL la fiecare click -- doar la incarcarea initiala)
   const LOCATION_KEYS_BY_SECTION = {
-    service: ['picked', 'inservice', 'returned'],
-    retur: ['picked', 'waitingIban', 'readyRefund'],
+    service: ['cereri', 'picked', 'inservice', 'returned'],
+    retur: ['cereri', 'picked', 'waitingIban', 'readyRefund'],
   };
-  let activeLocation = LOCATION_KEYS_BY_SECTION[section]?.includes(initialFilters.loc) ? initialFilters.loc : 'picked';
+  // Cererile venite din formularul public intra in secțiune ÎNAINTE de a exista
+  // un AWB — coletul nu a fost încă ridicat, deci nu se potrivesc în niciunul
+  // dintre coșurile de mai jos, care descriu unde se află fizic coletul. De
+  // aceea secțiunea are un coș de intrare: aici aterizează ce trimit clienții,
+  // până când cineva emite AWB-ul de ridicare.
+  const eCerereNoua = (t) => !t.pickupAwbNumber && !t.stage;
+  let activeLocation = LOCATION_KEYS_BY_SECTION[section]?.includes(initialFilters.loc) ? initialFilters.loc : 'cereri';
   let activeTab = initialFilters.tab || 'all';
   let searchQuery = initialFilters.q || '';
   const selectedRefundTicketIds = new Set(); // pentru selectia manuala de export in "Gata de Retur"
@@ -1622,11 +1870,13 @@ async function renderServiceReturnList(route, section) {
     // coletul -- mutarea e automata, pe baza statusului real de la curier
     if (section === 'service') {
       const locationBuckets = {
+        cereri: allTickets.filter(eCerereNoua),
         picked: allTickets.filter((t) => t.pickupAwbNumber && ['pickup_awb_issued', 'in_transit_to_service'].includes(t.stage)),
         inservice: allTickets.filter((t) => ['at_service', 'return_awb_issued', 'in_transit_to_client'].includes(t.stage)),
         returned: allTickets.filter((t) => t.stage === 'delivered_to_client'),
       };
       const locationTabs = [
+        { key: 'cereri', label: 'Cereri noi' },
         { key: 'picked', label: 'Colete Ridicate' },
         { key: 'inservice', label: 'In Service' },
         { key: 'returned', label: 'Inapoi la Client' },
@@ -1649,11 +1899,13 @@ async function renderServiceReturnList(route, section) {
     // automat doar dupa salvarea datelor bancare (vezi butonul din tichet)
     if (section === 'retur') {
       const locationBuckets = {
+        cereri: allTickets.filter(eCerereNoua),
         picked: allTickets.filter((t) => t.pickupAwbNumber && ['pickup_awb_issued', 'in_transit_to_service'].includes(t.stage)),
         waitingIban: allTickets.filter((t) => t.stage === 'at_service' && !t.refundIban),
         readyRefund: allTickets.filter((t) => t.stage === 'at_service' && t.refundIban),
       };
       const locationTabs = [
+        { key: 'cereri', label: 'Cereri noi' },
         { key: 'picked', label: 'Colete Ridicate' },
         { key: 'waitingIban', label: 'In așteptare IBAN' },
         { key: 'readyRefund', label: 'Gata de Retur' },
@@ -4080,6 +4332,39 @@ async function renderSettings() {
     </form>
   `));
 
+  // ---- Linkul formularului pentru clienți ----
+  body.appendChild(el(`
+    <section class="panel" id="cardFormular" style="margin-top:22px;">
+      <h2 style="margin:0 0 4px;font-size:16px;">Formular de cereri pentru clienți</h2>
+      <div class="hint">
+        Pune linkul de mai jos în magazinul tău — ca pagină „Retur și service", ca buton în emailul de confirmare
+        a comenzii, sau oriunde îl găsesc clienții. Ei completează singuri cererea de retur, service sau colet la
+        schimb, iar aceasta ajunge direct la voi, ca tichet legat de comandă.
+      </div>
+      <div class="link-formular">
+        <input type="text" id="linkFormular" readonly value="${escapeHtml(location.origin + '/#/cerere/' + (s.publicFormSlug || ''))}" />
+        <button type="button" class="btn" id="copiazaLink">Copiază</button>
+        <a class="btn" href="#/cerere/${escapeHtml(s.publicFormSlug || '')}" target="_blank" rel="noopener">Deschide</a>
+      </div>
+      <div class="hint" style="margin-top:8px;">
+        Clientul își dovedește comanda cu numărul ei și telefonul cu care a comandat, apoi bifează produsele.
+        Nu are nevoie de cont.
+      </div>
+    </section>
+  `));
+
+  content.querySelector('#copiazaLink').addEventListener('click', async () => {
+    const camp = content.querySelector('#linkFormular');
+    camp.select();
+    try {
+      await navigator.clipboard.writeText(camp.value);
+      showToast('Link copiat');
+    } catch (e) {
+      // browsere fara acces la clipboard: textul e deja selectat, ramane Ctrl+C
+      showToast('Apasă Ctrl+C ca să copiezi linkul selectat');
+    }
+  });
+
   // ---- Zonă periculoasă: ștergerea contului ----
   body.appendChild(el(`
     <section class="danger-zone" id="dangerZone">
@@ -4321,6 +4606,14 @@ function render() {
   // normala de agent/companie, verificat inaintea oricarei alte logici
   if ((window.location.hash || '').split('?')[0] === '#/platform-admin') {
     renderPlatformAdminGate();
+    return;
+  }
+
+  // Formularul public de cereri se deschide indiferent daca in browserul asta
+  // e logat cineva: e pagina clientului magazinului, nu a agentului.
+  const caleaCurenta = (window.location.hash || '').split('?')[0];
+  if (caleaCurenta.startsWith('#/cerere/')) {
+    renderCerereClient(decodeURIComponent(caleaCurenta.slice('#/cerere/'.length)));
     return;
   }
 

@@ -1855,3 +1855,158 @@ a { color: inherit; text-decoration: none; }
   .dz-row { flex-direction: column; align-items: stretch; }
   .dz-btn { width: 100%; }
 }
+
+/* ---------------------------------------------------------------------------
+   Formularul public de cereri — pagina completată de CLIENTUL magazinului.
+   Singura pagină din platformă văzută de altcineva decât agenții, deci ceva
+   mai lată și mai aerisită decât cardurile de autentificare.
+   --------------------------------------------------------------------------- */
+
+.cerere-screen {
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 32px 16px;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(59,130,246,0.08), transparent 40%),
+    var(--bg);
+}
+
+.cerere-card {
+  width: 100%;
+  max-width: 520px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px;
+}
+.cerere-card h1 { font-size: 21px; margin: 0 0 4px; }
+.cerere-card .sub { color: var(--text-secondary); font-size: 14.5px; margin: 0 0 20px; }
+
+.cerere-subsol { font-size: 12px; color: var(--text-dim); }
+
+.cerere-eticheta {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  margin: 18px 0 8px;
+}
+
+/* alegerea tipului de cerere */
+.cerere-tipuri { display: flex; flex-direction: column; gap: 8px; }
+.cerere-tip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  padding: 11px 13px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.cerere-tip:hover { background: var(--surface-hover); border-color: var(--border-light); }
+.cerere-tip.ales { border-color: var(--accent); background: var(--accent-dim); }
+.cerere-tip-titlu { font-size: 14px; font-weight: 600; }
+.cerere-tip-desc { font-size: 12.5px; color: var(--text-secondary); }
+
+/* produsele din comandă */
+.cerere-produse { display: flex; flex-direction: column; gap: 6px; }
+.cerere-produs {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  cursor: pointer;
+}
+.cerere-produs:hover { border-color: var(--border-light); }
+.cerere-produs:has(input:checked) { border-color: var(--accent); background: var(--accent-dim); }
+.cerere-produs input { flex-shrink: 0; width: 16px; height: 16px; accent-color: var(--accent); }
+.cerere-produs img,
+.cerere-produs-poza-goala {
+  width: 38px; height: 38px; flex-shrink: 0;
+  border-radius: 7px;
+  object-fit: cover;
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+}
+.cerere-produs-poza-goala {
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-dim); font-size: 13px;
+}
+.cerere-produs-text { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
+.cerere-produs-nume {
+  font-size: 13.5px; font-weight: 500;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cerere-produs-sub { font-size: 12px; color: var(--text-dim); }
+
+/* confirmarea finală */
+.cerere-gata { text-align: center; padding: 8px 0 4px; }
+.cerere-bifa {
+  width: 46px; height: 46px; margin: 0 auto 14px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px;
+  color: var(--status-resolved);
+  background: color-mix(in srgb, var(--status-resolved) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--status-resolved) 40%, transparent);
+}
+.cerere-referinta {
+  display: flex; flex-direction: column; gap: 3px;
+  margin: 16px 0;
+  padding: 12px;
+  border-radius: 9px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+}
+.cerere-referinta strong {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text);
+}
+
+/* linkul, în Setări */
+.link-formular {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 8px;
+}
+.link-formular input {
+  flex: 1; min-width: 0;
+  /* stilul general de formular se aplica doar campurilor din .field, iar asta
+     nu e intr-unul -- altfel ar ramane un input alb, nestilat, pe fond intunecat */
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.link-formular input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+  outline: none;
+}
+.link-formular .btn { flex-shrink: 0; text-decoration: none; }
+
+@media (max-width: 560px) {
+  .cerere-card { padding: 20px 16px; }
+}
