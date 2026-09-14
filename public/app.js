@@ -1302,7 +1302,7 @@ function renderCerereClient(slug, { integrat = false } = {}) {
     const campSchimbHtml = `
         <div class="field">
           <label for="cVariantaDorita">Același model, dar produs nou</label>
-          <input type="text" id="cVariantaDorita" maxlength="120" placeholder="ex. același model, mărimea 42" />
+          <input type="text" id="cVariantaDorita" maxlength="120" placeholder="ex. același model, un produs nou" />
           <div class="hint" style="margin-top:6px;">Scrie aici dacă vrei altă mărime sau altă culoare.</div>
         </div>`;
 
@@ -1315,6 +1315,10 @@ function renderCerereClient(slug, { integrat = false } = {}) {
         <div class="field">
           <label for="cIban">IBAN</label>
           <input type="text" id="cIban" required placeholder="RO49 AAAA 1B31 0075 9384 0000" />
+        </div>
+        <div class="field">
+          <label for="cBanca">Banca</label>
+          <input type="text" id="cBanca" maxlength="120" required placeholder="ex. Banca Transilvania" />
         </div>`
       : (eRetur ? `
         <div class="hint" style="margin-bottom:14px;">Magazinul îți returnează banii pe aceeași cale pe care ai plătit — nu e nevoie de IBAN.</div>` : '');
@@ -1413,7 +1417,7 @@ function renderCerereClient(slug, { integrat = false } = {}) {
             reason: q('#cMotiv'),
             description: q('#cDesc'),
             wantedVariant: q('#cVariantaDorita'),
-            iban: q('#cIban'), accountHolder: q('#cTitular'),
+            iban: q('#cIban'), accountHolder: q('#cTitular'), bankName: q('#cBanca'),
             // adresa de ridicare nu se mai trimite de aici: o ia serverul din
             // comanda clientului, unde e deja scrisa de mana lui
             website: q('#cCapcana'),
@@ -2294,6 +2298,7 @@ async function renderServiceReturnList(route, section) {
         Client: t.requesterName || '',
         IBAN: t.refundIban || '',
         'Titular cont': t.refundAccountHolder || '',
+        'Banca': t.refundBankName || '',
         'Sumă (RON)': t.refundAmount != null ? t.refundAmount : '',
         Motiv: t.refundReason || '',
       })));
@@ -2751,6 +2756,12 @@ async function paintTicketDrawer(ticket) {
               </div>
               <div class="form-row">
                 <div class="field">
+                  <label>Banca</label>
+                  <input type="text" id="rf-bank" placeholder="ex. Banca Transilvania" value="${escapeHtml(ticket.refundBankName || '')}" style="text-transform:uppercase;" />
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="field">
                   <label>Sumă de returnat (RON) *</label>
                   <input type="number" id="rf-amount" step="0.01" min="0" placeholder="0.00" value="${ticket.refundAmount != null ? ticket.refundAmount : (relatedOrder ? relatedOrder.totalAmount : '')}" />
                 </div>
@@ -3090,7 +3101,7 @@ async function paintTicketDrawer(ticket) {
       });
     }
 
-    ['#rf-iban', '#rf-holder', '#rf-reason'].forEach((sel) => {
+    ['#rf-iban', '#rf-holder', '#rf-bank', '#rf-reason'].forEach((sel) => {
       const fieldEl = content.querySelector(sel);
       if (!fieldEl) return; // panoul de rambursare nu exista pentru tichete din afara Retur
       fieldEl.addEventListener('input', () => {
@@ -3105,6 +3116,7 @@ async function paintTicketDrawer(ticket) {
       saveRefundInfoBtn.addEventListener('click', async () => {
         const iban = content.querySelector('#rf-iban').value.trim();
         const holder = content.querySelector('#rf-holder').value.trim();
+        const bank = content.querySelector('#rf-bank').value.trim();
         const amount = content.querySelector('#rf-amount').value;
         const reason = content.querySelector('#rf-reason').value.trim();
         if (!iban) { showToast('Completează IBAN-ul.'); return; }
@@ -3115,7 +3127,7 @@ async function paintTicketDrawer(ticket) {
         try {
           ticket = await api(`/api/tickets/${ticket.id}/refund-info`, {
             method: 'PATCH',
-            body: JSON.stringify({ iban, accountHolder: holder, amount: Number(amount), reason }),
+            body: JSON.stringify({ iban, accountHolder: holder, bankName: bank, amount: Number(amount), reason }),
           });
           showToast('Date bancare salvate');
           paint();

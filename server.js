@@ -579,10 +579,12 @@ async function handleApi(req, res, pathname, query) {
 
       let iban = null;
       let titular = null;
+      let banca = null;
       if (body.type === 'retur' && reguli.refundToBank) {
         iban = String(body.iban || '').replace(/\s+/g, '').toUpperCase();
         titular = String(body.accountHolder || '').trim();
-        if (!iban || !titular) return sendJSON(res, 400, { error: 'Pentru retur avem nevoie de IBAN și de numele titularului de cont.' });
+        banca = String(body.bankName || '').trim().slice(0, 120);
+        if (!iban || !titular || !banca) return sendJSON(res, 400, { error: 'Pentru retur avem nevoie de IBAN, de numele titularului și de bancă.' });
         // IBAN-ul romanesc are exact 24 de caractere: RO, doua cifre de
         // control, patru litere de banca si 16 alfanumerice
         if (!/^RO\d{2}[A-Z0-9]{20}$/.test(iban)) return sendJSON(res, 400, { error: 'IBAN-ul nu pare valid. Verifică-l te rog — trebuie să înceapă cu RO și să aibă 24 de caractere.' });
@@ -666,6 +668,7 @@ async function handleApi(req, res, pathname, query) {
           pickupPhone: comanda.shippingPhone || null,
           refundIban: iban,
           refundAccountHolder: titular,
+          refundBankName: banca,
         });
       } catch (e) {
         return sendJSON(res, 500, { error: 'Cererea nu a putut fi înregistrată. Încearcă din nou.' });
@@ -1998,6 +2001,7 @@ async function handleApi(req, res, pathname, query) {
       const updated = db.setTicketRefundInfo(currentAgent.companyId, ticket.id, {
         iban: String(body.iban).trim().toUpperCase().replace(/\s+/g, ''),
         accountHolder: body.accountHolder || null,
+        bankName: body.bankName || null,
         amount: body.amount,
         reason: body.reason || null,
       }, currentAgent);
@@ -2047,6 +2051,7 @@ async function handleApi(req, res, pathname, query) {
         ['Telefon', ticket.requesterPhone || ticket.pickupPhone || '—'],
         ['IBAN', ticket.refundIban],
         ['Titular cont', ticket.refundAccountHolder || ticket.requesterName],
+        ['Banca', ticket.refundBankName || '—'],
         ['Sumă de returnat', `${Number(ticket.refundAmount).toFixed(2)} RON`],
         ['Motiv retur', ticket.refundReason || ticket.description || '—'],
         ['Data generare', new Date().toLocaleString('ro-RO')],
