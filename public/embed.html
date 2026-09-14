@@ -1,35 +1,46 @@
 <!DOCTYPE html>
-<html lang="ro" class="mod-integrat">
+<html lang="ro" class="mod-integrat" data-slug="{{slug}}">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Formular cereri</title>
 <!--
-  Document separat pentru formularul integrat în magazinul clientului.
+  Documentul formularului integrat în magazinul clientului.
 
-  Nu folosim index.html din două motive:
+  Trei lucruri îl deosebesc de index.html, toate din același motiv — pagina
+  asta se deschide de pe telefonul unui client, nu de la biroul unui operator:
 
   1. Fundalul. Aplicația are temă închisă, iar pagina ei apare întunecată din
      prima clipă, înainte să apuce JavaScript-ul să afle că e vorba de un
-     formular integrat. În cadru asta se vedea ca un dreptunghi negru, care
-     dispărea abia după ce se încărca tot. Aici clasa e pusă direct pe <html>,
-     iar fundalul e transparent de la primul pixel desenat.
+     formular integrat. În cadru asta se vedea ca un dreptunghi negru. Aici
+     clasa e pusă direct pe <html>, iar fundalul e transparent de la primul
+     pixel desenat.
 
-  2. Greutatea. index.html încarcă și biblioteca de Excel, de care formularul
-     nu are nevoie — aproape un megaoctet, pe pagina unui client care vrea doar
-     să trimită un retur.
+  2. Greutatea. Nu încărcăm app.js (panoul operatorului, un sfert de
+     megaoctet) și nici biblioteca de Excel. Doar comun.js și cerere.js, adică
+     formularul și atât.
+
+  3. Fonturile. Nu cerem fonturi de la Google: sunt două conexiuni în plus
+     către un terț, care întârzie primul desen, iar formularul integrat își ia
+     oricum fontul din pagina magazinului.
+
+  `data-slug` și blocul de date de mai jos sunt scrise de server la fiecare
+  cerere: așa formularul se desenează din prima, fără să mai întrebe cine e
+  magazinul.
 -->
 <style>
   /* înainte chiar și de styles.css, ca să nu existe niciun cadru colorat */
   html, body { background: transparent; margin: 0; min-height: 0; }
+  /* fontul paginii magazinului, cu o rezervă de sistem — niciun fișier de
+     descărcat, deci textul apare din primul cadru */
+  body { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
 </style>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/styles.css" />
+<link rel="stylesheet" href="/styles.css?v={{v}}" />
 </head>
 <body>
 <div id="app"></div>
-<script src="/app.js"></script>
+<script type="application/json" id="date-magazin">{{date}}</script>
+<script src="/comun.js?v={{v}}"></script>
+<script src="/cerere.js?v={{v}}"></script>
 </body>
 </html>

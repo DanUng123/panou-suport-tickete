@@ -6,6 +6,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const zlib = require('zlib');
 const url = require('url');
 
 const db = require('./lib/db');
@@ -292,11 +293,116 @@ function sendLabelFile(res, buffer, baseName) {
   return res.end(buffer);
 }
 
+/** Un slug scris intr-un atribut HTML: nu poate iesi din ghilimele. */
+function escapeAtribut(text) {
+  return String(text).replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}
+
+// ---------- servirea fisierelor ----------
+//
+// Trei lucruri fac diferenta intre "pagina apare instant" si "pagina apare
+// peste doua secunde", si toate sunt aici:
+//
+//   1. Amprenta pe adresa (?v=...). Fara ea, browserul intreaba serverul de
+//      fiecare data daca fisierul s-a schimbat -- trei drumuri dus-intors la
+//      fiecare deschidere de pagina, chiar cand raspunsul e "nu s-a schimbat".
+//      Cu ea, adresa se schimba doar cand se schimba fisierul, deci putem
+//      spune "tine-l un an si nu ma mai intreba".
+//   2. Comprimarea. Foile de stil si scripturile se fac de sase-sapte ori mai
+//      mici la trimitere.
+//   3. Datele magazinului scrise direct in pagina formularului, ca sa nu mai
+//      fie nevoie de inca o cerere inainte de primul desen.
+
+/** Amprenta continutului fisierelor publice, calculata o data la pornire. */
+const AMPRENTE = new Map();
+function amprenta(numeFisier) {
+  if (AMPRENTE.has(numeFisier)) return AMPRENTE.get(numeFisier);
+  let a = 'dev';
+  try {
+    a = crypto.createHash('sha1').update(fs.readFileSync(path.join(PUBLIC_DIR, numeFisier))).digest('hex').slice(0, 10);
+  } catch (e) { /* lipseste: ramane "dev" */ }
+  AMPRENTE.set(numeFisier, a);
+  return a;
+}
+/** O singura amprenta pentru tot ce se incarca impreuna -- mai simplu decat una pe fisier. */
+function versiuneaAssets() {
+  return amprenta('app.js') + amprenta('cerere.js').slice(0, 6) + amprenta('styles.css').slice(0, 6);
+}
+
+const COMPRIMABILE = new Set(['.html', '.css', '.js', '.json', '.svg']);
+
+/** Trimite un raspuns, comprimat daca browserul stie si daca merita. */
+function trimiteAsset(req, res, corp, tip, { imuabil = false, etag = null } = {}) {
+  const antete = {
+    'Content-Type': tip,
+    'Cache-Control': imuabil ? 'public, max-age=31536000, immutable' : 'no-cache',
+  };
+  if (etag) antete.ETag = etag;
+  const acceptate = String(req.headers['accept-encoding'] || '');
+  // sub un kiloocteti comprimarea costa mai mult decat castiga
+  if (corp.length > 1024 && /\bgzip\b/.test(acceptate)) {
+    const comprimat = zlib.gzipSync(corp, { level: 6 });
+    antete['Content-Encoding'] = 'gzip';
+    antete.Vary = 'Accept-Encoding';
+    res.writeHead(200, antete);
+    return res.end(comprimat);
+  }
+  res.writeHead(200, antete);
+  res.end(corp);
+}
+
+/** Randeaza un document HTML, inlocuind {{v}} (si, la formular, {{slug}} / {{date}}). */
+function randeazaHtml(numeFisier, inlocuiri = {}) {
+  let html = fs.readFileSync(path.join(PUBLIC_DIR, numeFisier), 'utf8');
+  const toate = { v: versiuneaAssets(), ...inlocuiri };
+  for (const [cheie, valoare] of Object.entries(toate)) {
+    html = html.split(`{{${cheie}}}`).join(valoare);
+  }
+  return Buffer.from(html, 'utf8');
+}
+
 function serveStatic(req, res, pathname) {
+  // Formularul integrat: document propriu, cu datele magazinului scrise in el.
+  const potrivireIntegrat = pathname.match(/^\/embed\/([^/]+)\/?$/);
+  if (potrivireIntegrat) {
+    const slug = decodeURIComponent(potrivireIntegrat[1]);
+    let magazin = null;
+    try { magazin = db.findCompanyByPublicSlug(slug); } catch (e) { magazin = null; }
+    // Un slug inexistent primeste tot pagina, doar fara date: formularul isi
+    // afiseaza singur mesajul "linkul nu mai e valid", in loc de un 404 sec
+    // aparut in mijlocul paginii magazinului.
+    let date = 'null';
+    if (magazin) {
+      const reguli = db.getReturSettings(magazin);
+      date = JSON.stringify({
+        companyName: magazin.name,
+        theme: magazin.formTheme === 'dark' ? 'dark' : 'light',
+        accent: magazin.formAccent || null,
+        autoColors: magazin.formAutoColors !== 0,
+        rules: {
+          types: reguli.types,
+          reasons: reguli.reasons,
+          refundToBank: reguli.refundToBank,
+          partial: reguli.partial,
+          windowDays: reguli.windowDays,
+        },
+      // `</script>` scris in numele unui magazin ar inchide blocul de date si
+      // ar transforma restul in HTML; il facem inofensiv
+      }).replace(/</g, '\\u003c');
+    }
+    let corp;
+    try {
+      corp = randeazaHtml('embed.html', { slug: escapeAtribut(slug), date });
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+      return res.end('Formular indisponibil');
+    }
+    return trimiteAsset(req, res, corp, MIME['.html']);
+  }
+
   let filePath = pathname === '/' ? '/index.html' : pathname;
-  // Formularul integrat primeste propriul document: transparent din primul
-  // pixel si fara biblioteci de care nu are nevoie. Vezi public/embed.html.
-  if (/^\/embed\/[^/]+\/?$/.test(pathname)) filePath = '/embed.html';
   filePath = path.join(PUBLIC_DIR, filePath);
 
   // previne path traversal
@@ -320,32 +426,35 @@ function serveStatic(req, res, pathname) {
         return res.end(`Fișier negăsit: ${pathname}`);
       }
       // fallback la index.html pentru rutare pe front-end (SPA)
-      fs.readFile(path.join(PUBLIC_DIR, 'index.html'), (err2, indexData) => {
-        if (err2) {
-          res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-          return res.end('Not found');
-        }
-        res.writeHead(200, { 'Content-Type': MIME['.html'], 'Cache-Control': 'no-cache' });
-        res.end(indexData);
-      });
-      return;
+      try {
+        return trimiteAsset(req, res, randeazaHtml('index.html'), MIME['.html']);
+      } catch (e2) {
+        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        return res.end('Not found');
+      }
     }
     const ext = path.extname(filePath);
-    // "no-cache" nu inseamna "fara cache", ci "verifica intai daca s-a schimbat":
-    // browserul (si Cloudflare) pastreaza fisierul, dar intreaba serverul de
-    // fiecare data, iar noi raspundem 304 daca e acelasi. Fara asta, dupa un
-    // deploy poti primi in continuare app.js-ul vechi, din cache.
+    if (ext === '.html') {
+      // paginile trec prin randare, ca sa primeasca amprenta assets-urilor
+      try {
+        return trimiteAsset(req, res, randeazaHtml(path.relative(PUBLIC_DIR, filePath)), MIME['.html']);
+      } catch (e) { /* cadem pe servirea bruta */ }
+    }
+
+    // Cand adresa poarta amprenta curenta, fisierul e exact cel cerut: il poate
+    // tine cat vrea, fara sa mai intrebe.
+    const url = new URL(req.url, 'http://x');
+    const cuAmprenta = url.searchParams.get('v') === versiuneaAssets();
+
     const etag = `W/"${data.length.toString(16)}-${crypto.createHash('sha1').update(data).digest('hex').slice(0, 16)}"`;
-    if (req.headers['if-none-match'] === etag) {
+    if (!cuAmprenta && req.headers['if-none-match'] === etag) {
       res.writeHead(304, { ETag: etag, 'Cache-Control': 'no-cache' });
       return res.end();
     }
-    res.writeHead(200, {
-      'Content-Type': MIME[ext] || 'application/octet-stream',
-      'Cache-Control': 'no-cache',
-      ETag: etag,
+    trimiteAsset(req, res, data, MIME[ext] || 'application/octet-stream', {
+      imuabil: cuAmprenta && COMPRIMABILE.has(ext),
+      etag: cuAmprenta ? null : etag,
     });
-    res.end(data);
   });
 }
 
