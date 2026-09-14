@@ -1301,9 +1301,9 @@ function renderCerereClient(slug, { integrat = false } = {}) {
 
     const campSchimbHtml = `
         <div class="field">
-          <label for="cVariantaDorita">Ce produs dorești în schimb</label>
+          <label for="cVariantaDorita">Același model, dar produs nou</label>
           <input type="text" id="cVariantaDorita" maxlength="120" placeholder="ex. același model, mărimea 42" />
-          <div class="hint" style="margin-top:6px;">Îl înlocuim cu același produs. Scrie aici dacă vrei altă mărime sau altă culoare.</div>
+          <div class="hint" style="margin-top:6px;">Scrie aici dacă vrei altă mărime sau altă culoare.</div>
         </div>`;
 
     const campBancaHtml = cereIban ? `

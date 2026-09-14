@@ -2040,6 +2040,11 @@ a { color: inherit; text-decoration: none; }
   color: var(--text);
 }
 
+/* Pe fond intunecat, acelasi principiu: in formular nu folosim jetonul cel
+   mai sters. Il redefinim doar aici, ca sa nu atingem panoul operatorului. */
+.cerere-screen { --text-dim: #aab6c7; --text-secondary: #aab6c7; }
+.cerere-screen .cerere-eticheta { color: var(--text); }
+
 /* Cate zile mai are clientul. Sta sus, langa numarul comenzii: e prima
    intrebare pe care si-o pune cineva care vrea sa returneze ceva. */
 .cerere-termen {
@@ -2184,8 +2189,13 @@ a { color: inherit; text-decoration: none; }
   --border: #e2e5ea;
   --border-light: #cbd2dc;
   --text: #14181f;
-  --text-secondary: #56606f;
-  --text-dim: #8a93a1;
+  /* Un singur gri pentru text secundar, si acela destul de inchis cat sa se
+     citeasca. Aveam doua -- unul sters (#8a93a1) pentru indicii si etichete --
+     iar pe fond alb arata a text pe jumatate transparent, de parca era
+     dezactivat. In formularul unui client nu exista text "de umplutura": daca
+     merita scris, merita citit. */
+  --text-secondary: #4a5463;
+  --text-dim: #4a5463;
   --accent-dim: color-mix(in srgb, var(--accent) 10%, #ffffff);
   --accent-border: color-mix(in srgb, var(--accent) 45%, #ffffff);
   --status-resolved: #0f8a5f;
@@ -2213,8 +2223,8 @@ a { color: inherit; text-decoration: none; }
 .cerere-screen.tema-deschisa .sub,
 .cerere-screen.tema-deschisa .cerere-tip-desc { color: var(--text-secondary); }
 .cerere-screen.tema-deschisa .hint,
-.cerere-screen.tema-deschisa .cerere-eticheta,
-.cerere-screen.tema-deschisa .cerere-produs-sub { color: var(--text-dim); }
+.cerere-screen.tema-deschisa .cerere-produs-sub { color: var(--text-secondary); }
+.cerere-screen.tema-deschisa .cerere-eticheta { color: var(--text); }
 .cerere-screen.tema-deschisa .cerere-card {
   box-shadow: 0 1px 2px rgba(16,24,40,0.04), 0 8px 24px rgba(16,24,40,0.06);
 }
@@ -2252,14 +2262,94 @@ html.mod-integrat #app { min-height: 0; display: block; }
   padding: 4px 2px 8px;
 }
 
-/* densitate mai strânsă în formular — trei pași care încap fără derulare */
-.cerere-card h1 { font-size: 19px; }
-.cerere-card .sub { font-size: 14px; margin-bottom: 16px; }
-.cerere-card .field { margin-bottom: 12px; }
-.cerere-card .cerere-eticheta { margin: 14px 0 6px; }
-.cerere-card .cerere-tip { padding: 9px 12px; }
-.cerere-card .cerere-produs { padding: 7px 9px; }
-.cerere-card .form-actions { margin-top: 14px; }
+/* ============ Formularul clientului: citibil, nu compact ============
+   Aici nu e panoul unui operator care se uită în el toată ziua și știe pe
+   dinafară unde e fiecare câmp. E un om care intră o dată, de pe telefon,
+   nervos că produsul nu e bun. Tot ce e mai jos merge într-o singură direcție:
+   text mai mare și culori pline, nu griuri spălăcite.
+
+   Câmpurile au 16px anume: sub atât, Safari pe iPhone mărește singur pagina
+   când atingi un câmp, iar formularul sare sub degetul omului. */
+.cerere-card h1 { font-size: 24px; line-height: 1.25; }
+.cerere-card .sub { font-size: 15.5px; line-height: 1.5; margin-bottom: 18px; color: var(--text-secondary); }
+.cerere-card .field { margin-bottom: 16px; }
+.cerere-card .form-actions { margin-top: 20px; }
+
+/* etichetele de câmp: propoziții normale, nu majuscule mărunte și șterse */
+.cerere-card .field label {
+  font-size: 14.5px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text);
+  margin-bottom: 7px;
+}
+.cerere-card .field input,
+.cerere-card .field select {
+  height: 48px;
+  font-size: 16px;
+  padding: 0 14px;
+}
+.cerere-card .field textarea {
+  font-size: 16px;
+  line-height: 1.5;
+  padding: 12px 14px;
+  min-height: 120px;
+}
+.cerere-card .field input[type="file"] { height: auto; padding: 12px 14px; }
+.cerere-card .field .hint,
+.cerere-card .hint { font-size: 13.5px; line-height: 1.5; color: var(--text-secondary); }
+
+/* titlurile de grup */
+.cerere-card .cerere-eticheta {
+  margin: 20px 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text);
+}
+
+/* cele trei tipuri de cerere */
+.cerere-card .cerere-tip { padding: 14px 16px; }
+.cerere-card .cerere-tip-titlu { font-size: 15.5px; }
+.cerere-card .cerere-tip-desc { font-size: 13.5px; line-height: 1.45; color: var(--text-secondary); }
+
+/* produsele din comandă */
+.cerere-card .cerere-produs { padding: 11px 12px; }
+.cerere-card .cerere-produs-nume { font-size: 15px; }
+.cerere-card .cerere-produs-sub { font-size: 13.5px; color: var(--text-secondary); }
+.cerere-card .cerere-produs input[type="checkbox"],
+.cerere-card .cerere-produs input[type="radio"] { width: 20px; height: 20px; }
+
+/* butoanele: destul de mari cât să le nimerească un deget */
+.cerere-card .btn {
+  min-height: 48px;
+  padding: 0 20px;
+  font-size: 15.5px;
+}
+
+/* notele: termenul de retur și taxa de transport */
+.cerere-card .cerere-termen,
+.cerere-card .cerere-cost { font-size: 14.5px; line-height: 1.5; padding: 12px 14px; }
+.cerere-card .cerere-referinta { font-size: 12.5px; }
+.cerere-card .cerere-referinta strong { font-size: 17px; }
+.cerere-card .error-msg { font-size: 14.5px; }
+
+/* Pe telefon, încă un pas în sus. Ecranul e mic, dar textul n-are de ce să
+   fie: nu încercăm să înghesuim tot formularul într-un ecran, oricum se
+   derulează. */
+@media (max-width: 560px) {
+  .cerere-card h1 { font-size: 22px; }
+  .cerere-card .field label { font-size: 15px; }
+  .cerere-card .cerere-tip-titlu { font-size: 16px; }
+  .cerere-card .cerere-tip-desc,
+  .cerere-card .field .hint,
+  .cerere-card .hint { font-size: 14px; }
+  .cerere-card .cerere-produs-nume { font-size: 15.5px; }
+  .cerere-card .btn { width: 100%; }
+  .cerere-card .form-actions { flex-direction: column-reverse; gap: 10px; }
+}
 .cerere-screen.integrat .auth-brand,
 .cerere-screen.integrat .cerere-subsol { display: none; }
 
@@ -2272,8 +2362,13 @@ html.mod-integrat #app { min-height: 0; display: block; }
   border-color: var(--border);
   color: var(--text);
 }
+/* Placeholder-ul tot text e: prea deschis, arata a camp dezactivat. Destul de
+   sters cat sa se deosebeasca de ce scrie omul, destul de inchis cat sa se
+   citeasca. */
 .cerere-screen.tema-deschisa .field input::placeholder,
-.cerere-screen.tema-deschisa .field textarea::placeholder { color: #a6aebb; }
+.cerere-screen.tema-deschisa .field textarea::placeholder { color: #737d8c; }
+.cerere-screen .field input::placeholder,
+.cerere-screen .field textarea::placeholder { color: #8d99ab; }
 .cerere-screen.tema-deschisa .btn {
   background: #ffffff;
   border-color: var(--border);
