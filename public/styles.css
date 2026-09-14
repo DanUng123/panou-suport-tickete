@@ -2077,6 +2077,15 @@ a { color: inherit; text-decoration: none; }
    rămânea cât textul normal. */
 #cardRetur .hint, #cardFormular .hint { font-size: 12.5px; line-height: 1.5; color: var(--text-dim); }
 
+/* editorul de motive, în Setări: câte o listă pentru fiecare tip de cerere */
+.motiv-grup { margin-bottom: 20px; }
+.motiv-grup-titlu {
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
 /* un rând din editorul de motive, în Setări */
 .motiv-antet, .motiv-rand {
   display: flex; align-items: center; gap: 8px;

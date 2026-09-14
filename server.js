@@ -387,7 +387,7 @@ async function handleApi(req, res, pathname, query) {
 
     const TIPURI_CERERE = {
       retur: { section: 'retur', eticheta: 'Retur', category: 'Altele' },
-      service: { section: 'service', eticheta: 'Produs defect / service', category: 'Produs defect' },
+      service: { section: 'service', eticheta: 'Garanție / Service', category: 'Produs defect' },
       schimb: { section: 'schimb', eticheta: 'Colet la schimb', category: 'Altele' },
     };
     const MAX_FOTO_CERERE = 6;
@@ -536,10 +536,14 @@ async function handleApi(req, res, pathname, query) {
         return sendJSON(res, 409, { error: 'Există deja o cerere trimisă pentru această comandă. Magazinul o are în lucru — așteaptă te rog răspunsul lor.' });
       }
 
-      // Descrierea libera a fost scoasa din formular: motivul se alege dintr-o
-      // lista, iar un camp gol de text nu adauga nimic peste el. Ruta o
-      // accepta in continuare, daca vine, dar nu o mai cere.
+      // Descrierea e ceruta DOAR la garantie/service. Acolo motivul din lista
+      // nu spune destul -- "nu functioneaza" poate insemna o suta de lucruri,
+      // iar cine repara are nevoie de amanunte. La retur si la schimb motivul
+      // ales spune tot, si un camp gol de text ar fi doar un obstacol.
       const descriere = String(body.description || '').trim().slice(0, 4000);
+      if (body.type === 'service' && !descriere) {
+        return sendJSON(res, 400, { error: 'Scrie te rog câteva cuvinte despre ce nu merge.' });
+      }
 
       const toateProdusele = comanda.lineItems || [];
       const alese = Array.isArray(body.itemIndexes)
@@ -553,8 +557,11 @@ async function handleApi(req, res, pathname, query) {
       // Motivul: cand magazinul si-a definit lista, alegerea trebuie sa fie din
       // ea. Regula de fotografie atarna de motivul ales, deci un motiv scris
       // liber ar ocoli si cerinta de fotografii.
+      // fiecare tip are lista lui de motive, iar alegerea trebuie sa fie din
+      // lista tipului cerut -- nu dintr-a altuia
       const motiv = String(body.reason || '').trim().slice(0, 200);
-      const motivAles = reguli.reasons.find((m) => m.text === motiv) || null;
+      const motiveTip = reguli.reasons[body.type] || [];
+      const motivAles = motiveTip.find((m) => m.text === motiv) || null;
       if (!motivAles) return sendJSON(res, 400, { error: 'Alege un motiv din listă.' });
       const regulaFoto = motivAles.photo;
 
@@ -587,8 +594,8 @@ async function handleApi(req, res, pathname, query) {
       // schimb cu altceva e in fapt o vanzare noua, cu alt pret si alta
       // factura -- nu o inlocuire.
       //
-      // Clientul poate spune ce anume vrea altfel la produsul primit (alta
-      // marime, alta culoare), fiindca de-aia cere schimbul.
+      // Clientul spune ce vrea in loc: aceeasi referinta, dar alta marime sau
+      // alta culoare. Nu alt produs -- asta ar fi o vanzare noua.
       let variantaDorita = null;
       if (body.type === 'schimb') {
         variantaDorita = String(body.wantedVariant || '').trim().slice(0, 120) || null;
