@@ -4416,22 +4416,34 @@ async function renderAdmin() {
  * browserului duce înapoi la grilă, nu afară din setări.
  */
 const SECTIUNI_SETARI = [
-  { cheie: 'merchantpro', titlu: 'MerchantPro', descriere: 'Adresa magazinului și cheile de API pentru preluarea comenzilor.', pictograma: 'magazin', grup: 'integrare' },
-  { cheie: 'gomag', titlu: 'GoMag', descriere: 'Adresa magazinului și cheia de API, dacă vinzi prin GoMag.', pictograma: 'magazin', grup: 'integrare' },
-  { cheie: 'gls', titlu: 'GLS', descriere: 'Contul de curier și datele expeditorului pentru AWB-uri.', pictograma: 'curier', grup: 'integrare' },
-  { cheie: 'sameday', titlu: 'Sameday', descriere: 'Contul de curier, punctul de ridicare și formatul etichetei.', pictograma: 'curier', grup: 'integrare' },
-  { cheie: 'ptt', titlu: 'PTT Express', descriere: 'Contul de curier, serviciul folosit și datele expeditorului.', pictograma: 'curier', grup: 'integrare' },
-  { cheie: 'formular', titlu: 'Formular de cereri', descriere: 'Codul de integrat în magazin și felul în care arată formularul.', pictograma: 'formular' },
-  { cheie: 'retur', titlu: 'Reguli de retur', descriere: 'Termen, motive, retururi parțiale, schimburi și costuri de transport.', pictograma: 'retur' },
-  { cheie: 'stergere', titlu: 'Ștergerea contului', descriere: 'Șterge definitiv compania și toate datele ei.', pictograma: 'pericol', periculos: true },
+  {
+    cheie: 'platforme',
+    titlu: 'Integrări platforme',
+    descriere: 'MerchantPro și GoMag — de unde vin comenzile.',
+    pictograma: 'magazin',
+    tab: 'platforme',
+    integrari: ['merchantpro', 'gomag'],
+  },
+  {
+    cheie: 'curieri',
+    titlu: 'Integrări curieri',
+    descriere: 'GLS, Sameday și PTT Express — cine duce coletele.',
+    pictograma: 'curier',
+    tab: 'curieri',
+    integrari: ['gls', 'sameday', 'ptt'],
+  },
+  {
+    cheie: 'formular-retur',
+    titlu: 'Formular de retur',
+    descriere: 'Codul de integrat în magazin și regulile după care se fac cererile.',
+    pictograma: 'formular',
+  },
 ];
 
 const PICTOGRAME_SETARI = {
   magazin: '<path d="M3 7l1.5-3h11L17 7M3 7h14M3 7v8a1 1 0 001 1h12a1 1 0 001-1V7M7 16v-4h6v4"/>',
   curier: '<path d="M1 5h10v8H1zM11 8h4l3 3v2h-7zM5 16a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM14.5 16a1.5 1.5 0 100-3 1.5 1.5 0 000 3z"/>',
   formular: '<path d="M4 2h9l3 3v13H4zM7 8h6M7 11h6M7 14h4"/>',
-  retur: '<path d="M4 9a6 6 0 116 6H5M4 9l3-3M4 9l3 3"/>',
-  pericol: '<path d="M10 2L1 17h18zM10 8v4M10 15h.01"/>',
 };
 
 async function renderSettings(sectiune) {
@@ -4815,7 +4827,7 @@ async function renderSettings(sectiune) {
   // întreabă serverul. Amândouă doar când secțiunea lor e chiar deschisă:
   // altfel pagina de pornire ar trage după ea un formular întreg și o cerere
   // de rețea pe care nimeni nu le vede.
-  if (sectiune === 'formular') reincarcaPrevizualizarea();
+  if (sectiune === 'formular-retur') reincarcaPrevizualizarea();
 
   function actualizeazaCulorileManuale() {
     const auto = content.querySelector('#s-form-auto').checked;
@@ -5018,7 +5030,7 @@ async function renderSettings(sectiune) {
     clearTimeout(ceasCatalog);
     if (stare.running) ceasCatalog = setTimeout(aratăCatalogul, 4000);
   }
-  if (sectiune === 'retur') aratăCatalogul();
+  if (sectiune === 'formular-retur') aratăCatalogul();
 
   // ---- „Verifică prețurile" ----
   // Magazinele nu-și țin reducerile toate la fel, iar documentația MerchantPro
@@ -5381,12 +5393,16 @@ async function renderSettings(sectiune) {
   const formIntegrari = content.querySelector('#settingsForm');
 
   if (!activa) {
-    // pagina de pornire: doar plăcile
-    [formIntegrari, formular, retur, pericol].forEach((n) => { if (n) n.hidden = true; });
+    // Pagina de pornire: plăcile, și sub ele ștergerea contului.
+    //
+    // Ștergerea nu e o placă: o placă e o invitație, iar asta nu e o acțiune
+    // pe care s-o inviți pe cineva s-o încerce. Stă jos, unde stă de obicei,
+    // apărată de fereastra care cere numele companiei scris de mână.
+    [formIntegrari, formular, retur].forEach((n) => { if (n) n.hidden = true; });
     const grila = el(`
       <div class="setari-grila">
         ${SECTIUNI_SETARI.map((x) => `
-          <a class="setari-placa${x.periculos ? ' periculoasa' : ''}" href="#/settings/${x.cheie}">
+          <a class="setari-placa" href="#/settings/${x.cheie}">
             <span class="setari-placa-pictograma">
               <svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor"
                    stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -5403,35 +5419,36 @@ async function renderSettings(sectiune) {
     return;
   }
 
-  // o singură secțiune, deschisă
-  const eIntegrare = activa.grup === 'integrare';
+  // O singură secțiune, deschisă. Ștergerea contului rămâne doar pe pagina de
+  // pornire — n-are ce căuta sub setările de curier.
+  const eIntegrare = Boolean(activa.integrari);
   if (formIntegrari) formIntegrari.hidden = !eIntegrare;
-  if (formular) formular.hidden = activa.cheie !== 'formular';
-  if (retur) retur.hidden = activa.cheie !== 'retur';
-  if (pericol) pericol.hidden = activa.cheie !== 'stergere';
+  if (formular) formular.hidden = activa.cheie !== 'formular-retur';
+  if (retur) retur.hidden = activa.cheie !== 'formular-retur';
+  if (pericol) pericol.hidden = true;
 
   if (eIntegrare) {
-    // taburile „platforme / curieri" nu mai au rost când se vede o singură
-    // integrare; panourile rămân amândouă vizibile, iar din ele lăsăm doar
-    // cutia cerută, deschisă, fără antetul pe care ar trebui să-l mai apeși
+    // Bara de taburi „platforme / curieri" nu mai are rost: fiecare tab a
+    // devenit propria lui secțiune. Lăsăm vizibile doar cutiile care țin de
+    // secțiunea asta; rămân pliabile, ca până acum, pentru că sunt mai multe
+    // și formularele lor sunt lungi.
     const tabs = formIntegrari.querySelector('.settings-tabs');
     if (tabs) tabs.hidden = true;
-    formIntegrari.querySelectorAll('.settings-tab-panel').forEach((p) => p.classList.add('active'));
-    formIntegrari.querySelectorAll('.accordion-item').forEach((item) => {
-      const aleasa = item.dataset.integrare === activa.cheie;
-      item.hidden = !aleasa;
-      item.classList.toggle('open', aleasa);
-      item.classList.toggle('fara-antet', aleasa);
+    formIntegrari.querySelectorAll('.settings-tab-panel').forEach((p) => {
+      p.classList.toggle('active', p.dataset.tabPanel === activa.tab);
     });
+    formIntegrari.querySelectorAll('.accordion-item').forEach((item) => {
+      item.hidden = !activa.integrari.includes(item.dataset.integrare);
+    });
+    // prima cutie deschisă din start: cine intră la „Integrări curieri" a venit
+    // să vadă un formular, nu trei antete pe care să le mai apese
+    const prima = formIntegrari.querySelector('.accordion-item:not([hidden])');
+    if (prima) prima.classList.add('open');
   }
-  // Marginea de sus avea sens doar când cardurile veneau unul după altul, iar
-  // titlul lor repeta acum titlul paginii — două „Reguli de retur" unul sub
-  // altul, la doi centimetri distanță.
-  [formular, retur].forEach((n) => {
-    if (!n || n.hidden) return;
-    n.style.marginTop = '0';
-    n.classList.add('fara-titlu');
-  });
+
+  // marginea de sus avea sens doar când cardurile veneau după formularul de
+  // integrări; primul din secțiune începe acum chiar de sus
+  if (formular && !formular.hidden) formular.style.marginTop = '0';
 }
 
 // ---------------- router principal ----------------

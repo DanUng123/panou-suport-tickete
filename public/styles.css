@@ -516,18 +516,6 @@ a { color: inherit; text-decoration: none; }
 }
 .setari-inapoi:hover { color: var(--accent); }
 
-/* Într-o secțiune deschisă singură, cutia nu mai are de ce să fie pliabilă:
-   antetul pe care ar trebui să-l apeși ca să vezi ce ai venit să vezi e doar
-   un clic în plus. */
-.accordion-item.fara-antet { border: 0; background: none; padding: 0; }
-.accordion-item.fara-antet > .accordion-header { display: none; }
-.accordion-item.fara-antet > .accordion-body { max-height: none; overflow: visible; }
-.accordion-item.fara-antet .accordion-body-inner { padding-left: 0; padding-right: 0; }
-
-/* La fel și pentru cardurile care se deschid singure: titlul lor ar repeta
-   titlul paginii, la doi centimetri sub el. */
-.panel.fara-titlu > h2 { display: none; }
-
 /* ---------------- Taburi Setari ---------------- */
 .settings-tabs {
   display: flex;
