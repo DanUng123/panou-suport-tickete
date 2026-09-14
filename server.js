@@ -29,7 +29,6 @@ const gomag = require('./lib/gomag');
 const resend = require('./lib/resend');
 const pdf = require('./lib/pdf');
 const backup = require('./lib/backup');
-const catalog = require('./lib/catalog');
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -419,32 +418,11 @@ async function handleApi(req, res, pathname, query) {
           reasons: reguli.reasons,
           refundToBank: reguli.refundToBank,
           partial: reguli.partial,
-          exchangeSame: reguli.exchangeSame,
-          exchangeOther: reguli.exchangeOther,
           transportCost: reguli.transportCost,
           exchangeTransportCost: reguli.exchangeTransportCost,
           windowDays: reguli.windowDays,
         },
       });
-    }
-
-    // Produsele din care alege clientul la "colet la schimb". Cautarea e
-    // locala, in catalogul copiat de la magazin -- nu atinge API-ul lui.
-    const cautareProduseMatch = pathname.match(/^\/api\/public\/cerere\/([^/]+)\/produse$/);
-    if (cautareProduseMatch && req.method === 'GET') {
-      // plafon larg: clientul scrie, deci vin mai multe cereri la rand de la
-      // acelasi om, iar operatorii de mobil pun mii de abonati pe un IP
-      if (isRateLimited('cerere-produse', req, 120, 10 * 60 * 1000)) {
-        return sendJSON(res, 429, { error: 'Prea multe căutări. Încearcă din nou peste puțin timp.' });
-      }
-      const magazin = db.findCompanyByPublicSlug(cautareProduseMatch[1]);
-      if (!magazin) return sendJSON(res, 404, { error: 'Formular inexistent.' });
-      const reguli = db.getReturSettings(magazin);
-      // catalogul nu se expune decat daca magazinul chiar ofera schimbul cu
-      // alt produs -- altfel ar fi doar o cale de a citi ce vinde, fara cont
-      if (!reguli.exchangeOther) return sendJSON(res, 403, { error: 'Magazinul nu oferă schimbul cu alt produs.' });
-      const produse = db.searchCompanyProducts(magazin.id, String(query.q || '').slice(0, 100), 12);
-      return sendJSON(res, 200, { products: produse });
     }
 
     // Pasul 1: clientul isi dovedeste comanda cu numarul ei si telefonul.
@@ -610,45 +588,16 @@ async function handleApi(req, res, pathname, query) {
         if (titular.length > 120) return sendJSON(res, 400, { error: 'Numele titularului e prea lung.' });
       }
 
-      // La schimb: fie acelasi produs, fie altul ales din catalogul
-      // magazinului. Produsul ales se re-citeste din catalogul nostru dupa id,
-      // nu se preia numele trimis de client -- altfel oricine ar putea scrie
-      // in tichet ce produs vrea, la ce pret vrea.
-      let produsDorit = null;
+      // Coletul la schimb inseamna un singur lucru: acelasi produs, inlocuit.
+      // A existat si varianta "alt produs din catalog", scoasa pentru ca un
+      // schimb cu altceva e in fapt o vanzare noua, cu alt pret si alta
+      // factura -- nu o inlocuire.
+      //
+      // Clientul poate spune ce anume vrea altfel la produsul primit (alta
+      // marime, alta culoare), fiindca de-aia cere schimbul.
+      let variantaDorita = null;
       if (body.type === 'schimb') {
-        if (!reguli.exchangeSame && !reguli.exchangeOther) {
-          return sendJSON(res, 400, { error: 'Magazinul nu face schimburi prin formular.' });
-        }
-        const vreaAltul = body.exchangeMode === 'other' || (!reguli.exchangeSame && reguli.exchangeOther);
-        if (vreaAltul) {
-          if (!reguli.exchangeOther) return sendJSON(res, 400, { error: 'Magazinul înlocuiește doar cu același produs.' });
-          const ales = body.wantedProductId ? db.getCompanyProduct(magazin.id, String(body.wantedProductId)) : null;
-          if (!ales) return sendJSON(res, 400, { error: 'Alege te rog produsul dorit din listă.' });
-          // varianta (marime/culoare), daca produsul are asa ceva
-          let variantaAleasa = null;
-          if (body.wantedVariantId && Array.isArray(ales.variants)) {
-            variantaAleasa = ales.variants.find((v) => String(v.id) === String(body.wantedVariantId)) || null;
-          }
-          if (Array.isArray(ales.variants) && ales.variants.length && !variantaAleasa) {
-            return sendJSON(res, 400, { error: 'Alege te rog varianta dorită (mărime, culoare).' });
-          }
-          // o varianta poate avea pretul ei (marimea mare costa mai mult);
-          // cand il are, el e pretul cererii, nu cel al produsului de baza
-          const pretulAles = (variantaAleasa && variantaAleasa.price != null) ? variantaAleasa.price : ales.price;
-          // Pretul il scriem DOAR aici, pentru operator, si spunem limpede ce
-          // e: pretul din catalog, care nu include promotiile in curs (API-ul
-          // MerchantPro nu le expune). Clientului nu i l-am aratat deloc,
-          // tocmai ca sa nu-i promitem o suma gresita.
-          produsDorit = [
-            ales.name,
-            variantaAleasa && variantaAleasa.name ? `— ${variantaAleasa.name}` : null,
-            (variantaAleasa && variantaAleasa.sku) || ales.sku ? `(cod ${(variantaAleasa && variantaAleasa.sku) || ales.sku})` : null,
-            pretulAles != null ? `· ${Number(pretulAles).toFixed(2)} ${ales.currency || comanda.currency || 'RON'} preț de catalog, fără promoții` : null,
-            ales.url ? `\n  ${ales.url}` : null,
-          ].filter(Boolean).join(' ');
-        } else if (!reguli.exchangeSame) {
-          return sendJSON(res, 400, { error: 'Alege te rog produsul dorit din listă.' });
-        }
+        variantaDorita = String(body.wantedVariant || '').trim().slice(0, 120) || null;
       }
 
       const numeProduse = alese.map((i) => {
@@ -669,7 +618,7 @@ async function handleApi(req, res, pathname, query) {
         ``,
         `Produse vizate:`,
         numeProduse,
-        produsDorit ? `\nProdusul dorit la schimb: ${produsDorit}` : null,
+        variantaDorita ? `\nCe vrea clientul în loc: ${variantaDorita}` : null,
         ``,
         motiv ? `Motiv: ${motiv}` : null,
         // La retur exista o suma de rambursat, deci transportul se scade din
@@ -1059,119 +1008,10 @@ async function handleApi(req, res, pathname, query) {
       if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot modifica setările de retur.' });
       const body = await readBody(req);
       try {
-        const salvat = db.saveReturSettings(currentAgent.companyId, body);
-        // Cand magazinul tocmai a pornit schimbul cu alt produs, are nevoie de
-        // catalog ca sa aiba clientul din ce alege. Il aducem pe loc, in
-        // fundal, nu la prima cerere a unui client.
-        if (salvat.exchangeOther) {
-          try { catalog.refreshIfStale(db.getCompany(currentAgent.companyId)); } catch (e) { /* raportat in log */ }
-        }
-        return sendJSON(res, 200, salvat);
+        return sendJSON(res, 200, db.saveReturSettings(currentAgent.companyId, body));
       } catch (e) {
         return sendJSON(res, 400, { error: e.message });
       }
-    }
-
-    if (pathname === '/api/company/catalog' && req.method === 'GET') {
-      if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot vedea catalogul.' });
-      return sendJSON(res, 200, catalog.catalogState(currentAgent.companyId));
-    }
-
-    // Diagnostic: raspunsul BRUT al magazinului pentru un produs, ca sa putem
-    // vedea cum isi tine el preturile de promotie -- numele campurilor difera
-    // de la un magazin la altul si nu sunt documentate complet. Doar date de
-    // produs, niciun client, nicio credentiala.
-    if (pathname === '/api/company/catalog/diagnostic' && req.method === 'GET') {
-      if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot rula diagnosticul.' });
-      const company = db.getCompany(currentAgent.companyId);
-      if (!mp.isConfigured(company)) return sendJSON(res, 400, { error: 'Integrarea MerchantPro nu e configurată.' });
-
-      // Cum ajungem la produsul cerut, si de ce asa de ocolit:
-      //
-      // 1. MerchantPro nu accepta un filtru dupa nume ("No such filter `name`
-      //    defined"), deci cautarea dupa denumire se face in catalogul nostru
-      //    local, care are deja denumirile aduse.
-      // 2. Ce scrie omul in casuta poate fi un cuvant din denumire SAU codul
-      //    produsului (SKU). Codul NU e id-ul intern -- o versiune anterioara
-      //    a acestui cod trimitea SKU-ul ca id si primea "Record not found".
-      //    Acum trece totul prin catalogul local, care stie si numele, si
-      //    codul, si intoarce id-ul adevarat.
-      // 3. Nici forma de adresare a unui singur produs nu e sigura de la un
-      //    magazin la altul, asa ca incercam pe rand mai multe, si in ultima
-      //    instanta parcurgem catalogul pana dam de el.
-      const cautat = String(query.q || '').trim();
-      let produsLocal = null;
-      if (cautat) {
-        produsLocal = db.searchCompanyProducts(currentAgent.companyId, cautat, 1)[0] || null;
-        if (!produsLocal) {
-          return sendJSON(res, 404, { error: 'Nu am găsit produsul în catalogul adus. Încearcă alt cuvânt din denumire, sau adu întâi catalogul.' });
-        }
-      }
-
-      const incercari = [];
-      const cere = async (cale) => {
-        try {
-          const r = await mp.requestRaw(company, 'GET', cale);
-          incercari.push(`${cale} -> ok`);
-          return r;
-        } catch (e) {
-          incercari.push(`${cale} -> ${e.message}`);
-          return null;
-        }
-      };
-      const caGrup = (r) => (Array.isArray(r && r.data) ? r.data : (r && r.data ? [r.data] : []));
-
-      if (!produsLocal) {
-        const r = await cere('/api/v2/products?include=images,variants&limit=2');
-        const lista = caGrup(r);
-        if (!lista.length) return sendJSON(res, 502, { error: 'Magazinul nu a întors niciun produs.', tried: incercari });
-        return sendJSON(res, 200, { data: lista, tried: incercari });
-      }
-
-      const id = String(produsLocal.id);
-      for (const cale of [
-        `/api/v2/products/${encodeURIComponent(id)}?include=images,variants`,
-        `/api/v2/products?include=images,variants&ids=${encodeURIComponent(id)}`,
-        `/api/v2/products?include=images,variants&id=${encodeURIComponent(id)}`,
-      ]) {
-        const lista = caGrup(await cere(cale));
-        if (lista.length) return sendJSON(res, 200, { data: lista, tried: incercari });
-      }
-
-      // Ultima solutie: parcurgem catalogul pana dam de produs. Marginit ca
-      // numar de pagini, ca sa nu tinem serverul ocupat la nesfarsit daca
-      // produsul a fost intre timp scos din magazin.
-      const MAX_PAGINI = 40;
-      for (let pagina = 0; pagina < MAX_PAGINI; pagina++) {
-        let r;
-        try {
-          r = await mp.requestRaw(company, 'GET', `/api/v2/products?include=images,variants&limit=100&start=${pagina * 100}`);
-        } catch (e) {
-          incercari.push(`parcurgere pagina ${pagina} -> ${e.message}`);
-          break;
-        }
-        const lista = caGrup(r);
-        if (!lista.length) break;
-        const gasit = lista.find((p) => String(p.id) === id);
-        if (gasit) {
-          incercari.push(`gasit prin parcurgere, pagina ${pagina}`);
-          return sendJSON(res, 200, { data: [gasit], tried: incercari });
-        }
-      }
-      return sendJSON(res, 502, {
-        error: `Magazinul nu a vrut să dea produsul „${produsLocal.name}" (id ${id}) în niciuna dintre formele încercate.`,
-        tried: incercari,
-      });
-    }
-
-    if (pathname === '/api/company/catalog/sync' && req.method === 'POST') {
-      if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot aduce catalogul.' });
-      const company = db.getCompany(currentAgent.companyId);
-      if (!mp.isConfigured(company)) {
-        return sendJSON(res, 400, { error: 'Completează întâi datele de MerchantPro în Setări — de acolo luăm catalogul.' });
-      }
-      const pornit = catalog.startImport(company);
-      return sendJSON(res, 202, { started: pornit, ...catalog.catalogState(currentAgent.companyId) });
     }
 
     const toggleIntegrationMatch = pathname.match(/^\/api\/company\/integrations\/([^/]+)\/active$/);
@@ -2367,8 +2207,4 @@ server.listen(PORT, () => {
   // orice cont a carui stergere a fost intrerupta (repornire, cadere) isi
   // continua stergerea de aici; el e deja inaccesibil, doar randurile au ramas
   reiaStergerileNeterminate();
-
-  // catalogul magazinelor care folosesc schimbul cu alt produs, reimprospatat
-  // o data pe zi -- ca sa nu ofere formularul produse scoase de la vanzare
-  catalog.startBackgroundCatalogSync();
 });

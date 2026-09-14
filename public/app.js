@@ -990,7 +990,7 @@ async function renderPlatformClientsPanel() {
 const TIPURI_CERERE_PUBLICE = [
   { cod: 'retur', titlu: 'Retur produs', descriere: 'Vreau să returnez produsul și să primesc banii înapoi.' },
   { cod: 'service', titlu: 'Produs defect / service', descriere: 'Produsul s-a defectat sau a venit deteriorat.' },
-  { cod: 'schimb', titlu: 'Colet la schimb', descriere: 'Vreau să înlocuiesc produsul cu altul.' },
+  { cod: 'schimb', titlu: 'Colet la schimb', descriere: 'Vreau același produs, înlocuit — a venit defect sau nu e mărimea potrivită.' },
 ];
 
 // Regulile pe care le presupunem cat timp nu am primit inca raspunsul
@@ -1002,8 +1002,6 @@ const REGULI_CERERE_IMPLICITE = {
   reasons: [],
   refundToBank: true,
   partial: true,
-  exchangeSame: true,
-  exchangeOther: false,
   transportCost: 0,
   exchangeTransportCost: 0,
   windowDays: 14,
@@ -1102,18 +1100,12 @@ function renderCerereClient(slug, { integrat = false } = {}) {
   let reguli = REGULI_CERERE_IMPLICITE;
   let fereastra = null;   // termenul de retur calculat pentru comanda gasita
   let dejaCerut = false;  // comanda are deja o cerere, iar magazinul nu accepta mai multe
-  // alegerea pentru "colet la schimb"; stau aici, nu in pasul de detalii, ca sa
-  // nu se piarda daca pasul se redeseneaza dupa o eroare
-  let modSchimb = 'same';   // 'same' = acelasi produs, 'other' = alt produs din magazin
-  let produsAles = null;
-  let variantaAleasa = null;
 
   const eroare = (mesaj) => `<div class="error-msg">${escapeHtml(mesaj)}</div>`;
 
   /** Tipurile pe care clientul le poate alege ACUM: pornite de magazin si, la retur/schimb, cu termenul neexpirat. */
   const tipuriDisponibile = () => TIPURI_CERERE_PUBLICE.filter((t) => {
     if (!reguli.types.includes(t.cod)) return false;
-    if (t.cod === 'schimb' && !reguli.exchangeSame && !reguli.exchangeOther) return false;
     if (fereastra && fereastra.expired && t.cod !== 'service') return false;
     return true;
   });
@@ -1238,7 +1230,6 @@ function renderCerereClient(slug, { integrat = false } = {}) {
       </div>
     `;
     zona.querySelectorAll('.cerere-tip').forEach((b) => b.addEventListener('click', () => {
-      if (tip !== b.dataset.tip) { produsAles = null; variantaAleasa = null; }
       tip = b.dataset.tip;
       zona.querySelectorAll('.cerere-tip').forEach((x) => x.classList.toggle('ales', x.dataset.tip === tip));
     }));
@@ -1269,42 +1260,6 @@ function renderCerereClient(slug, { integrat = false } = {}) {
       return ales ? ales.photo : 'optional';
     };
 
-    // Magazinul poate oferi una dintre variante, sau pe amandoua. Cand oferă
-    // doar una, nu punem clientul sa aleaga intre o singura optiune.
-    if (!reguli.exchangeOther) modSchimb = 'same';
-    else if (!reguli.exchangeSame) modSchimb = 'other';
-
-    function blocSchimb() {
-      const ambele = reguli.exchangeSame && reguli.exchangeOther;
-      return `
-        <div class="cerere-eticheta">Cu ce înlocuim</div>
-        ${ambele ? `
-        <div class="cerere-mod-schimb">
-          <label class="cerere-produs">
-            <input type="radio" name="modSchimb" value="same" ${modSchimb === 'same' ? 'checked' : ''} />
-            <span class="cerere-produs-text">
-              <span class="cerere-produs-nume">Același produs</span>
-              <span class="cerere-produs-sub">Îl înlocuiți bucată cu bucată, aceeași referință.</span>
-            </span>
-          </label>
-          <label class="cerere-produs">
-            <input type="radio" name="modSchimb" value="other" ${modSchimb === 'other' ? 'checked' : ''} />
-            <span class="cerere-produs-text">
-              <span class="cerere-produs-nume">Alt produs din magazin</span>
-              <span class="cerere-produs-sub">Alegi tu produsul dorit din lista de mai jos.</span>
-            </span>
-          </label>
-        </div>` : ''}
-        <div id="alegereProdus" ${modSchimb === 'other' ? '' : 'hidden'}>
-          <div class="field">
-            <label for="cCautaProdus">Caută produsul dorit</label>
-            <input type="text" id="cCautaProdus" autocomplete="off" placeholder="Scrie numele sau codul produsului" />
-          </div>
-          <div id="rezultateProduse" class="cerere-produse"></div>
-          <div id="produsAlesCutie"></div>
-        </div>`;
-    }
-
     zona.innerHTML = `
       <h1>Câteva detalii</h1>
       <p class="sub">Mai avem nevoie doar de câteva lucruri și trimitem cererea.</p>
@@ -1320,7 +1275,12 @@ function renderCerereClient(slug, { integrat = false } = {}) {
             </select>`
             : '<input type="text" id="cMotiv" maxlength="200" placeholder="ex. Produsul nu pornește" />'}
         </div>
-        ${eSchimb ? blocSchimb() : ''}
+        ${eSchimb ? `
+        <div class="field">
+          <label for="cVariantaDorita">Ce vrei în loc (opțional)</label>
+          <input type="text" id="cVariantaDorita" maxlength="120" placeholder="ex. aceeași moară, dar mărimea 42" />
+          <div class="hint" style="margin-top:6px;">Îl înlocuim cu același produs. Scrie aici dacă vrei altă mărime sau altă culoare.</div>
+        </div>` : ''}
         <div class="field" id="campPoze">
           <label for="cPoze">Fotografii <span id="cPozeCerinta">(opțional, maximum 6)</span></label>
           <input type="file" id="cPoze" accept="image/*" multiple />
@@ -1396,127 +1356,6 @@ function renderCerereClient(slug, { integrat = false } = {}) {
       if (poze.length) info.textContent = `${poze.length} ${poze.length === 1 ? 'fotografie pregătită' : 'fotografii pregătite'}.`;
     });
 
-    // ---- alegerea produsului la schimb ----
-    if (eSchimb) {
-      const zonaAlegere = zona.querySelector('#alegereProdus');
-      const rezultate = zona.querySelector('#rezultateProduse');
-      const cutieAles = zona.querySelector('#produsAlesCutie');
-      const campCauta = zona.querySelector('#cCautaProdus');
-
-      // Campul de cautare dispare cat timp exista un produs ales, si revine la
-      // "Schimbă". Altfel ramanea acolo, primea text, si nu se intampla nimic:
-      // rezultatele nu se mai deseneaza peste o alegere facuta.
-      const campulCautarii = zona.querySelector('#cCautaProdus').closest('.field');
-
-      // „cod · preț", dar fără punctul despărțitor când unul dintre ele lipsește
-      // Sub numele produsului punem codul, si atat.
-      //
-      // Pretul NU se arata clientului, desi il avem. Motivul: API-ul
-      // MerchantPro nu expune promotiile. Un produs prins intr-o promotie se
-      // vinde cu 299 lei in timp ce API-ul raporteaza 337,58 -- iar un pret
-      // scris langa un produs e o promisiune, nu o informatie orientativa.
-      // Mai bine niciun pret decat unul gresit; cine vrea sa-l vada apasa pe
-      // link-ul catre pagina produsului, unde pretul e mereu cel adevarat.
-      const subtitluProdus = (p) => (p.sku ? escapeHtml(p.sku) : '');
-
-      const eAdresaBuna = (u) => /^https?:\/\//i.test(String(u || ''));
-
-      function deseneazaAles() {
-        campulCautarii.hidden = Boolean(produsAles);
-        if (!produsAles) { cutieAles.innerHTML = ''; return; }
-        const v = produsAles.variants || [];
-        cutieAles.innerHTML = `
-          <div class="cerere-produs-ales">
-            ${produsAles.imageUrl
-              ? `<img src="${escapeHtml(produsAles.imageUrl)}" alt="" onerror="this.remove()" />`
-              : '<div class="cerere-produs-poza-goala">—</div>'}
-            <div class="cerere-produs-ales-text">
-              <strong>${escapeHtml(produsAles.name)}</strong>
-              <span>${[subtitluProdus(produsAles), eAdresaBuna(produsAles.url)
-                ? `<a href="${escapeHtml(produsAles.url)}" target="_blank" rel="noopener noreferrer">vezi produsul în magazin ↗</a>`
-                : ''].filter(Boolean).join(' · ')}</span>
-            </div>
-            <button type="button" class="btn btn-sm" id="renuntaProdus">Schimbă</button>
-          </div>
-          ${v.length ? `
-          <div class="field">
-            <label for="cVarianta">Varianta dorită</label>
-            <!-- fara "required": browserul ar afisa mesajul lui, in limba lui,
-                 peste formularul unui magazin romanesc. Verificam noi. -->
-            <select id="cVarianta">
-              <option value="">Alege varianta…</option>
-              ${v.map((x) => `<option value="${escapeHtml(String(x.id))}"${String(variantaAleasa) === String(x.id) ? ' selected' : ''}>${escapeHtml(x.name || x.sku || ('Varianta ' + x.id))}</option>`).join('')}
-            </select>
-          </div>` : ''}`;
-        cutieAles.querySelector('#renuntaProdus').addEventListener('click', () => {
-          produsAles = null; variantaAleasa = null;
-          deseneazaAles();
-          campCauta.value = '';
-          rezultate.innerHTML = '';
-          campCauta.focus();
-        });
-        const selVar = cutieAles.querySelector('#cVarianta');
-        if (selVar) selVar.addEventListener('change', () => { variantaAleasa = selVar.value; });
-        rezultate.innerHTML = '';
-      }
-
-      function deseneazaRezultate(produse) {
-        if (produsAles) return;
-        if (!produse.length) {
-          rezultate.innerHTML = '<div class="hint">Niciun produs găsit. Încearcă alt cuvânt din denumire.</div>';
-          return;
-        }
-        rezultate.innerHTML = produse.map((p) => `
-          <button type="button" class="cerere-produs cerere-produs-optiune" data-id="${escapeHtml(String(p.id))}">
-            ${p.imageUrl
-              ? `<img src="${escapeHtml(p.imageUrl)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'cerere-produs-poza-goala',textContent:'—'}))" />`
-              : '<div class="cerere-produs-poza-goala">—</div>'}
-            <span class="cerere-produs-text">
-              <span class="cerere-produs-nume">${escapeHtml(p.name)}</span>
-              <span class="cerere-produs-sub">${subtitluProdus(p)}</span>
-            </span>
-          </button>`).join('');
-        rezultate.querySelectorAll('.cerere-produs-optiune').forEach((b) => b.addEventListener('click', () => {
-          produsAles = produse.find((p) => String(p.id) === b.dataset.id) || null;
-          // cand produsul are o singura varianta, nu are ce alege clientul
-          variantaAleasa = produsAles && produsAles.variants && produsAles.variants.length === 1
-            ? String(produsAles.variants[0].id) : null;
-          deseneazaAles();
-        }));
-      }
-
-      // Cautam la o scurta pauza dupa ce omul s-a oprit din scris, nu la
-      // fiecare tasta -- si ignoram raspunsurile intarziate ale unei cautari
-      // vechi, care altfel ar suprascrie rezultatele celei noi.
-      let ceas = null;
-      let ultimaCerere = 0;
-      async function cauta() {
-        const q = campCauta.value.trim();
-        const semn = ++ultimaCerere;
-        try {
-          const r = await api(`/api/public/cerere/${encodeURIComponent(slug)}/produse?q=${encodeURIComponent(q)}`);
-          if (semn !== ultimaCerere) return;
-          deseneazaRezultate(r.products || []);
-        } catch (e) {
-          if (semn !== ultimaCerere) return;
-          rezultate.innerHTML = '<div class="hint">Lista de produse nu e disponibilă acum. Scrie în descriere ce produs vrei în loc.</div>';
-        }
-      }
-      campCauta.addEventListener('input', () => {
-        clearTimeout(ceas);
-        ceas = setTimeout(cauta, 250);
-      });
-
-      zona.querySelectorAll('input[name=modSchimb]').forEach((r) => r.addEventListener('change', () => {
-        modSchimb = r.value;
-        zonaAlegere.hidden = modSchimb !== 'other';
-        if (modSchimb === 'other' && !produsAles && !rezultate.children.length) cauta();
-      }));
-
-      deseneazaAles();
-      if (modSchimb === 'other' && !produsAles) cauta(); // primele produse, ca punct de plecare
-    }
-
     zona.querySelector('#cerereInapoi2').addEventListener('click', () => pasTipSiProduse());
     zona.querySelector('#formDetalii').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -1524,12 +1363,6 @@ function renderCerereClient(slug, { integrat = false } = {}) {
       // scris pe drum
       if (regulaFotoCurenta() === 'required' && !poze.length) {
         return pasDetalii(alese, 'Pentru motivul ales avem nevoie de cel puțin o fotografie a produsului.');
-      }
-      if (eSchimb && modSchimb === 'other') {
-        if (!produsAles) return pasDetalii(alese, 'Alege te rog produsul cu care vrei să faci schimbul.');
-        if ((produsAles.variants || []).length && !variantaAleasa) {
-          return pasDetalii(alese, 'Alege te rog varianta dorită (mărime, culoare).');
-        }
       }
       const btn = zona.querySelector('button[type=submit]');
       btn.disabled = true;
@@ -1543,9 +1376,7 @@ function renderCerereClient(slug, { integrat = false } = {}) {
             orderNumber: comanda.number, phone: comanda.phone,
             itemIndexes: alese,
             reason: q('#cMotiv'),
-            exchangeMode: eSchimb ? modSchimb : undefined,
-            wantedProductId: eSchimb && modSchimb === 'other' && produsAles ? produsAles.id : undefined,
-            wantedVariantId: eSchimb && modSchimb === 'other' ? variantaAleasa : undefined,
+            wantedVariant: q('#cVariantaDorita'),
             iban: q('#cIban'), accountHolder: q('#cTitular'),
             pickupAddress: q('#cAdresa'), pickupCity: q('#cOras'), pickupPostalCode: q('#cCod'),
             website: q('#cCapcana'),
@@ -4930,11 +4761,6 @@ async function renderSettings(sectiune) {
       ${bifa('r-banca', R.refundToBank, 'Cer IBAN pentru rambursare', 'Clientul completează contul în care vrea banii. Oprit, presupunem că îi returnezi pe aceeași cale pe care a plătit.')}
       ${bifa('r-auto', R.autoApprove, 'Aprobare automată', 'Clientul primește pe loc confirmarea că cererea e acceptată, în loc de „așteaptă răspunsul magazinului". Cererea îți apare la fel în „Cereri noi" — AWB-ul de ridicare tot tu îl emiți.')}
 
-      <div class="cerere-eticheta" style="margin-top:18px;">Schimbul cu alt produs</div>
-      ${bifa('r-schimb-acelasi', R.exchangeSame, 'Schimb cu același produs', 'Înlocuire bucată cu bucată, aceeași referință.')}
-      ${bifa('r-schimb-altul', R.exchangeOther, 'Schimb cu alt produs', 'Clientul alege produsul dorit direct din catalogul magazinului tău, după denumire sau cod. Prețul nu i se afișează — MerchantPro nu ne trimite prețurile din promoții, iar un preț greșit ar fi o promisiune greșită; are în schimb link către pagina produsului, unde prețul e mereu cel real. În tichet vezi tu prețul de catalog.')}
-      <div class="catalog-stare" id="catalogStare">Se verifică catalogul…</div>
-      <div id="diagnosticPreturi" style="margin:6px 0 4px 34px;" hidden></div>
 
       <div class="cerere-eticheta" style="margin-top:18px;">Costul transportului</div>
       <div class="hint" style="margin-bottom:10px;">În ambele cazuri clientul vede costul înainte să trimită cererea. Lasă 0 dacă transportul e pe seama ta.</div>
@@ -4986,133 +4812,6 @@ async function renderSettings(sectiune) {
   (R.reasons || []).forEach(randMotiv);
   content.querySelector('#adaugaMotiv').addEventListener('click', () => randMotiv({ text: '', photo: 'optional' }));
 
-  // ---- catalogul din care alege clientul la schimb ----
-  // Îl ținem copiat la noi, ca să nu depindă căutarea clientului de viteza
-  // magazinului; aici arătăm cât de proaspătă e copia și dăm un buton de
-  // reîmprospătare pentru cine tocmai a adăugat produse noi.
-  const zonaCatalog = content.querySelector('#catalogStare');
-  let ceasCatalog = null;
-  async function aratăCatalogul() {
-    let stare;
-    try {
-      stare = await api('/api/company/catalog');
-    } catch (e) {
-      zonaCatalog.textContent = 'Catalogul nu a putut fi verificat.';
-      return;
-    }
-    const cand = stare.lastSyncedAt ? fmtDateTime(stare.lastSyncedAt) : null;
-    const rand = stare.running
-      ? 'Se aduce catalogul din magazin…'
-      : stare.count
-        ? `${stare.count} produse în catalog${cand ? `, aduse ${escapeHtml(cand)}` : ''}.`
-        : 'Catalogul nu a fost adus încă — fără el, clientul nu are din ce alege.';
-    const eroare = !stare.running && stare.last && stare.last.ok === false ? stare.last.error : null;
-    zonaCatalog.innerHTML = `
-      <span>${rand}</span>
-      ${eroare ? `<span class="catalog-eroare">${escapeHtml(eroare)}</span>` : ''}
-      <button type="button" class="btn btn-sm" id="aduCatalog" ${stare.running ? 'disabled' : ''}>
-        ${stare.count ? 'Reîmprospătează' : 'Adu catalogul'}
-      </button>
-      <button type="button" class="btn btn-sm" id="verificaPreturi">Verifică prețurile</button>`;
-    zonaCatalog.querySelector('#verificaPreturi').addEventListener('click', verificaPreturile);
-    const btn = zonaCatalog.querySelector('#aduCatalog');
-    if (btn) btn.addEventListener('click', async () => {
-      btn.disabled = true;
-      try {
-        await api('/api/company/catalog/sync', { method: 'POST' });
-        showToast('Aducem catalogul — durează un minut la magazinele mari.');
-      } catch (err) {
-        showToast('Eroare: ' + err.message);
-      }
-      aratăCatalogul();
-    });
-    // cât timp importul rulează, ne uităm din nou peste câteva secunde
-    clearTimeout(ceasCatalog);
-    if (stare.running) ceasCatalog = setTimeout(aratăCatalogul, 4000);
-  }
-  if (sectiune === 'formular-retur') aratăCatalogul();
-
-  // ---- „Verifică prețurile" ----
-  // Magazinele nu-și țin reducerile toate la fel, iar documentația MerchantPro
-  // nu acoperă toate variantele. Butonul cere un produs de la magazin și arată
-  // DOAR câmpurile care au legătură cu prețul, ca să se vadă negru pe alb unde
-  // stă prețul redus. Nimic despre clienți, nicio credențială.
-  async function verificaPreturile() {
-    const nume = prompt('Scrie o bucată din denumirea unui produs aflat ACUM la reducere:', '');
-    if (nume === null) return;
-    const cutie = content.querySelector('#diagnosticPreturi');
-    cutie.hidden = false;
-    cutie.innerHTML = '<div class="hint">Întrebăm magazinul…</div>';
-    // Nu folosim api() aici: cand magazinul refuza, raspunsul contine si lista
-    // formelor incercate, iar tocmai ea ne spune de ce a refuzat -- api() ar
-    // pastra doar mesajul scurt.
-    let raspuns;
-    try {
-      const r = await fetch(`/api/company/catalog/diagnostic?q=${encodeURIComponent(nume.trim())}`);
-      raspuns = await r.json().catch(() => null);
-      if (!r.ok) {
-        const incercari = raspuns && Array.isArray(raspuns.tried) ? raspuns.tried : [];
-        cutie.innerHTML = `
-          <div class="catalog-eroare">${escapeHtml((raspuns && raspuns.error) || ('Eroare ' + r.status))}</div>
-          ${incercari.length ? `<textarea class="cod-integrare" readonly rows="6" style="margin-top:6px;">${escapeHtml(incercari.join('\n'))}</textarea>` : ''}`;
-        return;
-      }
-    } catch (err) {
-      cutie.innerHTML = `<div class="catalog-eroare">${escapeHtml(err.message)}</div>`;
-      return;
-    }
-    const produse = (raspuns && raspuns.data) || [];
-    if (!produse.length) {
-      cutie.innerHTML = '<div class="hint">Niciun produs găsit cu denumirea asta. Încearcă alt cuvânt.</div>';
-      return;
-    }
-    // Arătăm TOATE câmpurile, nu doar cele cu „price" în nume: dacă magazinul
-    // își ține reducerea într-o structură pe care n-am ghicit-o (o listă de
-    // promoții, un obiect de campanie), filtrând după nume tocmai pe aceea am
-    // fi ascuns-o. Textele lungi le scurtăm — descrierea produsului n-are ce
-    // căuta aici.
-    const valoare = (v) => {
-      if (v === null) return 'null';
-      if (Array.isArray(v)) return v.length ? `[${v.length} elemente] ${JSON.stringify(v).slice(0, 400)}` : '[]';
-      if (typeof v === 'object') return JSON.stringify(v).slice(0, 400);
-      const t = String(v);
-      return t.length > 120 ? t.slice(0, 120) + '…' : t;
-    };
-    const randuri = [];
-    for (const p of produse.slice(0, 2)) {
-      randuri.push(`# ${p.name || p.id}`);
-      for (const [k, v] of Object.entries(p)) {
-        if (k === 'variants' || k === 'images') continue; // le scoatem separat
-        randuri.push(`  ${k} = ${valoare(v)}`);
-      }
-      const v0 = Array.isArray(p.variants) && p.variants[0];
-      if (v0) {
-        randuri.push(`  (prima din ${p.variants.length} variante)`);
-        for (const [k, v] of Object.entries(v0)) randuri.push(`    ${k} = ${valoare(v)}`);
-      } else {
-        randuri.push('  (fără variante)');
-      }
-      randuri.push('');
-    }
-    if (Array.isArray(raspuns.tried) && raspuns.tried.length) {
-      randuri.push('--- cum am ajuns la produs ---');
-      raspuns.tried.forEach((t) => randuri.push('  ' + t));
-    }
-    const text = randuri.join('\n');
-    cutie.innerHTML = `
-      <div class="hint" style="margin-bottom:6px;">Produsul, exact așa cum îl trimite magazinul tău. Copiază tot și trimite-mi.</div>
-      <textarea class="cod-integrare" id="textPreturi" readonly rows="14">${escapeHtml(text)}</textarea>
-      <div class="form-actions" style="justify-content:flex-start;margin-top:6px;">
-        <button type="button" class="btn btn-sm" id="copiazaPreturi">Copiază</button>
-      </div>`;
-    cutie.querySelector('#copiazaPreturi').addEventListener('click', async () => {
-      const camp = cutie.querySelector('#textPreturi');
-      camp.select();
-      try { await navigator.clipboard.writeText(camp.value); showToast('Copiat'); }
-      catch (e) { showToast('Apasă Ctrl+C ca să copiezi textul selectat'); }
-    });
-  }
-
   content.querySelector('#salveazaRetur').addEventListener('click', async (e) => {
     const btn = e.currentTarget;
     const tipuri = ['retur', 'service', 'schimb'].filter((t) => content.querySelector(`#r-tip-${t}`).checked);
@@ -5133,8 +4832,6 @@ async function renderSettings(sectiune) {
           multiplePerOrder: content.querySelector('#r-multiple').checked,
           refundToBank: content.querySelector('#r-banca').checked,
           autoApprove: content.querySelector('#r-auto').checked,
-          exchangeSame: content.querySelector('#r-schimb-acelasi').checked,
-          exchangeOther: content.querySelector('#r-schimb-altul').checked,
           transportCost: Number(content.querySelector('#r-cost-retur').value),
           exchangeTransportCost: Number(content.querySelector('#r-cost-schimb').value),
           reasons: motive,
@@ -5142,7 +4839,6 @@ async function renderSettings(sectiune) {
       });
       showToast('Regulile de retur au fost salvate');
       reincarcaPrevizualizarea();
-      aratăCatalogul();
     } catch (err) {
       showToast('Eroare: ' + err.message);
     } finally {
