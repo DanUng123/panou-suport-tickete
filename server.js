@@ -635,11 +635,16 @@ async function handleApi(req, res, pathname, query) {
           // o varianta poate avea pretul ei (marimea mare costa mai mult);
           // cand il are, el e pretul cererii, nu cel al produsului de baza
           const pretulAles = (variantaAleasa && variantaAleasa.price != null) ? variantaAleasa.price : ales.price;
+          // Pretul il scriem DOAR aici, pentru operator, si spunem limpede ce
+          // e: pretul din catalog, care nu include promotiile in curs (API-ul
+          // MerchantPro nu le expune). Clientului nu i l-am aratat deloc,
+          // tocmai ca sa nu-i promitem o suma gresita.
           produsDorit = [
             ales.name,
             variantaAleasa && variantaAleasa.name ? `— ${variantaAleasa.name}` : null,
             (variantaAleasa && variantaAleasa.sku) || ales.sku ? `(cod ${(variantaAleasa && variantaAleasa.sku) || ales.sku})` : null,
-            pretulAles != null ? `· ${Number(pretulAles).toFixed(2)} ${ales.currency || comanda.currency || 'RON'}` : null,
+            pretulAles != null ? `· ${Number(pretulAles).toFixed(2)} ${ales.currency || comanda.currency || 'RON'} preț de catalog, fără promoții` : null,
+            ales.url ? `\n  ${ales.url}` : null,
           ].filter(Boolean).join(' ');
         } else if (!reguli.exchangeSame) {
           return sendJSON(res, 400, { error: 'Alege te rog produsul dorit din listă.' });

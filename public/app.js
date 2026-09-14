@@ -1409,17 +1409,17 @@ function renderCerereClient(slug, { integrat = false } = {}) {
       const campulCautarii = zona.querySelector('#cCautaProdus').closest('.field');
 
       // „cod · preț", dar fără punctul despărțitor când unul dintre ele lipsește
-      const subtitluProdus = (p) => {
-        const moneda = escapeHtml(p.currency || comanda.currency || 'RON');
-        // la reducere aratam pretul vechi taiat, ca pe raftul magazinului --
-        // altfel clientul care stie ca produsul e la promotie n-ar avea de unde
-        // sti ca pretul de aici e chiar cel redus
-        const pret = p.price == null ? null
-          : (p.oldPrice != null && p.oldPrice > p.price
-            ? `<s>${escapeHtml(Number(p.oldPrice).toFixed(2))}</s> ${escapeHtml(Number(p.price).toFixed(2))} ${moneda}`
-            : `${escapeHtml(Number(p.price).toFixed(2))} ${moneda}`);
-        return [p.sku ? escapeHtml(p.sku) : null, pret].filter(Boolean).join(' · ');
-      };
+      // Sub numele produsului punem codul, si atat.
+      //
+      // Pretul NU se arata clientului, desi il avem. Motivul: API-ul
+      // MerchantPro nu expune promotiile. Un produs prins intr-o promotie se
+      // vinde cu 299 lei in timp ce API-ul raporteaza 337,58 -- iar un pret
+      // scris langa un produs e o promisiune, nu o informatie orientativa.
+      // Mai bine niciun pret decat unul gresit; cine vrea sa-l vada apasa pe
+      // link-ul catre pagina produsului, unde pretul e mereu cel adevarat.
+      const subtitluProdus = (p) => (p.sku ? escapeHtml(p.sku) : '');
+
+      const eAdresaBuna = (u) => /^https?:\/\//i.test(String(u || ''));
 
       function deseneazaAles() {
         campulCautarii.hidden = Boolean(produsAles);
@@ -1432,7 +1432,9 @@ function renderCerereClient(slug, { integrat = false } = {}) {
               : '<div class="cerere-produs-poza-goala">—</div>'}
             <div class="cerere-produs-ales-text">
               <strong>${escapeHtml(produsAles.name)}</strong>
-              <span>${subtitluProdus(produsAles)}</span>
+              <span>${[subtitluProdus(produsAles), eAdresaBuna(produsAles.url)
+                ? `<a href="${escapeHtml(produsAles.url)}" target="_blank" rel="noopener noreferrer">vezi produsul în magazin ↗</a>`
+                : ''].filter(Boolean).join(' · ')}</span>
             </div>
             <button type="button" class="btn btn-sm" id="renuntaProdus">Schimbă</button>
           </div>
@@ -1443,14 +1445,7 @@ function renderCerereClient(slug, { integrat = false } = {}) {
                  peste formularul unui magazin romanesc. Verificam noi. -->
             <select id="cVarianta">
               <option value="">Alege varianta…</option>
-              ${v.map((x) => {
-                // pretul variantei apare doar cand difera de al produsului --
-                // repetat identic pe fiecare rand ar fi doar zgomot
-                const dif = x.price != null && x.price !== produsAles.price;
-                const eticheta = (x.name || x.sku || ('Varianta ' + x.id))
-                  + (dif ? ` — ${Number(x.price).toFixed(2)} ${produsAles.currency || comanda.currency || 'RON'}` : '');
-                return `<option value="${escapeHtml(String(x.id))}"${String(variantaAleasa) === String(x.id) ? ' selected' : ''}>${escapeHtml(eticheta)}</option>`;
-              }).join('')}
+              ${v.map((x) => `<option value="${escapeHtml(String(x.id))}"${String(variantaAleasa) === String(x.id) ? ' selected' : ''}>${escapeHtml(x.name || x.sku || ('Varianta ' + x.id))}</option>`).join('')}
             </select>
           </div>` : ''}`;
         cutieAles.querySelector('#renuntaProdus').addEventListener('click', () => {
@@ -4888,7 +4883,7 @@ async function renderSettings() {
 
       <div class="cerere-eticheta" style="margin-top:18px;">Schimbul cu alt produs</div>
       ${bifa('r-schimb-acelasi', R.exchangeSame, 'Schimb cu același produs', 'Înlocuire bucată cu bucată, aceeași referință.')}
-      ${bifa('r-schimb-altul', R.exchangeOther, 'Schimb cu alt produs', 'Clientul alege produsul dorit direct din catalogul magazinului tău.')}
+      ${bifa('r-schimb-altul', R.exchangeOther, 'Schimb cu alt produs', 'Clientul alege produsul dorit direct din catalogul magazinului tău, după denumire sau cod. Prețul nu i se afișează — MerchantPro nu ne trimite prețurile din promoții, iar un preț greșit ar fi o promisiune greșită; are în schimb link către pagina produsului, unde prețul e mereu cel real. În tichet vezi tu prețul de catalog.')}
       <div class="catalog-stare" id="catalogStare">Se verifică catalogul…</div>
       <div id="diagnosticPreturi" style="margin:6px 0 4px 34px;" hidden></div>
 
