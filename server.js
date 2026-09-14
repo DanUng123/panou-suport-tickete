@@ -418,7 +418,6 @@ async function handleApi(req, res, pathname, query) {
           reasons: reguli.reasons,
           refundToBank: reguli.refundToBank,
           partial: reguli.partial,
-          transportCost: reguli.transportCost,
           exchangeTransportCost: reguli.exchangeTransportCost,
           windowDays: reguli.windowDays,
         },
@@ -554,15 +553,10 @@ async function handleApi(req, res, pathname, query) {
       // Motivul: cand magazinul si-a definit lista, alegerea trebuie sa fie din
       // ea. Regula de fotografie atarna de motivul ales, deci un motiv scris
       // liber ar ocoli si cerinta de fotografii.
-      const motiveleMagazinului = reguli.reasons.map((m) => m.text);
-      let motiv = String(body.reason || '').trim().slice(0, 200);
-      let regulaFoto = 'optional';
-      if (TIPURI_CU_TERMEN.includes(body.type) || body.type === 'service') {
-        const gasit = reguli.reasons.find((m) => m.text === motiv);
-        if (!gasit) return sendJSON(res, 400, { error: 'Alege un motiv din listă.' });
-        regulaFoto = gasit.photo;
-      }
-      void motiveleMagazinului;
+      const motiv = String(body.reason || '').trim().slice(0, 200);
+      const motivAles = reguli.reasons.find((m) => m.text === motiv) || null;
+      if (!motivAles) return sendJSON(res, 400, { error: 'Alege un motiv din listă.' });
+      const regulaFoto = motivAles.photo;
 
       // fotografiile se citesc inainte de a crea tichetul, ca sa putem refuza
       // cererea cand motivul le cere si ele lipsesc -- altfel am fi lasat in
@@ -608,7 +602,14 @@ async function handleApi(req, res, pathname, query) {
       // Costul de transport se retine din suma rambursata. Il scriem in tichet
       // ca sa stie si operatorul cat are de scazut, nu doar clientul cat
       // primeste.
-      const costTransport = body.type === 'schimb' ? reguli.exchangeTransportCost : reguli.transportCost;
+      // Taxa de transport atarna acum de MOTIV, nu de tipul cererii. Sunt
+      // motive pentru care clientul nu are de ce sa plateasca transportul --
+      // produsul a venit stricat, sau i s-a trimis altul decat a comandat --
+      // si motive pentru care da, cum e razgandirea. Magazinul decide, motiv
+      // cu motiv, in Setari.
+      //
+      // La service nu se percepe: acolo vorbim de garantie.
+      const costTransport = (body.type !== 'service' && motivAles && motivAles.fee > 0) ? motivAles.fee : 0;
       const monedaComanda = comanda.currency || 'RON';
       // doar returul produce o rambursare din care se poate retine ceva
       const retineDinRambursare = body.type === 'retur';
@@ -674,7 +675,7 @@ async function handleApi(req, res, pathname, query) {
         reference: tichet.id,
         type: tip.eticheta,
         autoApproved: reguli.autoApprove,
-        transportCost: body.type !== 'service' ? costTransport : 0,
+        transportCost: costTransport,
         transportDeducted: retineDinRambursare,
         currency: monedaComanda,
       });

@@ -2078,12 +2078,30 @@ a { color: inherit; text-decoration: none; }
 #cardRetur .hint, #cardFormular .hint { font-size: 12.5px; line-height: 1.5; color: var(--text-dim); }
 
 /* un rând din editorul de motive, în Setări */
-.motiv-rand {
+.motiv-antet, .motiv-rand {
   display: flex; align-items: center; gap: 8px;
   margin-bottom: 8px;
 }
+.motiv-antet {
+  margin-bottom: 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+}
+.motiv-antet > span:nth-child(1) { flex: 1 1 auto; min-width: 0; }
+.motiv-antet > span:nth-child(2) { flex: 0 0 190px; }
+.motiv-antet > span:nth-child(3) { flex: 0 0 120px; }
+/* cât ține butonul de ștergere, ca antetul să nu iasă din coloane */
+.motiv-antet > span:nth-child(4) { flex: 0 0 34px; }
 .motiv-rand .motiv-text { flex: 1 1 auto; min-width: 0; }
 .motiv-rand .motiv-foto { flex: 0 0 190px; }
+.motiv-rand .motiv-taxa {
+  flex: 0 0 120px;
+  display: flex; align-items: center; gap: 6px;
+}
+.motiv-rand .motiv-taxa input { width: 100%; min-width: 0; text-align: right; }
+.motiv-rand .motiv-taxa span { font-size: 12.5px; color: var(--text-dim); }
 .motiv-rand input, .motiv-rand select {
   /* stilul general de formular tinteste doar campurile din .field */
   height: 38px;
@@ -2096,10 +2114,18 @@ a { color: inherit; text-decoration: none; }
   font-size: 13px;
 }
 .motiv-rand .motiv-sterge { flex: 0 0 auto; }
-@media (max-width: 620px) {
-  .motiv-rand { flex-wrap: wrap; }
+@media (max-width: 760px) {
+  /* pe ecran îngust antetul de coloane n-ar mai corespunde cu nimic */
+  .motiv-antet { display: none; }
+  .motiv-rand {
+    flex-wrap: wrap;
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
   .motiv-rand .motiv-text { flex: 1 1 100%; }
   .motiv-rand .motiv-foto { flex: 1 1 auto; }
+  .motiv-rand .motiv-taxa { flex: 0 0 110px; }
 }
 
 /* linkul, în Setări */
