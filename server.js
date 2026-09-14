@@ -1080,35 +1080,83 @@ async function handleApi(req, res, pathname, query) {
       if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot rula diagnosticul.' });
       const company = db.getCompany(currentAgent.companyId);
       if (!mp.isConfigured(company)) return sendJSON(res, 400, { error: 'Integrarea MerchantPro nu e configurată.' });
-      // MerchantPro nu are un filtru "name" pe produse -- cererea e respinsa cu
-      // "No such filter `name` defined". Deci nu cautam la ei dupa nume:
-      // gasim produsul in catalogul nostru local, care are deja denumirile, si
-      // cerem apoi de la ei exact produsul acela, dupa id.
+
+      // Cum ajungem la produsul cerut, si de ce asa de ocolit:
+      //
+      // 1. MerchantPro nu accepta un filtru dupa nume ("No such filter `name`
+      //    defined"), deci cautarea dupa denumire se face in catalogul nostru
+      //    local, care are deja denumirile aduse.
+      // 2. Ce scrie omul in casuta poate fi un cuvant din denumire SAU codul
+      //    produsului (SKU). Codul NU e id-ul intern -- o versiune anterioara
+      //    a acestui cod trimitea SKU-ul ca id si primea "Record not found".
+      //    Acum trece totul prin catalogul local, care stie si numele, si
+      //    codul, si intoarce id-ul adevarat.
+      // 3. Nici forma de adresare a unui singur produs nu e sigura de la un
+      //    magazin la altul, asa ca incercam pe rand mai multe, si in ultima
+      //    instanta parcurgem catalogul pana dam de el.
       const cautat = String(query.q || '').trim();
-      let idCerut = null;
+      let produsLocal = null;
       if (cautat) {
-        if (/^\d+$/.test(cautat)) {
-          idCerut = cautat; // omul a scris direct id-ul sau codul
-        } else {
-          const gasite = db.searchCompanyProducts(currentAgent.companyId, cautat, 1);
-          if (!gasite.length) {
-            return sendJSON(res, 404, { error: 'Nu am găsit produsul în catalogul adus. Încearcă alt cuvânt din denumire, sau adu întâi catalogul.' });
-          }
-          idCerut = gasite[0].id;
+        produsLocal = db.searchCompanyProducts(currentAgent.companyId, cautat, 1)[0] || null;
+        if (!produsLocal) {
+          return sendJSON(res, 404, { error: 'Nu am găsit produsul în catalogul adus. Încearcă alt cuvânt din denumire, sau adu întâi catalogul.' });
         }
       }
-      try {
-        const brut = idCerut
-          ? await mp.requestRaw(company, 'GET', `/api/v2/products/${encodeURIComponent(idCerut)}?include=images,variants`)
-          : await mp.requestRaw(company, 'GET', '/api/v2/products?include=images,variants&limit=2');
-        // raspunsul pentru un singur produs vine ca obiect, cel pentru o lista
-        // ca tablou -- il aducem mereu la tablou, ca sa nu stie interfata de
-        // diferenta asta
-        const lista = Array.isArray(brut && brut.data) ? brut.data : (brut && brut.data ? [brut.data] : []);
-        return sendJSON(res, 200, { data: lista });
-      } catch (e) {
-        return sendJSON(res, 502, { error: e.message });
+
+      const incercari = [];
+      const cere = async (cale) => {
+        try {
+          const r = await mp.requestRaw(company, 'GET', cale);
+          incercari.push(`${cale} -> ok`);
+          return r;
+        } catch (e) {
+          incercari.push(`${cale} -> ${e.message}`);
+          return null;
+        }
+      };
+      const caGrup = (r) => (Array.isArray(r && r.data) ? r.data : (r && r.data ? [r.data] : []));
+
+      if (!produsLocal) {
+        const r = await cere('/api/v2/products?include=images,variants&limit=2');
+        const lista = caGrup(r);
+        if (!lista.length) return sendJSON(res, 502, { error: 'Magazinul nu a întors niciun produs.', tried: incercari });
+        return sendJSON(res, 200, { data: lista, tried: incercari });
       }
+
+      const id = String(produsLocal.id);
+      for (const cale of [
+        `/api/v2/products/${encodeURIComponent(id)}?include=images,variants`,
+        `/api/v2/products?include=images,variants&ids=${encodeURIComponent(id)}`,
+        `/api/v2/products?include=images,variants&id=${encodeURIComponent(id)}`,
+      ]) {
+        const lista = caGrup(await cere(cale));
+        if (lista.length) return sendJSON(res, 200, { data: lista, tried: incercari });
+      }
+
+      // Ultima solutie: parcurgem catalogul pana dam de produs. Marginit ca
+      // numar de pagini, ca sa nu tinem serverul ocupat la nesfarsit daca
+      // produsul a fost intre timp scos din magazin.
+      const MAX_PAGINI = 40;
+      for (let pagina = 0; pagina < MAX_PAGINI; pagina++) {
+        let r;
+        try {
+          r = await mp.requestRaw(company, 'GET', `/api/v2/products?include=images,variants&limit=100&start=${pagina * 100}`);
+        } catch (e) {
+          incercari.push(`parcurgere pagina ${pagina} -> ${e.message}`);
+          break;
+        }
+        const lista = caGrup(r);
+        if (!lista.length) break;
+        const gasit = lista.find((p) => String(p.id) === id);
+        if (gasit) {
+          incercari.push(`gasit prin parcurgere, pagina ${pagina}`);
+          return sendJSON(res, 200, { data: [gasit], tried: incercari });
+        }
+      }
+      return sendJSON(res, 502, {
+        error: `Magazinul nu a vrut să dea produsul „${produsLocal.name}" (id ${id}) în niciuna dintre formele încercate.`,
+        tried: incercari,
+      });
     }
 
     if (pathname === '/api/company/catalog/sync' && req.method === 'POST') {

@@ -4999,9 +4999,20 @@ async function renderSettings() {
     const cutie = content.querySelector('#diagnosticPreturi');
     cutie.hidden = false;
     cutie.innerHTML = '<div class="hint">Întrebăm magazinul…</div>';
+    // Nu folosim api() aici: cand magazinul refuza, raspunsul contine si lista
+    // formelor incercate, iar tocmai ea ne spune de ce a refuzat -- api() ar
+    // pastra doar mesajul scurt.
     let raspuns;
     try {
-      raspuns = await api(`/api/company/catalog/diagnostic?q=${encodeURIComponent(nume.trim())}`);
+      const r = await fetch(`/api/company/catalog/diagnostic?q=${encodeURIComponent(nume.trim())}`);
+      raspuns = await r.json().catch(() => null);
+      if (!r.ok) {
+        const incercari = raspuns && Array.isArray(raspuns.tried) ? raspuns.tried : [];
+        cutie.innerHTML = `
+          <div class="catalog-eroare">${escapeHtml((raspuns && raspuns.error) || ('Eroare ' + r.status))}</div>
+          ${incercari.length ? `<textarea class="cod-integrare" readonly rows="6" style="margin-top:6px;">${escapeHtml(incercari.join('\n'))}</textarea>` : ''}`;
+        return;
+      }
     } catch (err) {
       cutie.innerHTML = `<div class="catalog-eroare">${escapeHtml(err.message)}</div>`;
       return;
@@ -5011,26 +5022,42 @@ async function renderSettings() {
       cutie.innerHTML = '<div class="hint">Niciun produs găsit cu denumirea asta. Încearcă alt cuvânt.</div>';
       return;
     }
-    const arePret = (cheie) => /pret|price|reduc|discount|promo|special|sale/i.test(cheie);
+    // Arătăm TOATE câmpurile, nu doar cele cu „price" în nume: dacă magazinul
+    // își ține reducerea într-o structură pe care n-am ghicit-o (o listă de
+    // promoții, un obiect de campanie), filtrând după nume tocmai pe aceea am
+    // fi ascuns-o. Textele lungi le scurtăm — descrierea produsului n-are ce
+    // căuta aici.
+    const valoare = (v) => {
+      if (v === null) return 'null';
+      if (Array.isArray(v)) return v.length ? `[${v.length} elemente] ${JSON.stringify(v).slice(0, 400)}` : '[]';
+      if (typeof v === 'object') return JSON.stringify(v).slice(0, 400);
+      const t = String(v);
+      return t.length > 120 ? t.slice(0, 120) + '…' : t;
+    };
     const randuri = [];
     for (const p of produse.slice(0, 2)) {
       randuri.push(`# ${p.name || p.id}`);
       for (const [k, v] of Object.entries(p)) {
-        if (arePret(k) && (typeof v !== 'object' || v === null)) randuri.push(`  ${k} = ${v}`);
+        if (k === 'variants' || k === 'images') continue; // le scoatem separat
+        randuri.push(`  ${k} = ${valoare(v)}`);
       }
       const v0 = Array.isArray(p.variants) && p.variants[0];
       if (v0) {
-        randuri.push('  (prima variantă)');
-        for (const [k, v] of Object.entries(v0)) {
-          if (arePret(k) && (typeof v !== 'object' || v === null)) randuri.push(`    ${k} = ${v}`);
-        }
+        randuri.push(`  (prima din ${p.variants.length} variante)`);
+        for (const [k, v] of Object.entries(v0)) randuri.push(`    ${k} = ${valoare(v)}`);
+      } else {
+        randuri.push('  (fără variante)');
       }
       randuri.push('');
     }
+    if (Array.isArray(raspuns.tried) && raspuns.tried.length) {
+      randuri.push('--- cum am ajuns la produs ---');
+      raspuns.tried.forEach((t) => randuri.push('  ' + t));
+    }
     const text = randuri.join('\n');
     cutie.innerHTML = `
-      <div class="hint" style="margin-bottom:6px;">Câmpurile de preț, așa cum le trimite magazinul tău. Copiază-le și trimite-mi-le.</div>
-      <textarea class="cod-integrare" id="textPreturi" readonly rows="10">${escapeHtml(text)}</textarea>
+      <div class="hint" style="margin-bottom:6px;">Produsul, exact așa cum îl trimite magazinul tău. Copiază tot și trimite-mi.</div>
+      <textarea class="cod-integrare" id="textPreturi" readonly rows="14">${escapeHtml(text)}</textarea>
       <div class="form-actions" style="justify-content:flex-start;margin-top:6px;">
         <button type="button" class="btn btn-sm" id="copiazaPreturi">Copiază</button>
       </div>`;
