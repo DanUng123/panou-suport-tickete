@@ -4,6 +4,13 @@
    Mono (IBM Plex Mono) pentru ID-uri/date, Inter pentru UI.
    =========================================================== */
 
+/* `hidden` trebuie să însemne ascuns, oriunde.
+   Browserul îl aplică printr-un `display: none` de la el, pe care ORICE regulă
+   proprie cu `display` îl bate — iar noi punem `display: flex` pe mai toate
+   containerele. Un element cu hidden pus din JavaScript rămânea altfel pe
+   ecran, exact ca bara de taburi din Setări. */
+[hidden] { display: none !important; }
+
 :root {
   --bg: #0a0f1c;
   --surface: #0d1321;
@@ -457,6 +464,69 @@ a { color: inherit; text-decoration: none; }
   font-weight: 600;
 }
 .panel .empty { color: var(--text-dim); font-size: 15px; padding: 12px 0; }
+
+/* ---------------- Setări: grila de plăci ---------------- */
+.setari-grila {
+  display: grid;
+  /* plăcile se rearanjează singure: trei coloane pe ecran lat, două pe
+     tabletă, una pe telefon — fără praguri scrise de mână */
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
+.setari-placa {
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s, background 0.15s, transform 0.15s;
+}
+.setari-placa:hover {
+  border-color: var(--accent-border);
+  background: var(--surface-raised);
+  transform: translateY(-1px);
+}
+.setari-placa-pictograma {
+  flex: 0 0 38px;
+  height: 38px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 9px;
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+.setari-placa-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.setari-placa-titlu { font-size: 14px; font-weight: 600; color: var(--text); }
+.setari-placa-descriere { font-size: 12.5px; line-height: 1.45; color: var(--text-dim); }
+.setari-placa.periculoasa .setari-placa-pictograma {
+  background: color-mix(in srgb, var(--priority-urgent) 16%, transparent);
+  color: var(--priority-urgent);
+}
+.setari-placa.periculoasa:hover { border-color: color-mix(in srgb, var(--priority-urgent) 45%, transparent); }
+
+.setari-inapoi {
+  display: inline-block;
+  margin-bottom: 6px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  text-decoration: none;
+}
+.setari-inapoi:hover { color: var(--accent); }
+
+/* Într-o secțiune deschisă singură, cutia nu mai are de ce să fie pliabilă:
+   antetul pe care ar trebui să-l apeși ca să vezi ce ai venit să vezi e doar
+   un clic în plus. */
+.accordion-item.fara-antet { border: 0; background: none; padding: 0; }
+.accordion-item.fara-antet > .accordion-header { display: none; }
+.accordion-item.fara-antet > .accordion-body { max-height: none; overflow: visible; }
+.accordion-item.fara-antet .accordion-body-inner { padding-left: 0; padding-right: 0; }
+
+/* La fel și pentru cardurile care se deschid singure: titlul lor ar repeta
+   titlul paginii, la doi centimetri sub el. */
+.panel.fara-titlu > h2 { display: none; }
 
 /* ---------------- Taburi Setari ---------------- */
 .settings-tabs {
