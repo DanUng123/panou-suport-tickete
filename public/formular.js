@@ -144,10 +144,37 @@
   setTimeout(trimiteTema, 1200);
 
   // ---------- înălțimea ----------
+  var aRaspuns = false;
   window.addEventListener('message', function (e) {
     if (e.origin !== origine) return;
     if (!e.data || e.data.type !== 'easyticket:inaltime') return;
+    aRaspuns = true;
     cadru.style.height = e.data.height + 'px';
     cadru.style.minHeight = '0';
   });
+
+  // ---------- când cadrul nu răspunde ----------
+  //
+  // Formularul își anunță înălțimea imediat ce s-a desenat. Dacă nu vine nimic,
+  // înseamnă că nu s-a desenat deloc, iar clientul se uită la o casetă goală.
+  //
+  // Cazul de departe cel mai frecvent: browserul a refuzat să pună formularul
+  // în cadru, fiindcă domeniul magazinului nu e trecut în Setări. Refuzul ăsta
+  // nu se poate citi din afara cadrului (e altă origine), deci îl deducem din
+  // tăcere -- și spunem în consolă exact ce e de făcut. Clientul vede doar un
+  // mesaj omenesc; instrucțiunea e pentru cel care a pus codul în pagină.
+  setTimeout(function () {
+    if (aRaspuns) return;
+    console.error(
+      '[Easy-Ticket] Formularul nu s-a putut încărca în pagină. Cauza obișnuită: domeniul ' +
+      location.host + ' nu e trecut în Easy-Ticket → Setări → Formular de retur → ' +
+      '„Domenii unde poate fi integrat". Adaugă-l acolo și reîncarcă pagina.'
+    );
+    var mesaj = document.createElement('div');
+    mesaj.setAttribute('style',
+      'padding:20px;border:1px solid #e2e5ea;border-radius:10px;background:#fff;' +
+      'font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#4a5463;text-align:center');
+    mesaj.textContent = 'Formularul nu a putut fi încărcat. Reîncarcă pagina, iar dacă nici așa nu merge, scrie-ne direct.';
+    if (cadru.parentNode) cadru.parentNode.replaceChild(mesaj, cadru);
+  }, 6000);
 })();
