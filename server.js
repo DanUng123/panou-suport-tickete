@@ -1403,13 +1403,27 @@ async function handleApi(req, res, pathname, query) {
     }
 
     if (pathname === '/api/orders/sync' && req.method === 'POST') {
-      try {
-        const result = mp.isConfigured(company) ? await orderSync.runSyncForCompany(company) : null;
-        const gomagResult = gomag.isConfigured(company) ? await orderSync.runGomagSyncForCompany(company) : null;
-        return sendJSON(res, 200, { ...result, gomag: gomagResult });
-      } catch (e) {
-        return sendJSON(res, 502, { error: e.message });
+      // Fiecare platforma se sincronizeaza separat si isi raporteaza separat
+      // eroarea: daca GoMag da eroare, rezultatul MerchantPro nu se mai pierde,
+      // iar interfata poate spune exact CARE platforma a esuat si de ce.
+      let result = null;
+      let gomagResult = null;
+      const erori = [];
+      if (mp.isConfigured(company)) {
+        try { result = await orderSync.runSyncForCompany(company); }
+        catch (e) { erori.push(`MerchantPro: ${e.message}`); }
       }
+      if (gomag.isConfigured(company)) {
+        try { gomagResult = await orderSync.runGomagSyncForCompany(company); }
+        catch (e) { erori.push(`GoMag: ${e.message}`); }
+      }
+      if (!mp.isConfigured(company) && !gomag.isConfigured(company)) {
+        return sendJSON(res, 400, { error: 'Nicio platformă de magazin nu este configurată și activă. Verifică Setări → Integrări platforme.' });
+      }
+      if (erori.length && !result && !gomagResult) {
+        return sendJSON(res, 502, { error: erori.join(' · ') });
+      }
+      return sendJSON(res, 200, { ...result, gomag: gomagResult, errors: erori.length ? erori : undefined });
     }
 
     if (pathname === '/api/orders/import-full-history' && req.method === 'POST') {

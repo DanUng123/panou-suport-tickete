@@ -3024,18 +3024,32 @@ async function renderOrdersList() {
     const syncStatus = syncStatusResult.value;
     platformLabel = syncStatus.platformLabel || 'MERCHANTPRO';
     const banner = content.querySelector('#sync-banner');
-    if (syncStatus.lastSyncResult) {
-      const r = syncStatus.lastSyncResult;
-      banner.innerHTML = `<div style="color:var(--text-dim);font-size:12px;margin-bottom:14px;">Ultima sincronizare: ${fmtDate(r.at)} · ${r.created} noi, ${r.updated} actualizate</div>`;
-    }
+    // Un rand pentru FIECARE platforma configurata. Inainte se afisa doar
+    // rezultatul MerchantPro, asa ca un magazin pe GoMag nu vedea nimic --
+    // nici reusita, nici eroarea -- si sincronizarea parea ca nu se intampla.
+    const surse = [
+      { nume: 'MerchantPro', ...syncStatus },
+      { nume: 'GoMag', ...(syncStatus.gomag || {}) },
+    ].filter((s) => s.configured);
+    banner.innerHTML = surse.map((s) => {
+      if (s.lastSyncError) {
+        return `<div style="color:var(--priority-urgent);font-size:12px;margin-bottom:14px;">${escapeHtml(s.nume)}: sincronizarea a eșuat — ${escapeHtml(s.lastSyncError)}</div>`;
+      }
+      if (s.lastSyncResult) {
+        const r = s.lastSyncResult;
+        return `<div style="color:var(--text-secondary);font-size:12px;margin-bottom:14px;">${escapeHtml(s.nume)} — ultima sincronizare: ${fmtDate(r.at)} · ${r.created} noi, ${r.updated} actualizate${r.totalChecked !== undefined ? ` (din ${r.totalChecked} verificate)` : ''}</div>`;
+      }
+      return `<div style="color:var(--text-secondary);font-size:12px;margin-bottom:14px;">${escapeHtml(s.nume)} — nicio sincronizare încă. Apasă „Sincronizează acum".</div>`;
+    }).join('');
   } // altfel: n-o afisam ca eroare blocanta
 
   content.querySelector('#syncNowBtn').addEventListener('click', async (e) => {
     e.target.disabled = true;
     e.target.textContent = 'Se sincronizează…';
     try {
-      await api('/api/orders/sync', { method: 'POST' });
-      showToast('Sincronizare finalizată');
+      const r = await api('/api/orders/sync', { method: 'POST' });
+      // daca o platforma a esuat iar alta a reusit, spunem exact care
+      showToast(r && r.errors && r.errors.length ? 'Sincronizare parțială — ' + r.errors.join(' · ') : 'Sincronizare finalizată');
       renderOrdersList();
     } catch (err) {
       showToast('Eroare: ' + err.message);
