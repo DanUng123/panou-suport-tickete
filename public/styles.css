@@ -49,7 +49,11 @@
 }
 
 * { box-sizing: border-box; }
-html, body { height: 100%; overflow-x: hidden; }
+/* `height: 100%` bloca pagina la inaltimea ferestrei: tot ce depasea ecranul
+   -- de pilda subsolul, de cand are datele firmei -- ramanea dedesubt, fara
+   sa poti ajunge la el cu rotita. `min-height` pastreaza aceeasi inaltime
+   minima, dar lasa pagina sa creasca si sa se deruleze normal. */
+html, body { min-height: 100%; overflow-x: hidden; }
 
 body {
   margin: 0;
@@ -2416,4 +2420,27 @@ html.mod-integrat #app { min-height: 0; display: block; }
   background: var(--surface-raised);
   color: var(--text);
   resize: vertical;
+}
+
+/* ---------- Pagini legale (termeni, confidențialitate, cookies) ----------
+   Text de citit, nu de scanat: rânduri mai aerisite, titluri care se văd ca
+   titluri și o lățime la care ochiul nu se pierde de la un rând la altul. */
+.pagina-legala h2 {
+  font-size: 17px;
+  font-weight: 600;
+  margin: 30px 0 10px;
+  color: var(--text);
+}
+.pagina-legala p {
+  font-size: 14.5px;
+  line-height: 1.75;
+  color: var(--text-secondary);
+  margin: 0 0 12px;
+}
+.pagina-legala strong { color: var(--text); font-weight: 600; }
+.pagina-legala a { color: var(--accent); text-decoration: none; }
+.pagina-legala a:hover { text-decoration: underline; }
+@media (max-width: 560px) {
+  .pagina-legala { padding: 36px 18px !important; }
+  .pagina-legala h1 { font-size: 26px !important; }
 }

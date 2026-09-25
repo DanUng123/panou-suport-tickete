@@ -386,6 +386,59 @@ const MARKETING_NAV_LINKS = [
   { route: '#/contact', label: 'Contact' },
 ];
 
+/**
+ * Datele firmei, intr-un SINGUR loc.
+ *
+ * Apar in subsolul fiecarei pagini publice, in pagina de contact si in
+ * documentele legale. Daca se muta sediul sau se schimba telefonul, se
+ * schimba aici o data, nu in sase locuri.
+ *
+ * Campurile lasate goale pur si simplu NU se afiseaza -- mai bine lipseste
+ * un rand decat sa apara un text de umplutura pe un site comercial.
+ */
+const DATE_FIRMA = {
+  denumire: 'LIDER MARKET S.R.L.',
+  cui: '36794514',
+  regCom: 'J23/4790/2016',
+  sediu: '',            // adresa completa a sediului social
+  email: '',            // adresa de contact publica
+  telefon: '',
+  program: '',
+  iban: '',
+  banca: '',
+  platitorTva: null,    // true / false -- lasat null cat timp nu e confirmat
+};
+
+/** Randurile de date ale firmei, in ordinea in care se citesc firesc. */
+function randuriDateFirma() {
+  const f = DATE_FIRMA;
+  const randuri = [
+    f.denumire,
+    f.cui ? `CUI ${f.cui}${f.platitorTva === false ? ' (neplătitor de TVA)' : ''}` : '',
+    f.regCom ? `Reg. Com. ${f.regCom}` : '',
+    f.sediu ? `Sediu social: ${f.sediu}` : '',
+    f.email,
+    f.telefon,
+    f.program,
+    f.iban ? `IBAN ${f.iban}${f.banca ? ` — ${f.banca}` : ''}` : '',
+  ];
+  return randuri.filter(Boolean);
+}
+
+// Linkurile impuse comerciantilor online: platforma europeana de solutionare
+// online a litigiilor si pagina ANPC de solutionare alternativa.
+const LINKURI_ANPC = [
+  { eticheta: 'ANPC', url: 'https://anpc.ro/' },
+  { eticheta: 'ANPC — SAL', url: 'https://anpc.ro/ce-este-sal/' },
+  { eticheta: 'SOL', url: 'https://ec.europa.eu/consumers/odr' },
+];
+
+const MARKETING_LEGAL_LINKS = [
+  { route: '#/termeni', label: 'Termeni și condiții' },
+  { route: '#/confidentialitate', label: 'Confidențialitate' },
+  { route: '#/cookies', label: 'Cookies' },
+];
+
 function renderMarketingShell(activeRoute, innerHtml) {
   app.innerHTML = '';
   const page = el(`
@@ -404,11 +457,23 @@ function renderMarketingShell(activeRoute, innerHtml) {
         </div>
       </header>
       <main style="flex:1;">${innerHtml}</main>
-      <footer style="border-top:1px solid var(--border);padding:28px 32px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;color:var(--text-dim);font-size:12.5px;">
-        <div>© ${new Date().getFullYear()} Easy-Ticket. Toate drepturile rezervate.</div>
-        <div style="display:flex;gap:16px;flex-wrap:wrap;">
-          ${MARKETING_NAV_LINKS.map((l) => `<a href="${l.route}" class="marketing-nav-link" data-route="${l.route}" style="color:var(--text-dim);text-decoration:none;">${l.label}</a>`).join('')}
+      <footer style="border-top:1px solid var(--border);padding:28px 32px;color:var(--text-secondary);font-size:12.5px;">
+        <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:24px;margin-bottom:22px;">
+          <div style="min-width:220px;">
+            <div style="font-weight:600;color:var(--text);margin-bottom:8px;">Date firmă</div>
+            ${randuriDateFirma().map((r) => `<div style="margin-bottom:3px;">${escapeHtml(r)}</div>`).join('')}
+          </div>
+          <div style="min-width:160px;">
+            <div style="font-weight:600;color:var(--text);margin-bottom:8px;">Platformă</div>
+            ${MARKETING_NAV_LINKS.map((l) => `<div style="margin-bottom:3px;"><a href="${l.route}" class="marketing-nav-link" data-route="${l.route}" style="color:var(--text-secondary);text-decoration:none;">${l.label}</a></div>`).join('')}
+          </div>
+          <div style="min-width:180px;">
+            <div style="font-weight:600;color:var(--text);margin-bottom:8px;">Informații legale</div>
+            ${MARKETING_LEGAL_LINKS.map((l) => `<div style="margin-bottom:3px;"><a href="${l.route}" class="marketing-nav-link" data-route="${l.route}" style="color:var(--text-secondary);text-decoration:none;">${l.label}</a></div>`).join('')}
+            ${LINKURI_ANPC.map((l) => `<div style="margin-bottom:3px;"><a href="${l.url}" target="_blank" rel="noopener noreferrer" style="color:var(--text-secondary);text-decoration:none;">${l.eticheta}</a></div>`).join('')}
+          </div>
         </div>
+        <div style="border-top:1px solid var(--border);padding-top:16px;color:var(--text-dim);">© ${new Date().getFullYear()} ${escapeHtml(DATE_FIRMA.denumire.replace(/\.$/, ''))} · Toate drepturile rezervate.</div>
       </footer>
     </div>
   `);
@@ -543,7 +608,8 @@ function renderMarketingContact() {
   const page = renderMarketingShell('#/contact', `
     <section style="max-width:560px;margin:0 auto;padding:60px 24px;">
       <h1 style="font-size:32px;margin-bottom:12px;">Contact</h1>
-      <p style="color:var(--text-secondary);font-size:14.5px;margin-bottom:32px;">Ai o întrebare despre platformă? Scrie-ne — revenim cât mai curând.</p>
+      <p style="color:var(--text-secondary);font-size:14.5px;margin-bottom:28px;">Ai o întrebare despre platformă? Scrie-ne — revenim cât mai curând.</p>
+      ${blocDateFirma('Datele firmei')}
       <form id="contactForm">
         <div class="field">
           <label>Nume</label>
@@ -585,6 +651,94 @@ function renderMarketingContact() {
       btn.textContent = 'Trimite mesajul';
     }
   });
+}
+
+// ---------------- Pagini legale ----------------
+
+// Data ultimei revizuiri a textelor legale. Se schimba la fiecare modificare
+// de continut -- clientii au dreptul sa vada de cand se aplica versiunea.
+const DATA_ACTUALIZARE_LEGAL = '25 septembrie 2026';
+
+/** Cadrul comun al unei pagini de text legal: titlu, data, corp la latime de citit. */
+function paginaLegala(ruta, titlu, corpHtml) {
+  return renderMarketingShell(ruta, `
+    <section class="pagina-legala" style="max-width:760px;margin:0 auto;padding:60px 24px;">
+      <h1 style="font-size:32px;margin-bottom:6px;">${escapeHtml(titlu)}</h1>
+      <p style="color:var(--text-dim);font-size:13px;margin-bottom:32px;">Ultima actualizare: ${DATA_ACTUALIZARE_LEGAL}</p>
+      ${corpHtml}
+    </section>
+  `);
+}
+
+/** Blocul cu datele firmei, refolosit in paginile legale si in Contact. */
+function blocDateFirma(titlu = 'Operatorul platformei') {
+  return `
+    <div style="background:var(--surface-raised);border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin-bottom:28px;font-size:14px;line-height:1.7;">
+      <div style="font-weight:600;margin-bottom:6px;">${escapeHtml(titlu)}</div>
+      ${randuriDateFirma().map((r) => `<div>${escapeHtml(r)}</div>`).join('')}
+    </div>
+  `;
+}
+
+function renderMarketingTerms() {
+  paginaLegala('#/termeni', 'Termeni și condiții', `
+    ${blocDateFirma('Furnizorul serviciului')}
+    <h2>1. Ce este Easy-Ticket</h2>
+    <p>Easy-Ticket este o platformă software pusă la dispoziție prin internet (SaaS), prin care un magazin online își gestionează cererile clienților săi — tichete de suport, retururi, cereri de service și colete la schimb — și își sincronizează comenzile din platforma de eCommerce pe care o folosește.</p>
+    <h2>2. Contul și utilizarea</h2>
+    <p>Serviciul se adresează persoanelor juridice. La crearea contului, clientul declară că datele furnizate sunt reale și își asumă păstrarea în siguranță a parolelor de acces. Clientul răspunde pentru activitatea desfășurată din contul său, inclusiv de către agenții pe care îi adaugă.</p>
+    <p>Clientul se obligă să nu folosească platforma pentru activități ilegale, să nu încerce accesul la datele altor clienți și să nu supună serviciul unei încărcări care să afecteze ceilalți utilizatori.</p>
+    <h2>3. Abonamente, plată, încetare</h2>
+    <p>Accesul se face pe bază de abonament, la prețurile afișate în pagina de prețuri la momentul contractării. Abonamentul se reînnoiește pentru perioade succesive egale, dacă nu este denunțat înainte de expirare. Clientul poate renunța oricând, cu efect de la sfârșitul perioadei plătite.</p>
+    <p>Neplata abonamentului dă dreptul furnizorului de a suspenda accesul, după o notificare prealabilă. Datele rămân disponibile spre export o perioadă rezonabilă după suspendare, înainte de ștergere.</p>
+    <h2>4. Disponibilitate și limitarea răspunderii</h2>
+    <p>Furnizorul depune eforturi rezonabile pentru funcționarea neîntreruptă a platformei, dar nu garantează absența oricărei întreruperi — pot exista opriri pentru mentenanță, incidente la furnizorii de infrastructură sau indisponibilități ale platformelor externe cu care platforma se integrează (platforma de eCommerce, curierii).</p>
+    <p>Furnizorul nu răspunde pentru: conținutul introdus de client sau de clienții acestuia; deciziile comerciale luate de client pe baza informațiilor din platformă; indisponibilitatea sau erorile serviciilor terțe integrate; pierderi indirecte sau beneficii nerealizate. Răspunderea totală a furnizorului este limitată la contravaloarea abonamentului achitat pentru ultimele 12 luni.</p>
+    <h2>5. Datele clientului</h2>
+    <p>Datele introduse în platformă rămân proprietatea clientului. Furnizorul le prelucrează exclusiv pentru a furniza serviciul, conform <a href="#/confidentialitate" class="marketing-nav-link" data-route="#/confidentialitate">Politicii de confidențialitate</a>. Clientul poate solicita oricând exportul datelor sale.</p>
+    <h2>6. Modificarea termenilor</h2>
+    <p>Termenii pot fi actualizați. Modificările importante se anunță cu cel puțin 30 de zile înainte de intrarea în vigoare, prin email sau în interfața platformei. Continuarea utilizării după această dată înseamnă acceptarea noii versiuni.</p>
+    <h2>7. Legea aplicabilă și soluționarea litigiilor</h2>
+    <p>Contractul este guvernat de legea română. Litigiile se soluționează pe cale amiabilă, iar în lipsa unui acord, de instanțele competente de la sediul furnizorului.</p>
+    <p>Consumatorii au la dispoziție platforma europeană de soluționare online a litigiilor, la <a href="https://ec.europa.eu/consumers/odr" target="_blank" rel="noopener noreferrer">ec.europa.eu/consumers/odr</a>, precum și procedura de soluționare alternativă a litigiilor a <a href="https://anpc.ro/ce-este-sal/" target="_blank" rel="noopener noreferrer">ANPC</a>.</p>
+  `);
+}
+
+function renderMarketingPrivacy() {
+  paginaLegala('#/confidentialitate', 'Politica de confidențialitate', `
+    ${blocDateFirma('Operatorul de date')}
+    <h2>1. Două roluri diferite</h2>
+    <p>Este important de distins între două situații, pentru că obligațiile sunt diferite:</p>
+    <p><strong>Pentru datele clienților noștri</strong> — magazinele care folosesc platforma — suntem <em>operator</em>: noi decidem de ce și cum le prelucrăm (creare cont, facturare, suport).</p>
+    <p><strong>Pentru datele cumpărătorilor magazinului</strong> — persoanele care completează un formular de retur sau despre care există comenzi în platformă — suntem <em>persoană împuternicită</em>: le prelucrăm doar la instrucțiunea magazinului, care rămâne operatorul lor. Cumpărătorii își exercită drepturile față de magazinul de la care au comandat.</p>
+    <h2>2. Ce date prelucrăm</h2>
+    <p>De la clienții platformei: nume, denumirea firmei, email, telefon, datele de facturare, datele de autentificare (parolele sunt stocate doar sub formă criptată, ireversibil) și datele de conectare la platformele și curierii pe care îi integrează.</p>
+    <p>Prin intermediul magazinelor, din comenzile și cererile lor: nume, adresă de livrare și facturare, telefon, email, conținutul comenzii, iar la cererile de retur cu rambursare — titularul contului, IBAN-ul și banca, folosite exclusiv pentru restituirea sumei de către magazin.</p>
+    <h2>3. Temeiul și scopul</h2>
+    <p>Prelucrăm datele clienților pentru executarea contractului (furnizarea serviciului și facturarea), pentru îndeplinirea obligațiilor legale (contabile, fiscale) și, în măsura strict necesară, pe temeiul interesului legitim de a asigura securitatea și buna funcționare a platformei.</p>
+    <h2>4. Cui le dezvăluim</h2>
+    <p>Nu vindem date și nu le folosim în scopuri publicitare. Le dezvăluim doar furnizorilor care ne ajută să livrăm serviciul: furnizorul de găzduire (Render), serviciul de trimitere a emailurilor și, la instrucțiunea clientului, platformele de eCommerce și curierii cu care acesta se integrează. Toți sunt obligați contractual la confidențialitate și prelucrează datele doar pentru scopul dat.</p>
+    <h2>5. Cât le păstrăm</h2>
+    <p>Datele contului se păstrează pe durata contractului și o perioadă rezonabilă după încetarea lui, pentru eventuale reclamații. Documentele financiare se păstrează pe durata impusă de legislația fiscală. Datele introduse de un magazin se șterg la cererea acestuia sau la desființarea contului.</p>
+    <h2>6. Securitate</h2>
+    <p>Datele fiecărui magazin sunt izolate logic de ale celorlalte. Traficul este criptat, parolele sunt stocate sub formă de amprentă criptografică, iar secretele de integrare (chei API, parole de curier) sunt criptate în baza de date. Accesul intern este limitat la ce este necesar pentru operare și asistență.</p>
+    <h2>7. Drepturile dumneavoastră</h2>
+    <p>Aveți dreptul de acces, rectificare, ștergere, restricționare, opoziție și portabilitate, precum și dreptul de a vă retrage consimțământul acolo unde prelucrarea se bazează pe el. Cererile se trimit la datele de contact de mai sus și primesc răspuns în cel mult 30 de zile.</p>
+    <p>Aveți, de asemenea, dreptul de a depune plângere la Autoritatea Națională de Supraveghere a Prelucrării Datelor cu Caracter Personal (<a href="https://www.dataprotection.ro/" target="_blank" rel="noopener noreferrer">dataprotection.ro</a>).</p>
+  `);
+}
+
+function renderMarketingCookies() {
+  paginaLegala('#/cookies', 'Politica de cookies', `
+    <p>Folosim un număr minim de cookie-uri, strict pentru funcționarea platformei. Nu folosim cookie-uri de publicitate și nu urmărim vizitatorii pe alte site-uri.</p>
+    <h2>Ce folosim</h2>
+    <p><strong>Cookie de sesiune</strong> — ține minte că sunteți autentificat, astfel încât să nu vi se ceară parola la fiecare pagină. Se șterge la deconectare sau la expirarea sesiunii. Fără el, platforma nu poate funcționa.</p>
+    <p><strong>Preferințe locale</strong> — în memoria browserului se păstrează alegeri mărunte de interfață (de exemplu filtrul selectat ultima dată). Nu părăsesc dispozitivul dumneavoastră.</p>
+    <h2>Formularul integrat în magazine</h2>
+    <p>Formularul de cereri pe care magazinele îl integrează în paginile lor nu instalează cookie-uri pe dispozitivul cumpărătorului și nu îl urmărește. Trimite către noi doar datele completate în formular.</p>
+    <h2>Controlul dumneavoastră</h2>
+    <p>Puteți șterge sau bloca cookie-urile din setările browserului. Blocarea cookie-ului de sesiune face însă imposibilă autentificarea în platformă.</p>
+  `);
 }
 
 // ---------------- Panoul de administrare al platformei (creatorul platformei) ----------------
@@ -4769,6 +4923,9 @@ function render() {
     if (publicPath === '#/preturi') { renderMarketingPricing(); return; }
     if (publicPath === '#/despre') { renderMarketingAbout(); return; }
     if (publicPath === '#/contact') { renderMarketingContact(); return; }
+    if (publicPath === '#/termeni') { renderMarketingTerms(); return; }
+    if (publicPath === '#/confidentialitate') { renderMarketingPrivacy(); return; }
+    if (publicPath === '#/cookies') { renderMarketingCookies(); return; }
     renderMarketingHome();
     return;
   }
