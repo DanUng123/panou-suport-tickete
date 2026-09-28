@@ -28,6 +28,29 @@ const COURIER_KEYS = Object.keys(COURIER_MODULES);
 function alegeCurier(cheie) {
   return COURIER_KEYS.includes(cheie) ? cheie : 'gls';
 }
+// Numele „de om" ale datelor de ridicare, pentru mesajele de eroare.
+const NUME_CAMPURI_RIDICARE = {
+  adresa: 'adresa', oras: 'orașul', codPostal: 'codul poștal',
+  telefon: 'telefonul', judet: 'județul',
+};
+// Setul strict, folosit ca rezervă pentru un curier care nu-și declară cerințele.
+const CAMPURI_RIDICARE_IMPLICITE = ['adresa', 'oras', 'codPostal', 'telefon'];
+
+/**
+ * Ce date lipsesc ca sa se poata emite un AWB de ridicare cu ACEST curier.
+ *
+ * Cerintele difera real intre curieri, si conteaza: GoMag, de pilda, nu cere
+ * clientului codul postal la comanda, iar GLS fara cod postal nu poate ruta
+ * coletul, in timp ce Cargus gaseste adresa dupa judet si localitate. Fiecare
+ * modul de curierat isi declara singur lista, langa codul care o foloseste.
+ */
+function campuriLipsaPentruRidicare(curier, date) {
+  const cerute = (curier && curier.CAMPURI_RIDICARE_OBLIGATORII) || CAMPURI_RIDICARE_IMPLICITE;
+  return cerute
+    .filter((camp) => !String(date[camp] || '').trim())
+    .map((camp) => NUME_CAMPURI_RIDICARE[camp] || camp);
+}
+
 /**
  * Anuleaza AWB-ul la curier, daca respectivul curier stie sa faca asta.
  * Intoarce un avertisment cand anularea nu e posibila -- e o diferenta reala
@@ -847,9 +870,14 @@ async function handleApi(req, res, pathname, query) {
           noteazaEsecul('nu e ales niciun curier pentru emiterea automată, în Setări → Formular de retur.');
         } else if (!magazinCuCredentiale || !curier.isConfigured(magazinCuCredentiale)) {
           noteazaEsecul(`curierul ales pentru emiterea automată (${numeCurier}) nu este configurat sau este oprit.`);
-        } else if (!adresa || !oras || !codPostal || !comanda.shippingPhone) {
-          const lipsa = [!adresa && 'adresa', !oras && 'orașul', !codPostal && 'codul poștal', !comanda.shippingPhone && 'telefonul'].filter(Boolean).join(', ');
-          noteazaEsecul(`datele de ridicare sunt incomplete — lipsește: ${lipsa}.`);
+        } else if (campuriLipsaPentruRidicare(curier, {
+          adresa, oras, codPostal, telefon: comanda.shippingPhone, judet: comanda.shippingState,
+        }).length) {
+          const lipsa = campuriLipsaPentruRidicare(curier, {
+            adresa, oras, codPostal, telefon: comanda.shippingPhone, judet: comanda.shippingState,
+          });
+          noteazaEsecul(`${numeCurier} are nevoie de date pe care comanda nu le conține — lipsește: ${lipsa.join(', ')}. `
+            + 'Completează-le în tichet și emite AWB-ul manual, sau alege pentru emiterea automată un curier care nu le cere.');
         } else {
           try {
             const rezultat = await curier.createPickupAwb(magazinCuCredentiale, {
@@ -1830,8 +1858,15 @@ async function handleApi(req, res, pathname, query) {
       const customerName = body.customerName || linkedOrder?.shippingName || ticket.requesterName;
       const email = body.email || linkedOrder?.customerEmail || ticket.requesterEmail || '';
 
-      if (!address || !city || !postalCode || !phone) {
-        return sendJSON(res, 400, { error: 'Adresă/telefon incomplete pentru ridicare — completează-le în formular.' });
+      // Cerințele diferă de la un curier la altul, iar comenzile din unele
+      // platforme (GoMag) nu conțin deloc cod poștal: cerem doar ce cere chiar
+      // curierul ales, altfel am bloca degeaba o emitere care ar fi mers.
+      const lipsaRidicare = campuriLipsaPentruRidicare(courierClient, {
+        adresa: address, oras: city, codPostal: postalCode, telefon: phone,
+        judet: linkedOrder?.shippingState || '',
+      });
+      if (lipsaRidicare.length) {
+        return sendJSON(res, 400, { error: `${courierLabel} are nevoie de: ${lipsaRidicare.join(', ')} — completează în formular.` });
       }
 
       try {
@@ -1841,7 +1876,10 @@ async function handleApi(req, res, pathname, query) {
         // propriul lor serviciu SWAP (fara nicio schimbare necesara aici)
         const result = (reason === 'schimb' && courier === 'gls')
           ? await gls.createExchangeAwb(company, { ticketId: ticket.id, customerName, address, city, postalCode, phone, email })
-          : await courierClient.createPickupAwb(company, { ticketId: ticket.id, reason, customerName, address, city, postalCode, phone, email });
+          : await courierClient.createPickupAwb(company, {
+              ticketId: ticket.id, reason, customerName, address, city, postalCode, phone, email,
+              county: linkedOrder?.shippingState || '',
+            });
         const updated = db.setTicketPickupAwb(currentAgent.companyId, ticket.id, {
           awbNumber: result.trackingNumber,
           parcelId: result.parcelId,
@@ -1921,8 +1959,10 @@ async function handleApi(req, res, pathname, query) {
       }
 
       try {
+        const comandaLegata = ticket.relatedOrderId ? db.getOrder(currentAgent.companyId, ticket.relatedOrderId) : null;
         const result = await courierClient.createPickupAwb(company, {
           ticketId: ticket.id, reason, customerName, address, city, postalCode, phone, email,
+          county: comandaLegata?.shippingState || '',
         });
         const updated = db.setTicketPickupAwb(currentAgent.companyId, ticket.id, {
           awbNumber: result.trackingNumber,
