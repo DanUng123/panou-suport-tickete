@@ -16,8 +16,31 @@ const samedayTrackingPoller = require('./lib/sameday-tracking-poller');
 const gls = require('./lib/gls');
 const sameday = require('./lib/sameday');
 const pttexpress = require('./lib/pttexpress');
+const cargus = require('./lib/cargus');
 // mapare comuna curier -> modul, folosita peste tot unde citim ticket.pickupAwbCourier/returnAwbCourier
-const COURIER_MODULES = { gls, sameday, ptt: pttexpress };
+const COURIER_MODULES = { gls, sameday, ptt: pttexpress, cargus };
+// Numele "de om" al fiecarui curier -- un singur loc, ca sa nu mai apara
+// aceleasi siruri in zece mesaje de eroare si sa se uite unul la adaugare.
+const COURIER_LABELS = { gls: 'GLS', sameday: 'Sameday', ptt: 'PTT Express', cargus: 'Cargus' };
+const COURIER_KEYS = Object.keys(COURIER_MODULES);
+/** Cheia de curier ceruta, daca o cunoastem; altfel GLS, curierul implicit istoric. */
+function alegeCurier(cheie) {
+  return COURIER_KEYS.includes(cheie) ? cheie : 'gls';
+}
+/**
+ * Anuleaza AWB-ul la curier, daca respectivul curier stie sa faca asta.
+ * Intoarce un avertisment cand anularea nu e posibila -- e o diferenta reala
+ * intre curieri, nu o eroare, si utilizatorul trebuie sa afle de ea.
+ */
+async function anuleazaLaCurier(courierKey, company, parcelId) {
+  const cheie = alegeCurier(courierKey);
+  if (cheie === 'sameday') { await sameday.deleteAwb(company, parcelId); return null; }
+  if (cheie === 'gls') { await gls.deleteParcel(company, parcelId); return null; }
+  if (cheie === 'cargus') { await cargus.deleteAwb(company, parcelId); return null; }
+  // PTT Express nu expune nicio operatie de anulare in API (confirmat live) --
+  // eliberam doar tichetul local; AWB-ul ramane activ la ei
+  return 'AWB-ul rămâne activ în contul PTT Express — anulează-l manual, din panoul lor web, ca să nu rămână o expediere fantomă.';
+}
 // Curierii prin care se poate emite un colet la schimb. Momentan doar Sameday --
 // GLS si PTT Express nu sunt eligibile. Cand se mai adauga unul, se trece aici
 // (si in SCHIMB_COURIERS din public/app.js, care controleaza lista din formular).
@@ -1061,7 +1084,8 @@ async function handleApi(req, res, pathname, query) {
       const company = db.getCompany(currentAgent.companyId);
       if (!company) return sendJSON(res, 404, { error: 'Companie negăsită' });
       // secretele nu se trimit niciodata in clar catre browser -- doar daca sunt setate sau nu
-      const { merchantProApiSecret, glsPassword, samedayPassword, gomagApiKey, pttPassword, ...rest } = company;
+      const { merchantProApiSecret, glsPassword, samedayPassword, gomagApiKey, pttPassword,
+        cargusPassword, cargusSubscriptionKey, ...rest } = company;
       return sendJSON(res, 200, {
         ...rest,
         merchantProApiSecretSet: Boolean(merchantProApiSecret),
@@ -1069,6 +1093,8 @@ async function handleApi(req, res, pathname, query) {
         samedayPasswordSet: Boolean(samedayPassword),
         gomagApiKeySet: Boolean(gomagApiKey),
         pttPasswordSet: Boolean(pttPassword),
+        cargusPasswordSet: Boolean(cargusPassword),
+        cargusSubscriptionKeySet: Boolean(cargusSubscriptionKey),
         // adresa publica a formularului de cereri -- se genereaza la prima
         // deschidere a Setarilor si ramane apoi neschimbata
         publicFormSlug: db.getOrCreatePublicFormSlug(currentAgent.companyId),
@@ -1086,6 +1112,8 @@ async function handleApi(req, res, pathname, query) {
       if (patch.samedayPassword === '') delete patch.samedayPassword;
       if (patch.gomagApiKey === '') delete patch.gomagApiKey;
       if (patch.pttPassword === '') delete patch.pttPassword;
+      if (patch.cargusPassword === '') delete patch.cargusPassword;
+      if (patch.cargusSubscriptionKey === '') delete patch.cargusSubscriptionKey;
 
       // retinem starea DINAINTE de salvare, ca sa detectam daca MerchantPro
       // sau GoMag tocmai au fost configurate pentru PRIMA DATA -- caz in
@@ -1102,7 +1130,8 @@ async function handleApi(req, res, pathname, query) {
         fullHistoryImport.maybeStartAutoImport(updated, { merchantProJustConfigured, gomagJustConfigured });
       }
 
-      const { merchantProApiSecret, glsPassword, samedayPassword, gomagApiKey, pttPassword, ...rest } = updated;
+      const { merchantProApiSecret, glsPassword, samedayPassword, gomagApiKey, pttPassword,
+        cargusPassword, cargusSubscriptionKey, ...rest } = updated;
       return sendJSON(res, 200, {
         ...rest,
         merchantProApiSecretSet: Boolean(merchantProApiSecret),
@@ -1110,6 +1139,8 @@ async function handleApi(req, res, pathname, query) {
         samedayPasswordSet: Boolean(samedayPassword),
         gomagApiKeySet: Boolean(gomagApiKey),
         pttPasswordSet: Boolean(pttPassword),
+        cargusPasswordSet: Boolean(cargusPassword),
+        cargusSubscriptionKeySet: Boolean(cargusSubscriptionKey),
         accountPreparing: merchantProJustConfigured || gomagJustConfigured,
       });
     }
@@ -1138,12 +1169,13 @@ async function handleApi(req, res, pathname, query) {
     if (toggleIntegrationMatch && req.method === 'POST') {
       if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot activa/dezactiva integrările.' });
       const integration = toggleIntegrationMatch[1];
-      if (!['merchantpro', 'gomag', 'gls', 'sameday'].includes(integration)) {
+      if (!['merchantpro', 'gomag', 'gls', 'sameday', 'ptt', 'cargus'].includes(integration)) {
         return sendJSON(res, 400, { error: 'Integrare necunoscută.' });
       }
       const body = await readBody(req);
       const updated = db.setIntegrationActive(currentAgent.companyId, integration, Boolean(body.active));
-      const { merchantProApiSecret, glsPassword, samedayPassword, gomagApiKey, ...rest } = updated;
+      const { merchantProApiSecret, glsPassword, samedayPassword, gomagApiKey, pttPassword,
+        cargusPassword, cargusSubscriptionKey, ...rest } = updated;
       return sendJSON(res, 200, rest);
     }
 
@@ -1214,6 +1246,33 @@ async function handleApi(req, res, pathname, query) {
       }
       try {
         return sendJSON(res, 200, { services: await pttexpress.getAvailableServices(draftCompany) });
+      } catch (e) {
+        return sendJSON(res, 502, { error: e.message });
+      }
+    }
+
+    // Punctele de ridicare ale contului Cargus. Expeditorul, la ei, nu e o
+    // adresa scrisa de mana, ci un punct definit in contul lor -- asa ca il
+    // citim de acolo si il alegem dintr-o lista. Se poate apela si inainte de
+    // salvare, cu datele din formular; campurile goale cad pe cele salvate.
+    if (pathname === '/api/company/settings/cargus-locations' && req.method === 'POST') {
+      if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot accesa setările companiei' });
+      const body = await readBody(req);
+      const draftCompany = {
+        ...company,
+        cargusUsername: body.cargusUsername || company.cargusUsername,
+        cargusPassword: body.cargusPassword || company.cargusPassword,
+        cargusSubscriptionKey: body.cargusSubscriptionKey || company.cargusSubscriptionKey,
+        // isConfigured cere si un punct de ridicare, dar tocmai pe acela il
+        // cautam -- punem o valoare de trecere, doar pentru aceasta citire
+        cargusLocationId: company.cargusLocationId || 'cautare',
+        cargusActive: true,
+      };
+      if (!draftCompany.cargusUsername || !draftCompany.cargusPassword || !draftCompany.cargusSubscriptionKey) {
+        return sendJSON(res, 400, { error: 'Completează mai întâi cheia de abonament, utilizatorul și parola Cargus, apoi încearcă din nou.' });
+      }
+      try {
+        return sendJSON(res, 200, { locations: await cargus.getPickupLocations(draftCompany) });
       } catch (e) {
         return sendJSON(res, 502, { error: e.message });
       }
@@ -1535,6 +1594,16 @@ async function handleApi(req, res, pathname, query) {
       return sendJSON(res, 200, { configured: pttexpress.isConfigured(company) });
     }
 
+    // Starea TUTUROR curierilor, dintr-o singura cerere. Inainte interfata
+    // intreba separat, cate un drum pe curier, la fiecare incarcare a
+    // panoului -- cu al patrulea curier ar fi fost patru drumuri pentru o
+    // informatie de patru valori logice.
+    if (pathname === '/api/couriers/status' && req.method === 'GET') {
+      const stare = {};
+      for (const cheie of COURIER_KEYS) stare[cheie] = COURIER_MODULES[cheie].isConfigured(company);
+      return sendJSON(res, 200, stare);
+    }
+
     const generateAwbMatch = pathname.match(/^\/api\/orders\/([^/]+)\/generate-awb$/);
     if (generateAwbMatch && req.method === 'POST') {
       if (!gls.isConfigured(company)) return sendJSON(res, 400, { error: 'Integrarea GLS nu este configurată pentru compania ta — completeaz-o în Setări.' });
@@ -1640,9 +1709,9 @@ async function handleApi(req, res, pathname, query) {
 
       const body = await readBody(req);
       const reason = ['retur', 'schimb'].includes(body.reason) ? body.reason : 'service';
-      const courier = ['sameday', 'ptt'].includes(body.courier) ? body.courier : 'gls';
-      const courierClient = courier === 'sameday' ? sameday : (courier === 'ptt' ? pttexpress : gls);
-      const courierLabel = courier === 'sameday' ? 'Sameday' : (courier === 'ptt' ? 'PTT Express' : 'GLS');
+      const courier = alegeCurier(body.courier);
+      const courierClient = COURIER_MODULES[courier];
+      const courierLabel = COURIER_LABELS[courier];
 
       if (!courierClient.isConfigured(company)) {
         return sendJSON(res, 400, { error: `Integrarea ${courierLabel} nu este configurată pe server.` });
@@ -1699,18 +1768,7 @@ async function handleApi(req, res, pathname, query) {
       if (!ticket) return sendJSON(res, 404, { error: 'Tichet negăsit' });
       if (!ticket.pickupAwbParcelId) return sendJSON(res, 400, { error: 'Tichetul nu are AWB de ridicare generat.' });
       try {
-        const cancelCourier = COURIER_MODULES[ticket.pickupAwbCourier] || gls;
-        let warning = null;
-        if (cancelCourier === sameday) {
-          await sameday.deleteAwb(company, ticket.pickupAwbParcelId);
-        } else if (cancelCourier === gls) {
-          await gls.deleteParcel(company, ticket.pickupAwbParcelId);
-        } else {
-          // PTT Express nu ofera anulare prin API (confirmat live) --
-          // eliberam doar tichetul local, ca sa poata fi reemis cu alt
-          // curier; AWB-ul ramane activ la PTT, de anulat manual acolo
-          warning = 'AWB-ul rămâne activ în contul PTT Express — anulează-l manual, din panoul lor web, ca să nu rămână o expediere fantomă.';
-        }
+        const warning = await anuleazaLaCurier(ticket.pickupAwbCourier, company, ticket.pickupAwbParcelId);
         const updated = db.clearTicketPickupAwb(currentAgent.companyId, ticket.id, currentAgent);
         return sendJSON(res, 200, { ...updated, warning });
       } catch (e) {
@@ -1727,7 +1785,7 @@ async function handleApi(req, res, pathname, query) {
       }
       if (!ticket.pickupAwbParcelId) return sendJSON(res, 400, { error: 'Tichetul nu are un AWB de ridicare de reemis.' });
 
-      const courier = ['sameday', 'ptt'].includes(ticket.pickupAwbCourier) ? ticket.pickupAwbCourier : 'gls';
+      const courier = alegeCurier(ticket.pickupAwbCourier);
       const courierClient = COURIER_MODULES[courier];
       if (NO_REISSUE_COURIERS.includes(courier)) {
         return sendJSON(res, 400, { error: 'PTT Express nu permite anularea AWB-ului prin API, deci reemiterea nu e disponibilă. Elimină AWB-ul de pe tichet, anulează-l manual în panoul PTT și generează unul nou.' });
@@ -1737,20 +1795,11 @@ async function handleApi(req, res, pathname, query) {
       // curier neprezentat etc.), apoi curatam IMEDIAT starea tichetului --
       // altfel, daca pasul 2 (generare) esueaza, tichetul ar ramane cu un
       // AWB "activ" in interfata, desi de fapt a fost deja anulat la curier
-      // PTT Express nu expune nicio operatie de anulare in API (verificat pe
-      // serviciul lor live) -- pentru ei sarim peste pasul de anulare, altfel
-      // reemiterea ar esua mereu; AWB-ul vechi ramane activ la PTT si trebuie
-      // anulat manual, iar utilizatorul e avertizat explicit in raspuns
       const oldAwbNumber = ticket.pickupAwbNumber;
       let reissueWarning = null;
       try {
-        if (courier === 'sameday') {
-          await sameday.deleteAwb(company, ticket.pickupAwbParcelId);
-        } else if (courier === 'gls') {
-          await gls.deleteParcel(company, ticket.pickupAwbParcelId);
-        } else {
-          reissueWarning = `AWB-ul vechi (${oldAwbNumber}) rămâne activ în contul PTT Express — anulează-l manual, din panoul lor web, ca să nu rămână o expediere fantomă.`;
-        }
+        const avertisment = await anuleazaLaCurier(courier, company, ticket.pickupAwbParcelId);
+        if (avertisment) reissueWarning = `AWB-ul vechi (${oldAwbNumber}) ${avertisment.replace(/^AWB-ul /, '')}`;
         db.clearTicketPickupAwb(currentAgent.companyId, ticket.id, currentAgent);
       } catch (e) {
         return sendJSON(res, 502, { error: `Nu am putut anula AWB-ul vechi: ${e.message}` });
@@ -1836,11 +1885,9 @@ async function handleApi(req, res, pathname, query) {
       }
 
       const body = await readBody(req);
-      const courier = ['sameday', 'ptt'].includes(body.courier) ? body.courier : 'gls';
-      const courierClients = { sameday, ptt: pttexpress, gls };
-      const courierLabels = { sameday: 'Sameday', ptt: 'PTT Express', gls: 'GLS' };
-      if (!courierClients[courier].isConfigured(company)) {
-        return sendJSON(res, 400, { error: `Integrarea ${courierLabels[courier]} nu este configurată pe server.` });
+      const courier = alegeCurier(body.courier);
+      if (!COURIER_MODULES[courier].isConfigured(company)) {
+        return sendJSON(res, 400, { error: `Integrarea ${COURIER_LABELS[courier]} nu este configurată pe server.` });
       }
 
       try {
@@ -1856,7 +1903,7 @@ async function handleApi(req, res, pathname, query) {
               shippingPhone: ticket.pickupPhone,
               customerEmail: ticket.requesterEmail,
             })
-          : await courierClients[courier].createForwardAwb(company, {
+          : await COURIER_MODULES[courier].createForwardAwb(company, {
               mpId: `${ticket.id}-RETUR`,
               codAmount: 0,
               shippingName: ticket.requesterName,
@@ -1884,15 +1931,7 @@ async function handleApi(req, res, pathname, query) {
       if (!ticket) return sendJSON(res, 404, { error: 'Tichet negăsit' });
       if (!ticket.returnAwbParcelId) return sendJSON(res, 400, { error: 'Tichetul nu are AWB de retur generat.' });
       try {
-        const cancelReturnCourier = COURIER_MODULES[ticket.returnAwbCourier] || gls;
-        let warning = null;
-        if (cancelReturnCourier === sameday) {
-          await sameday.deleteAwb(company, ticket.returnAwbParcelId);
-        } else if (cancelReturnCourier === gls) {
-          await gls.deleteParcel(company, ticket.returnAwbParcelId);
-        } else {
-          warning = 'AWB-ul rămâne activ în contul PTT Express — anulează-l manual, din panoul lor web, ca să nu rămână o expediere fantomă.';
-        }
+        const warning = await anuleazaLaCurier(ticket.returnAwbCourier, company, ticket.returnAwbParcelId);
         const updated = db.clearTicketReturnAwb(currentAgent.companyId, ticket.id, currentAgent);
         return sendJSON(res, 200, { ...updated, warning });
       } catch (e) {
@@ -2044,7 +2083,8 @@ async function handleApi(req, res, pathname, query) {
       if (courierName.includes('gls')) candidates = ['gls'];
       else if (courierName.includes('sameday')) candidates = ['sameday'];
       else if (courierName.includes('ptt')) candidates = ['ptt'];
-      else candidates = ['ptt', 'sameday', 'gls'].filter((key) => COURIER_MODULES[key].isConfigured(company));
+      else if (courierName.includes('cargus')) candidates = ['cargus'];
+      else candidates = COURIER_KEYS.filter((key) => COURIER_MODULES[key].isConfigured(company));
 
       if (!candidates.length) {
         return sendJSON(res, 400, { error: 'Urmărirea directă în aplicație nu este disponibilă pentru acest curier.' });

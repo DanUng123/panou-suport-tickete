@@ -45,9 +45,28 @@ let currentAgent = null;
 let isPlatformAdmin = false; // adevarat doar daca s-a logat prin poarta separata #/platform-admin
 let agentsCache = [];
 let categoriesCache = [];
-let glsConfigured = false;
-let samedayConfigured = false;
-let pttConfigured = false;
+// Ce curieri sunt configurati pe compania curenta. O singura structura, nu o
+// variabila per curier -- ca sa se adauge un curier nou fara sa fie nevoie de
+// modificari in zece locuri.
+let curieriConfigurati = { gls: false, sameday: false, ptt: false, cargus: false };
+const CURIERI = [
+  { cheie: 'gls', nume: 'GLS' },
+  { cheie: 'sameday', nume: 'Sameday' },
+  { cheie: 'ptt', nume: 'PTT Express' },
+  { cheie: 'cargus', nume: 'Cargus' },
+];
+/** Numele de afisat al unui curier, dintr-un singur loc. */
+function numeCurier(cheie) {
+  const c = CURIERI.find((x) => x.cheie === cheie);
+  return c ? c.nume : null;
+}
+/** Exista macar un curier configurat? */
+function existaCurierConfigurat() {
+  return CURIERI.some((c) => curieriConfigurati[c.cheie]);
+}
+async function reincarcaStareaCurierilor() {
+  curieriConfigurati = await api('/api/couriers/status').catch(() => curieriConfigurati);
+}
 let platformLabel = 'MERCHANTPRO';
 
 // ---------------- utilitare ----------------
@@ -70,7 +89,7 @@ function supportsInAppTracking(order) {
   // totul). Daca nu avem nici macar un link de urmarire al curierului, incercam
   // in aplicatie -- serverul stie sa raspunda ca nu recunoaste AWB-ul, iar
   // atunci ne intoarcem la comportamentul vechi.
-  if (!order.carrierTrackingUrl && (glsConfigured || samedayConfigured || pttConfigured)) return true;
+  if (!order.carrierTrackingUrl && existaCurierConfigurat()) return true;
   return false;
 }
 
@@ -360,18 +379,14 @@ async function boot() {
 }
 
 async function loadReferenceData() {
-  const [agents, categories, glsStatus, samedayStatus, pttStatus] = await Promise.all([
+  const [agents, categories, stareCurieri] = await Promise.all([
     api('/api/agents'),
     api('/api/categories'),
-    api('/api/gls/status').catch(() => ({ configured: false })),
-    api('/api/sameday/status').catch(() => ({ configured: false })),
-    api('/api/ptt/status').catch(() => ({ configured: false })),
+    api('/api/couriers/status').catch(() => curieriConfigurati),
   ]);
   agentsCache = agents;
   categoriesCache = categories;
-  glsConfigured = glsStatus.configured;
-  samedayConfigured = samedayStatus.configured;
-  pttConfigured = pttStatus.configured;
+  curieriConfigurati = stareCurieri;
 }
 
 // ---------------- ecran login ----------------
@@ -2263,7 +2278,7 @@ async function paintTicketDrawer(ticket) {
 
           <div class="side-panel" style="margin-bottom:16px;">
             ${(() => {
-              const courierLabel = ticket.pickupAwbCourier === 'sameday' ? 'Sameday' : (ticket.pickupAwbCourier === 'ptt' ? 'PTT Express' : (ticket.pickupAwbCourier === 'gls' ? 'GLS' : null));
+              const courierLabel = numeCurier(ticket.pickupAwbCourier);
               const baseTitles = { service: 'AWB ridicare (client → service)', retur: 'Ridicare de la client', schimb: 'AWB colet la schimb' };
               const base = baseTitles[ticket.section] || 'AWB ridicare';
               return `<h2>${base}${courierLabel ? ` (${courierLabel})` : ''}</h2>`;
@@ -2334,8 +2349,8 @@ async function paintTicketDrawer(ticket) {
                   <label>Telefon client *</label>
                   <input type="text" id="pu-phone" required value="${escapeHtml(relatedOrder?.shippingPhone || '')}" />
                 </div>
-                ${!glsConfigured && !samedayConfigured ? '<div class="hint" style="margin-bottom:8px;">Niciun curier nu este configurat pe server.</div>' : ''}
-                <button class="btn btn-sm btn-block btn-primary" type="submit" ${glsConfigured || samedayConfigured ? '' : 'disabled style="opacity:0.5;cursor:not-allowed;"'}>Generează AWB ridicare</button>
+                ${existaCurierConfigurat() ? '' : '<div class="hint" style="margin-bottom:8px;">Niciun curier nu este configurat pe server.</div>'}
+                <button class="btn btn-sm btn-block btn-primary" type="submit" ${existaCurierConfigurat() ? '' : 'disabled style="opacity:0.5;cursor:not-allowed;"'}>Generează AWB ridicare</button>
                 ${relatedOrder ? '<div class="hint" style="margin-top:6px;">Adresa preluată automat din comanda asociată.</div>' : ''}
               </form>
             `}
@@ -2346,9 +2361,7 @@ async function paintTicketDrawer(ticket) {
               <div class="field-compact" style="margin-bottom:10px;">
                 <label>Curier pentru AWB retur</label>
                 <select id="return-courier">
-                  <option value="gls" ${glsConfigured ? '' : 'disabled'}>GLS${glsConfigured ? '' : ' (neconfigurat)'}</option>
-                  <option value="sameday" ${samedayConfigured ? '' : 'disabled'}>Sameday${samedayConfigured ? '' : ' (neconfigurat)'}</option>
-                  <option value="ptt" ${pttConfigured ? '' : 'disabled'}>PTT Express${pttConfigured ? '' : ' (neconfigurat)'}</option>
+                  ${CURIERI.map((c) => `<option value="${c.cheie}" ${curieriConfigurati[c.cheie] ? '' : 'disabled'}>${c.nume}${curieriConfigurati[c.cheie] ? '' : ' (neconfigurat)'}</option>`).join('')}
                 </select>
               </div>
               <button class="btn btn-sm btn-block" id="readyToShipBtn" style="background:var(--status-resolved);color:#fff;border-color:var(--status-resolved);font-weight:600;">✓ PRODUS REPARAT</button>
@@ -2495,11 +2508,9 @@ async function paintTicketDrawer(ticket) {
       // poate emite momentan doar prin Sameday, deci ceilalti nici nu apar.
       function paintCourierOptions() {
         const onlySameday = SCHIMB_COURIERS.length === 1 && reasonSelect.value === 'schimb';
-        const available = [
-          { value: 'gls', label: 'GLS', configured: glsConfigured },
-          { value: 'sameday', label: 'Sameday', configured: samedayConfigured },
-          { value: 'ptt', label: 'PTT Express', configured: pttConfigured },
-        ].filter((c) => (reasonSelect.value === 'schimb' ? SCHIMB_COURIERS.includes(c.value) : true));
+        const available = CURIERI
+          .map((c) => ({ value: c.cheie, label: c.nume, configured: curieriConfigurati[c.cheie] }))
+          .filter((c) => (reasonSelect.value === 'schimb' ? SCHIMB_COURIERS.includes(c.value) : true));
 
         const previous = courierSelect.value;
         courierSelect.innerHTML = available.map((c) => `
@@ -2562,7 +2573,7 @@ async function paintTicketDrawer(ticket) {
     const cancelPickupBtn = content.querySelector('#cancelPickupAwbBtn');
     if (cancelPickupBtn) {
       cancelPickupBtn.addEventListener('click', async () => {
-        const courierLabel = ticket.pickupAwbCourier === 'sameday' ? 'Sameday' : (ticket.pickupAwbCourier === 'ptt' ? 'PTT Express' : 'GLS');
+        const courierLabel = numeCurier(ticket.pickupAwbCourier) || 'GLS';
         const confirmMsg = ticket.pickupAwbCourier === 'ptt'
           ? `Eliberezi tichetul de AWB-ul de ridicare ${ticket.pickupAwbNumber}? PTT Express nu oferă anulare prin API — AWB-ul rămâne activ acolo, va trebui anulat manual, din panoul lor web.`
           : `Anulezi AWB-ul de ridicare ${ticket.pickupAwbNumber}? Această acțiune îl șterge și la ${courierLabel}.`;
@@ -2584,7 +2595,7 @@ async function paintTicketDrawer(ticket) {
     const reissuePickupBtn = content.querySelector('#reissuePickupAwbBtn');
     if (reissuePickupBtn) {
       reissuePickupBtn.addEventListener('click', async () => {
-        const courierLabel = ticket.pickupAwbCourier === 'sameday' ? 'Sameday' : (ticket.pickupAwbCourier === 'ptt' ? 'PTT Express' : 'GLS');
+        const courierLabel = numeCurier(ticket.pickupAwbCourier) || 'GLS';
         const reissueMsg = ticket.pickupAwbCourier === 'ptt'
           ? `Coletul nu a fost ridicat? Se emite un AWB nou, cu aceleași date de ridicare. Atenție: PTT Express nu oferă anulare prin API, deci AWB-ul curent (${ticket.pickupAwbNumber}) rămâne activ acolo și trebuie anulat manual, din panoul lor web.`
           : `Coletul nu a fost ridicat? Se anulează automat AWB-ul curent (${ticket.pickupAwbNumber}, la ${courierLabel}) și se emite unul nou, cu aceleași date de ridicare.`;
@@ -2717,7 +2728,7 @@ async function paintTicketDrawer(ticket) {
     const cancelReturnBtn = content.querySelector('#cancelReturnAwbBtn');
     if (cancelReturnBtn) {
       cancelReturnBtn.addEventListener('click', async () => {
-        const returnCourierLabel = ticket.returnAwbCourier === 'sameday' ? 'Sameday' : (ticket.returnAwbCourier === 'ptt' ? 'PTT Express' : 'GLS');
+        const returnCourierLabel = numeCurier(ticket.returnAwbCourier) || 'GLS';
         const confirmMsg = ticket.returnAwbCourier === 'ptt'
           ? `Eliberezi tichetul de AWB-ul de retur ${ticket.returnAwbNumber}? PTT Express nu oferă anulare prin API — AWB-ul rămâne activ acolo, va trebui anulat manual, din panoul lor web.`
           : `Anulezi AWB-ul de retur ${ticket.returnAwbNumber}? Această acțiune îl șterge și la ${returnCourierLabel}.`;
@@ -3892,6 +3903,8 @@ async function renderAdmin() {
       { key: 'gomag', label: 'GoMag', activeField: 'gomagActive', configured: Boolean(s.gomagShopUrl && s.gomagApiKeySet) },
       { key: 'gls', label: 'GLS', activeField: 'glsActive', configured: Boolean(s.glsUsername && s.glsPasswordSet) },
       { key: 'sameday', label: 'Sameday', activeField: 'samedayActive', configured: Boolean(s.samedayUsername && s.samedayPasswordSet) },
+      { key: 'ptt', label: 'PTT Express', activeField: 'pttActive', configured: Boolean(s.pttUsername && s.pttPasswordSet) },
+      { key: 'cargus', label: 'Cargus', activeField: 'cargusActive', configured: Boolean(s.cargusUsername && s.cargusPasswordSet && s.cargusSubscriptionKeySet && s.cargusLocationId) },
     ];
 
     body.innerHTML = `
@@ -3956,10 +3969,10 @@ const SECTIUNI_SETARI = [
   {
     cheie: 'curieri',
     titlu: 'Integrări curieri',
-    descriere: 'GLS, Sameday și PTT Express — cine duce coletele.',
+    descriere: 'GLS, Sameday, PTT Express și Cargus — cine duce coletele.',
     pictograma: 'curier',
     tab: 'curieri',
-    integrari: ['gls', 'sameday', 'ptt'],
+    integrari: ['gls', 'sameday', 'ptt', 'cargus'],
   },
   {
     cheie: 'formular-retur',
@@ -4272,6 +4285,62 @@ async function renderSettings(sectiune) {
                 </div>
               </div>
               <div class="hint" style="margin-top:4px;">Notă: PTT Express nu oferă anulare de AWB prin API — se face manual, din panoul lor web.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="accordion-item" data-integrare="cargus">
+          <div class="accordion-header">
+            <h2>Cargus</h2>
+            <span class="accordion-chevron">▾</span>
+          </div>
+          <div class="accordion-body">
+            <div class="accordion-body-inner">
+              <div class="field">
+                <label>Cheie abonament API${s.cargusSubscriptionKeySet ? ' — setată ✓' : ''}</label>
+                <input type="password" id="s-cargus-key" placeholder="${s.cargusSubscriptionKeySet ? '••••••••  (lasă gol ca să păstrezi)' : 'Ocp-Apim-Subscription-Key'}" />
+                <div class="hint" style="margin-top:4px;">Se ia din portalul de dezvoltatori Cargus, de la profilul tău — e altceva decât parola contului.</div>
+              </div>
+              <div class="form-row">
+                <div class="field">
+                  <label>Utilizator</label>
+                  <input type="text" id="s-cargus-user" value="${v(s.cargusUsername)}" />
+                </div>
+                <div class="field">
+                  <label>Parolă${s.cargusPasswordSet ? ' — setată ✓' : ''}</label>
+                  <input type="password" id="s-cargus-pass" placeholder="${s.cargusPasswordSet ? '••••••••  (lasă gol ca să păstrezi)' : 'Introdu parola'}" />
+                </div>
+              </div>
+              <div class="field">
+                <label>Punct de ridicare</label>
+                <select id="s-cargus-location">
+                  <option value="" ${!s.cargusLocationId ? 'selected' : ''}>Nealeasă încă</option>
+                  ${s.cargusLocationId ? `<option value="${escapeHtml(s.cargusLocationId)}" selected>ID ${escapeHtml(s.cargusLocationId)} — punct salvat</option>` : ''}
+                </select>
+                <div style="margin-top:6px;">
+                  <button type="button" class="btn btn-sm" id="cargusLocationsBtn">↻ Preia punctele din contul Cargus</button>
+                </div>
+                <div class="hint" id="cargusLocationsHint" style="margin-top:4px;">La Cargus expeditorul nu se scrie de mână: e un punct definit în contul tău. Apasă butonul, alege-l din listă, apoi „Salvează setările".</div>
+              </div>
+              <div class="form-row">
+                <div class="field">
+                  <label>Serviciu</label>
+                  <select id="s-cargus-service">
+                    <option value="34" ${!s.cargusServiceId || s.cargusServiceId === '34' ? 'selected' : ''}>Economic Standard — până în 31 kg (implicit)</option>
+                    <option value="35" ${s.cargusServiceId === '35' ? 'selected' : ''}>Standard Plus — 31–50 kg</option>
+                    <option value="36" ${s.cargusServiceId === '36' ? 'selected' : ''}>Palet — peste 50 kg</option>
+                    <option value="38" ${s.cargusServiceId === '38' ? 'selected' : ''}>Livrare la PUDO (ridicare din punct)</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label>Format etichetă</label>
+                  <select id="s-cargus-labelformat">
+                    <option value="eticheta" ${s.cargusLabelFormat !== 'a4' ? 'selected' : ''}>Etichetă 10×14 (imprimantă termică)</option>
+                    <option value="a4" ${s.cargusLabelFormat === 'a4' ? 'selected' : ''}>A4</option>
+                  </select>
+                </div>
+              </div>
+              <div class="hint" style="margin-top:4px;">La ridicările de la client, transportul se pune în sarcina destinatarului — adică a ta. Dacă ai altă înțelegere cu Cargus, spune-mi și schimbăm.</div>
             </div>
           </div>
         </div>
@@ -4743,6 +4812,46 @@ async function renderSettings(sectiune) {
   // la deschiderea setarilor, daca integrarea e deja configurata, incarcam lista in fundal
   if (s.pttUsername && s.pttPasswordSet) loadPttServices({ silent: true });
 
+  // ---- puncte de ridicare Cargus: expeditorul se alege din contul lor ----
+  async function loadCargusLocations({ silent } = {}) {
+    const select = content.querySelector('#s-cargus-location');
+    const hint = content.querySelector('#cargusLocationsHint');
+    const btn = content.querySelector('#cargusLocationsBtn');
+    if (!select) return;
+    const payload = {
+      cargusUsername: content.querySelector('#s-cargus-user').value.trim(),
+      cargusPassword: content.querySelector('#s-cargus-pass').value,
+      cargusSubscriptionKey: content.querySelector('#s-cargus-key').value.trim(),
+    };
+    if (!payload.cargusUsername && !silent) {
+      showToast('Completează întâi utilizatorul Cargus.');
+      return;
+    }
+    if (btn) { btn.disabled = true; btn.textContent = 'Se încarcă…'; }
+    try {
+      const { locations } = await api('/api/company/settings/cargus-locations', { method: 'POST', body: JSON.stringify(payload) });
+      const selected = select.value;
+      select.innerHTML = '<option value="">Nealeasă încă</option>' + locations.map((l) => `
+        <option value="${escapeHtml(l.id)}" ${String(l.id) === String(selected) ? 'selected' : ''}>${escapeHtml(l.name || ('ID ' + l.id))}${l.address ? ` — ${escapeHtml(l.address)}` : ''}</option>
+      `).join('');
+      // punctul salvat nu mai exista in cont -- il pastram, ca sa nu dispara tacut la salvare
+      if (selected && !locations.some((l) => String(l.id) === String(selected))) {
+        select.insertAdjacentHTML('beforeend', `<option value="${escapeHtml(selected)}" selected>ID ${escapeHtml(selected)} — indisponibil acum în cont</option>`);
+      }
+      select.value = selected;
+      if (hint) hint.textContent = `${locations.length} puncte de ridicare în contul tău. Alege-l pe cel corect și apasă „Salvează setările".`;
+    } catch (err) {
+      if (hint) hint.textContent = `Nu am putut citi punctele din contul Cargus: ${err.message}`;
+      if (!silent) showToast('Eroare: ' + err.message);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '↻ Preia punctele din contul Cargus'; }
+    }
+  }
+
+  const cargusLocationsBtn = content.querySelector('#cargusLocationsBtn');
+  if (cargusLocationsBtn) cargusLocationsBtn.addEventListener('click', () => loadCargusLocations());
+  if (s.cargusUsername && s.cargusPasswordSet && s.cargusSubscriptionKeySet) loadCargusLocations({ silent: true });
+
   content.querySelector('#settingsForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const q = (id) => content.querySelector(id).value.trim();
@@ -4777,6 +4886,12 @@ async function renderSettings(sectiune) {
       pttPassword: q('#s-ptt-pass'),
       pttServiceId: q('#s-ptt-service'),
       pttLabelFormat: q('#s-ptt-labelformat'),
+      cargusUsername: q('#s-cargus-user'),
+      cargusPassword: content.querySelector('#s-cargus-pass').value,
+      cargusSubscriptionKey: content.querySelector('#s-cargus-key').value.trim(),
+      cargusLocationId: q('#s-cargus-location'),
+      cargusServiceId: q('#s-cargus-service'),
+      cargusLabelFormat: q('#s-cargus-labelformat'),
       pttSenderName: q('#s-ptt-sname'),
       pttSenderPhone: q('#s-ptt-sphone'),
       pttSenderCity: q('#s-ptt-scity'),
@@ -4788,14 +4903,7 @@ async function renderSettings(sectiune) {
       const savedCompany = await api('/api/company/settings', { method: 'PATCH', body: JSON.stringify(payload) });
       // reimprospatam starea "configurat/neconfigurat" a curierilor, altfel
       // ar ramane invechita pana la urmatoarea logare
-      const [glsStatus, samedayStatus, pttStatus] = await Promise.all([
-        api('/api/gls/status').catch(() => ({ configured: false })),
-        api('/api/sameday/status').catch(() => ({ configured: false })),
-        api('/api/ptt/status').catch(() => ({ configured: false })),
-      ]);
-      glsConfigured = glsStatus.configured;
-      samedayConfigured = samedayStatus.configured;
-      pttConfigured = pttStatus.configured;
+      await reincarcaStareaCurierilor();
       showToast(savedCompany.accountPreparing ? 'Setări salvate — îți pregătim contul, va dura puțin' : 'Setări salvate');
       renderSettings(sectiune);
     } catch (err) {
