@@ -3678,6 +3678,99 @@ async function openClientProfileDrawer({ phone, email, name }) {
   });
 }
 
+// ---------------- Ștergerea contului companiei ----------------
+
+/**
+ * Secțiunea de ștergere a contului, gata legată.
+ *
+ * Stă în Administrare → Cont, nu în Setări: nu e o preferință de reglat, e o
+ * decizie despre companie, din aceeași familie cu agenții și integrările.
+ * Ușa e închisă cu două zăvoare — numele companiei scris de mână și parola —
+ * fiindcă după nu mai există coș de gunoi.
+ */
+function sectiuneStergereCont(numeCompanie) {
+  const sectiune = el(`
+    <section class="danger-zone" id="dangerZone">
+      <div class="dz-head">
+        <span class="glow-dot dz-dot"></span>
+        <div>
+          <h2>Zonă periculoasă</h2>
+          <div class="dz-sub">Acțiuni care nu pot fi anulate.</div>
+        </div>
+      </div>
+      <div class="dz-row dz-row-danger">
+        <div class="dz-text">
+          <div class="dz-title">Șterge contul companiei</div>
+          <div class="dz-desc">Se șterg definitiv toate comenzile, tichetele, comentariile, fotografiile și conturile de utilizator ale companiei, împreună cu credențialele de integrare. Ireversibil — nu există coș de gunoi și nu putem recupera nimic după.</div>
+        </div>
+        <button type="button" class="btn btn-danger dz-btn" id="dzDeleteBtn">Șterge contul</button>
+      </div>
+    </section>
+  `);
+
+  sectiune.querySelector('#dzDeleteBtn').addEventListener('click', () => {
+    const form = el(`
+      <div class="dz-modal">
+        <p class="dz-warn">Această acțiune șterge definitiv compania <strong>${escapeHtml(numeCompanie)}</strong> și toate datele ei din Easy-Ticket. Nu se poate anula.</p>
+        <div class="field">
+          <label>Scrie numele companiei, exact: <code>${escapeHtml(numeCompanie)}</code></label>
+          <input type="text" id="dzConfirmName" autocomplete="off" placeholder="${escapeHtml(numeCompanie)}" />
+        </div>
+        <div class="field">
+          <label>Parola contului tău</label>
+          <input type="password" id="dzPassword" autocomplete="current-password" />
+        </div>
+        <div class="dz-modal-error" id="dzError" hidden></div>
+        <div class="form-actions dz-actions">
+          <button type="button" class="btn" id="dzCancel">Renunță</button>
+          <button type="button" class="btn btn-danger" id="dzConfirm" disabled>Șterge definitiv contul</button>
+        </div>
+      </div>
+    `);
+
+    const nameInput = form.querySelector('#dzConfirmName');
+    const passInput = form.querySelector('#dzPassword');
+    const confirmBtn = form.querySelector('#dzConfirm');
+    const errorBox = form.querySelector('#dzError');
+
+    const revalidate = () => {
+      const nameOk = nameInput.value.trim().toLowerCase() === numeCompanie.trim().toLowerCase();
+      confirmBtn.disabled = !(nameOk && passInput.value.length > 0);
+    };
+    nameInput.addEventListener('input', revalidate);
+    passInput.addEventListener('input', revalidate);
+    form.querySelector('#dzCancel').addEventListener('click', closeModal);
+
+    confirmBtn.addEventListener('click', async () => {
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = 'Se șterge…';
+      errorBox.hidden = true;
+      try {
+        await api('/api/company/delete', {
+          method: 'POST',
+          body: JSON.stringify({ password: passInput.value, confirmName: nameInput.value.trim() }),
+        });
+        // contul nu mai există -- nu mai încercăm să reîmprospătăm nimic din
+        // interfață, doar ducem utilizatorul afară
+        closeModal();
+        currentAgent = null;
+        window.location.href = '/#/acasa';
+        window.location.reload();
+      } catch (err) {
+        errorBox.textContent = err.message;
+        errorBox.hidden = false;
+        confirmBtn.textContent = 'Șterge definitiv contul';
+        revalidate();
+      }
+    });
+
+    openModal(form, { title: 'Ștergerea contului companiei', restoreHistory: false });
+    setTimeout(() => nameInput.focus(), 50);
+  });
+
+  return sectiune;
+}
+
 // ---------------- Administrare (doar manageri) ----------------
 
 async function renderAdmin() {
@@ -3691,13 +3784,14 @@ async function renderAdmin() {
       <div class="page-header">
         <div>
           <h1>Administrare</h1>
-          <div class="sub">Gestionează agenții și categoriile de tichete</div>
+          <div class="sub">Agenți, categorii de tichete, integrări și contul companiei</div>
         </div>
       </div>
       <div class="admin-tabs">
         <button class="admin-tab active" data-tab="agents">Agenți</button>
         <button class="admin-tab" data-tab="categories">Categorii</button>
         <button class="admin-tab" data-tab="integrations">Integrări</button>
+        <button class="admin-tab" data-tab="cont">Cont</button>
       </div>
       <div id="admin-body">Se încarcă…</div>
     </div>
@@ -3719,6 +3813,7 @@ async function renderAdmin() {
   async function paintTab() {
     if (activeTab === 'agents') await paintAgents();
     else if (activeTab === 'categories') await paintCategories();
+    else if (activeTab === 'cont') await paintCont();
     else await paintIntegrations();
   }
 
@@ -3887,6 +3982,24 @@ async function renderAdmin() {
         }
       });
     });
+  }
+
+  async function paintCont() {
+    body.innerHTML = 'Se încarcă…';
+    let s;
+    try {
+      s = await api('/api/company/settings');
+    } catch (e) {
+      body.innerHTML = `<div class="panel">Eroare: ${escapeHtml(e.message)}</div>`;
+      return;
+    }
+    body.innerHTML = `
+      <div class="panel">
+        <h2>Compania ta</h2>
+        <div class="hint" style="margin-bottom:6px;">${escapeHtml(s.name || '—')}</div>
+      </div>
+    `;
+    body.appendChild(sectiuneStergereCont(s.name || ''));
   }
 
   async function paintIntegrations() {
@@ -4695,87 +4808,6 @@ async function renderSettings(sectiune) {
     }
   });
 
-  // ---- Zonă periculoasă: ștergerea contului ----
-  body.appendChild(el(`
-    <section class="danger-zone" id="dangerZone">
-      <div class="dz-head">
-        <span class="glow-dot dz-dot"></span>
-        <div>
-          <h2>Zonă periculoasă</h2>
-          <div class="dz-sub">Acțiuni care nu pot fi anulate.</div>
-        </div>
-      </div>
-      <div class="dz-row dz-row-danger">
-        <div class="dz-text">
-          <div class="dz-title">Șterge contul companiei</div>
-          <div class="dz-desc">Se șterg definitiv toate comenzile, tichetele, comentariile, fotografiile și conturile de utilizator ale companiei, împreună cu credențialele de integrare. Ireversibil — nu există coș de gunoi și nu putem recupera nimic după.</div>
-        </div>
-        <button type="button" class="btn btn-danger dz-btn" id="dzDeleteBtn">Șterge contul</button>
-      </div>
-    </section>
-  `));
-
-  content.querySelector('#dzDeleteBtn').addEventListener('click', () => {
-    const companyName = s.name || '';
-    const form = el(`
-      <div class="dz-modal">
-        <p class="dz-warn">Această acțiune șterge definitiv compania <strong>${escapeHtml(companyName)}</strong> și toate datele ei din Easy-Ticket. Nu se poate anula.</p>
-        <div class="field">
-          <label>Scrie numele companiei, exact: <code>${escapeHtml(companyName)}</code></label>
-          <input type="text" id="dzConfirmName" autocomplete="off" placeholder="${escapeHtml(companyName)}" />
-        </div>
-        <div class="field">
-          <label>Parola contului tău</label>
-          <input type="password" id="dzPassword" autocomplete="current-password" />
-        </div>
-        <div class="dz-modal-error" id="dzError" hidden></div>
-        <div class="form-actions dz-actions">
-          <button type="button" class="btn" id="dzCancel">Renunță</button>
-          <button type="button" class="btn btn-danger" id="dzConfirm" disabled>Șterge definitiv contul</button>
-        </div>
-      </div>
-    `);
-
-    const nameInput = form.querySelector('#dzConfirmName');
-    const passInput = form.querySelector('#dzPassword');
-    const confirmBtn = form.querySelector('#dzConfirm');
-    const errorBox = form.querySelector('#dzError');
-
-    const revalidate = () => {
-      const nameOk = nameInput.value.trim().toLowerCase() === companyName.trim().toLowerCase();
-      confirmBtn.disabled = !(nameOk && passInput.value.length > 0);
-    };
-    nameInput.addEventListener('input', revalidate);
-    passInput.addEventListener('input', revalidate);
-    form.querySelector('#dzCancel').addEventListener('click', closeModal);
-
-    confirmBtn.addEventListener('click', async () => {
-      confirmBtn.disabled = true;
-      confirmBtn.textContent = 'Se șterge…';
-      errorBox.hidden = true;
-      try {
-        await api('/api/company/delete', {
-          method: 'POST',
-          body: JSON.stringify({ password: passInput.value, confirmName: nameInput.value.trim() }),
-        });
-        // contul nu mai există -- nu mai încercăm să reîmprospătăm nimic din
-        // interfață, doar ducem utilizatorul afară
-        closeModal();
-        currentAgent = null;
-        window.location.href = '/#/acasa';
-        window.location.reload();
-      } catch (err) {
-        errorBox.textContent = err.message;
-        errorBox.hidden = false;
-        confirmBtn.textContent = 'Șterge definitiv contul';
-        revalidate();
-      }
-    });
-
-    openModal(form, { title: 'Ștergerea contului companiei', restoreHistory: false });
-    setTimeout(() => nameInput.focus(), 50);
-  });
-
   content.querySelectorAll('.settings-tab').forEach((tab) => {
     tab.addEventListener('click', () => {
       content.querySelectorAll('.settings-tab').forEach((t) => t.classList.remove('active'));
@@ -5021,15 +5053,12 @@ async function renderSettings(sectiune) {
 
   const formular = content.querySelector('#cardFormular');
   const retur = content.querySelector('#cardRetur');
-  const pericol = content.querySelector('#dangerZone');
   const formIntegrari = content.querySelector('#settingsForm');
 
   if (!activa) {
-    // Pagina de pornire: plăcile, și sub ele ștergerea contului.
-    //
-    // Ștergerea nu e o placă: o placă e o invitație, iar asta nu e o acțiune
-    // pe care s-o inviți pe cineva s-o încerce. Stă jos, unde stă de obicei,
-    // apărată de fereastra care cere numele companiei scris de mână.
+    // Pagina de pornire: doar plăcile de secțiuni. Ștergerea contului a
+    // plecat de aici în Administrare → Cont: nu e o setare, e o decizie
+    // despre companie, și stă lângă agenți și integrări.
     [formIntegrari, formular, retur].forEach((n) => { if (n) n.hidden = true; });
     const grila = el(`
       <div class="setari-grila">
@@ -5051,13 +5080,11 @@ async function renderSettings(sectiune) {
     return;
   }
 
-  // O singură secțiune, deschisă. Ștergerea contului rămâne doar pe pagina de
-  // pornire — n-are ce căuta sub setările de curier.
+  // O singură secțiune, deschisă.
   const eIntegrare = Boolean(activa.integrari);
   if (formIntegrari) formIntegrari.hidden = !eIntegrare;
   if (formular) formular.hidden = activa.cheie !== 'formular-retur';
   if (retur) retur.hidden = activa.cheie !== 'formular-retur';
-  if (pericol) pericol.hidden = true;
 
   if (eIntegrare) {
     // Bara de taburi „platforme / curieri" nu mai are rost: fiecare tab a
