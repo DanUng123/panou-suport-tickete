@@ -48,12 +48,13 @@ let categoriesCache = [];
 // Ce curieri sunt configurati pe compania curenta. O singura structura, nu o
 // variabila per curier -- ca sa se adauge un curier nou fara sa fie nevoie de
 // modificari in zece locuri.
-let curieriConfigurati = { gls: false, sameday: false, ptt: false, cargus: false };
+let curieriConfigurati = { gls: false, sameday: false, ptt: false, cargus: false, fan: false };
 const CURIERI = [
   { cheie: 'gls', nume: 'GLS' },
   { cheie: 'sameday', nume: 'Sameday' },
   { cheie: 'ptt', nume: 'PTT Express' },
   { cheie: 'cargus', nume: 'Cargus' },
+  { cheie: 'fan', nume: 'FAN Courier' },
 ];
 /** Numele de afisat al unui curier, dintr-un singur loc. */
 function numeCurier(cheie) {
@@ -3905,6 +3906,7 @@ async function renderAdmin() {
       { key: 'sameday', label: 'Sameday', activeField: 'samedayActive', configured: Boolean(s.samedayUsername && s.samedayPasswordSet) },
       { key: 'ptt', label: 'PTT Express', activeField: 'pttActive', configured: Boolean(s.pttUsername && s.pttPasswordSet) },
       { key: 'cargus', label: 'Cargus', activeField: 'cargusActive', configured: Boolean(s.cargusUsername && s.cargusPasswordSet && s.cargusSubscriptionKeySet && s.cargusLocationId) },
+      { key: 'fan', label: 'FAN Courier', activeField: 'fanActive', configured: Boolean(s.fanUsername && s.fanPasswordSet && s.fanClientId) },
     ];
 
     body.innerHTML = `
@@ -3969,10 +3971,10 @@ const SECTIUNI_SETARI = [
   {
     cheie: 'curieri',
     titlu: 'Integrări curieri',
-    descriere: 'GLS, Sameday, PTT Express și Cargus — cine duce coletele.',
+    descriere: 'GLS, Sameday, PTT Express, Cargus și FAN Courier — cine duce coletele.',
     pictograma: 'curier',
     tab: 'curieri',
-    integrari: ['gls', 'sameday', 'ptt', 'cargus'],
+    integrari: ['gls', 'sameday', 'ptt', 'cargus', 'fan'],
   },
   {
     cheie: 'formular-retur',
@@ -4341,6 +4343,60 @@ async function renderSettings(sectiune) {
                 </div>
               </div>
               <div class="hint" style="margin-top:4px;">La ridicările de la client, transportul se pune în sarcina destinatarului — adică a ta. Dacă ai altă înțelegere cu Cargus, spune-mi și schimbăm.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="accordion-item" data-integrare="fan">
+          <div class="accordion-header">
+            <h2>FAN Courier</h2>
+            <span class="accordion-chevron">▾</span>
+          </div>
+          <div class="accordion-body">
+            <div class="accordion-body-inner">
+              <div class="form-row">
+                <div class="field">
+                  <label>Utilizator selfAWB</label>
+                  <input type="text" id="s-fan-user" value="${v(s.fanUsername)}" />
+                </div>
+                <div class="field">
+                  <label>Parolă${s.fanPasswordSet ? ' — setată ✓' : ''}</label>
+                  <input type="password" id="s-fan-pass" placeholder="${s.fanPasswordSet ? '••••••••  (lasă gol ca să păstrezi)' : 'Introdu parola'}" />
+                </div>
+              </div>
+              <div class="field">
+                <label>Cod client</label>
+                <input type="text" id="s-fan-client" value="${v(s.fanClientId)}" />
+                <div class="hint" style="margin-top:4px;">Codul de client din contul tău selfAWB. Însoțește fiecare cerere către FAN și nu poate fi ghicit din API.</div>
+              </div>
+              <div class="form-row">
+                <div class="field">
+                  <label>Serviciu livrare către client</label>
+                  <select id="s-fan-service-forward">
+                    <option value="" ${!s.fanServiceForward ? 'selected' : ''}>Standard (implicit)</option>
+                    ${s.fanServiceForward ? `<option value="${escapeHtml(s.fanServiceForward)}" selected>${escapeHtml(s.fanServiceForward)}</option>` : ''}
+                  </select>
+                </div>
+                <div class="field">
+                  <label>Serviciu ridicare de la client</label>
+                  <select id="s-fan-service-pickup">
+                    <option value="" ${!s.fanServicePickup ? 'selected' : ''}>Cont Colector (implicit)</option>
+                    ${s.fanServicePickup ? `<option value="${escapeHtml(s.fanServicePickup)}" selected>${escapeHtml(s.fanServicePickup)}</option>` : ''}
+                  </select>
+                </div>
+              </div>
+              <div style="margin-top:6px;">
+                <button type="button" class="btn btn-sm" id="fanServicesBtn">↻ Preia serviciile din contul FAN</button>
+              </div>
+              <div class="hint" id="fanServicesHint" style="margin-top:4px;">La FAN, direcția coletului o dă serviciul, nu adresele: „Cont Colector" înseamnă că merge curierul la client și aduce coletul la tine. După ce alegi, apasă „Salvează setările".</div>
+              <div class="field" style="margin-top:14px;">
+                <label>Format etichetă</label>
+                <select id="s-fan-labelformat">
+                  <option value="A6" ${!s.fanLabelFormat || s.fanLabelFormat === 'A6' ? 'selected' : ''}>A6 — etichetă (implicit)</option>
+                  <option value="A5" ${s.fanLabelFormat === 'A5' ? 'selected' : ''}>A5</option>
+                  <option value="A4" ${s.fanLabelFormat === 'A4' ? 'selected' : ''}>A4</option>
+                </select>
+              </div>
             </div>
           </div>
         </div>
@@ -4852,6 +4908,49 @@ async function renderSettings(sectiune) {
   if (cargusLocationsBtn) cargusLocationsBtn.addEventListener('click', () => loadCargusLocations());
   if (s.cargusUsername && s.cargusPasswordSet && s.cargusSubscriptionKeySet) loadCargusLocations({ silent: true });
 
+  // ---- servicii FAN Courier: lista se citeste din contul companiei ----
+  async function loadFanServices({ silent } = {}) {
+    const hint = content.querySelector('#fanServicesHint');
+    const btn = content.querySelector('#fanServicesBtn');
+    const selectoare = [content.querySelector('#s-fan-service-forward'), content.querySelector('#s-fan-service-pickup')];
+    if (!selectoare[0]) return;
+    const payload = {
+      fanUsername: content.querySelector('#s-fan-user').value.trim(),
+      fanPassword: content.querySelector('#s-fan-pass').value,
+      fanClientId: content.querySelector('#s-fan-client').value.trim(),
+    };
+    if (!payload.fanUsername && !silent) {
+      showToast('Completează întâi utilizatorul FAN Courier.');
+      return;
+    }
+    if (btn) { btn.disabled = true; btn.textContent = 'Se încarcă…'; }
+    try {
+      const { services } = await api('/api/company/settings/fan-services', { method: 'POST', body: JSON.stringify(payload) });
+      const implicite = ['Standard (implicit)', 'Cont Colector (implicit)'];
+      selectoare.forEach((select, i) => {
+        const ales = select.value;
+        select.innerHTML = `<option value="">${implicite[i]}</option>` + services.map((svc) => `
+          <option value="${escapeHtml(svc.nume)}" ${svc.nume === ales ? 'selected' : ''}>${escapeHtml(svc.nume)}</option>
+        `).join('');
+        // serviciul salvat nu mai e disponibil pe cont -- il pastram, ca sa nu se piarda tacut la salvare
+        if (ales && !services.some((svc) => svc.nume === ales)) {
+          select.insertAdjacentHTML('beforeend', `<option value="${escapeHtml(ales)}" selected>${escapeHtml(ales)} — indisponibil acum pe cont</option>`);
+        }
+        select.value = ales;
+      });
+      if (hint) hint.textContent = `${services.length} servicii disponibile pe contul tău. Pentru ridicarea de la client alege „Cont Colector", apoi apasă „Salvează setările".`;
+    } catch (err) {
+      if (hint) hint.textContent = `Nu am putut citi serviciile din contul FAN: ${err.message}`;
+      if (!silent) showToast('Eroare: ' + err.message);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '↻ Preia serviciile din contul FAN'; }
+    }
+  }
+
+  const fanServicesBtn = content.querySelector('#fanServicesBtn');
+  if (fanServicesBtn) fanServicesBtn.addEventListener('click', () => loadFanServices());
+  if (s.fanUsername && s.fanPasswordSet && s.fanClientId) loadFanServices({ silent: true });
+
   content.querySelector('#settingsForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const q = (id) => content.querySelector(id).value.trim();
@@ -4892,6 +4991,12 @@ async function renderSettings(sectiune) {
       cargusLocationId: q('#s-cargus-location'),
       cargusServiceId: q('#s-cargus-service'),
       cargusLabelFormat: q('#s-cargus-labelformat'),
+      fanUsername: q('#s-fan-user'),
+      fanPassword: content.querySelector('#s-fan-pass').value,
+      fanClientId: q('#s-fan-client'),
+      fanServiceForward: q('#s-fan-service-forward'),
+      fanServicePickup: q('#s-fan-service-pickup'),
+      fanLabelFormat: q('#s-fan-labelformat'),
       pttSenderName: q('#s-ptt-sname'),
       pttSenderPhone: q('#s-ptt-sphone'),
       pttSenderCity: q('#s-ptt-scity'),

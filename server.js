@@ -17,11 +17,12 @@ const gls = require('./lib/gls');
 const sameday = require('./lib/sameday');
 const pttexpress = require('./lib/pttexpress');
 const cargus = require('./lib/cargus');
+const fancourier = require('./lib/fancourier');
 // mapare comuna curier -> modul, folosita peste tot unde citim ticket.pickupAwbCourier/returnAwbCourier
-const COURIER_MODULES = { gls, sameday, ptt: pttexpress, cargus };
+const COURIER_MODULES = { gls, sameday, ptt: pttexpress, cargus, fan: fancourier };
 // Numele "de om" al fiecarui curier -- un singur loc, ca sa nu mai apara
 // aceleasi siruri in zece mesaje de eroare si sa se uite unul la adaugare.
-const COURIER_LABELS = { gls: 'GLS', sameday: 'Sameday', ptt: 'PTT Express', cargus: 'Cargus' };
+const COURIER_LABELS = { gls: 'GLS', sameday: 'Sameday', ptt: 'PTT Express', cargus: 'Cargus', fan: 'FAN Courier' };
 const COURIER_KEYS = Object.keys(COURIER_MODULES);
 /** Cheia de curier ceruta, daca o cunoastem; altfel GLS, curierul implicit istoric. */
 function alegeCurier(cheie) {
@@ -37,6 +38,7 @@ async function anuleazaLaCurier(courierKey, company, parcelId) {
   if (cheie === 'sameday') { await sameday.deleteAwb(company, parcelId); return null; }
   if (cheie === 'gls') { await gls.deleteParcel(company, parcelId); return null; }
   if (cheie === 'cargus') { await cargus.deleteAwb(company, parcelId); return null; }
+  if (cheie === 'fan') { await fancourier.deleteAwb(company, parcelId); return null; }
   // PTT Express nu expune nicio operatie de anulare in API (confirmat live) --
   // eliberam doar tichetul local; AWB-ul ramane activ la ei
   return 'AWB-ul rămâne activ în contul PTT Express — anulează-l manual, din panoul lor web, ca să nu rămână o expediere fantomă.';
@@ -1085,7 +1087,7 @@ async function handleApi(req, res, pathname, query) {
       if (!company) return sendJSON(res, 404, { error: 'Companie negăsită' });
       // secretele nu se trimit niciodata in clar catre browser -- doar daca sunt setate sau nu
       const { merchantProApiSecret, glsPassword, samedayPassword, gomagApiKey, pttPassword,
-        cargusPassword, cargusSubscriptionKey, ...rest } = company;
+        cargusPassword, cargusSubscriptionKey, fanPassword, ...rest } = company;
       return sendJSON(res, 200, {
         ...rest,
         merchantProApiSecretSet: Boolean(merchantProApiSecret),
@@ -1095,6 +1097,7 @@ async function handleApi(req, res, pathname, query) {
         pttPasswordSet: Boolean(pttPassword),
         cargusPasswordSet: Boolean(cargusPassword),
         cargusSubscriptionKeySet: Boolean(cargusSubscriptionKey),
+        fanPasswordSet: Boolean(fanPassword),
         // adresa publica a formularului de cereri -- se genereaza la prima
         // deschidere a Setarilor si ramane apoi neschimbata
         publicFormSlug: db.getOrCreatePublicFormSlug(currentAgent.companyId),
@@ -1114,6 +1117,7 @@ async function handleApi(req, res, pathname, query) {
       if (patch.pttPassword === '') delete patch.pttPassword;
       if (patch.cargusPassword === '') delete patch.cargusPassword;
       if (patch.cargusSubscriptionKey === '') delete patch.cargusSubscriptionKey;
+      if (patch.fanPassword === '') delete patch.fanPassword;
 
       // retinem starea DINAINTE de salvare, ca sa detectam daca MerchantPro
       // sau GoMag tocmai au fost configurate pentru PRIMA DATA -- caz in
@@ -1131,7 +1135,7 @@ async function handleApi(req, res, pathname, query) {
       }
 
       const { merchantProApiSecret, glsPassword, samedayPassword, gomagApiKey, pttPassword,
-        cargusPassword, cargusSubscriptionKey, ...rest } = updated;
+        cargusPassword, cargusSubscriptionKey, fanPassword, ...rest } = updated;
       return sendJSON(res, 200, {
         ...rest,
         merchantProApiSecretSet: Boolean(merchantProApiSecret),
@@ -1141,6 +1145,7 @@ async function handleApi(req, res, pathname, query) {
         pttPasswordSet: Boolean(pttPassword),
         cargusPasswordSet: Boolean(cargusPassword),
         cargusSubscriptionKeySet: Boolean(cargusSubscriptionKey),
+        fanPasswordSet: Boolean(fanPassword),
         accountPreparing: merchantProJustConfigured || gomagJustConfigured,
       });
     }
@@ -1169,13 +1174,13 @@ async function handleApi(req, res, pathname, query) {
     if (toggleIntegrationMatch && req.method === 'POST') {
       if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot activa/dezactiva integrările.' });
       const integration = toggleIntegrationMatch[1];
-      if (!['merchantpro', 'gomag', 'gls', 'sameday', 'ptt', 'cargus'].includes(integration)) {
+      if (!['merchantpro', 'gomag', 'gls', 'sameday', 'ptt', 'cargus', 'fan'].includes(integration)) {
         return sendJSON(res, 400, { error: 'Integrare necunoscută.' });
       }
       const body = await readBody(req);
       const updated = db.setIntegrationActive(currentAgent.companyId, integration, Boolean(body.active));
       const { merchantProApiSecret, glsPassword, samedayPassword, gomagApiKey, pttPassword,
-        cargusPassword, cargusSubscriptionKey, ...rest } = updated;
+        cargusPassword, cargusSubscriptionKey, fanPassword, ...rest } = updated;
       return sendJSON(res, 200, rest);
     }
 
@@ -1246,6 +1251,29 @@ async function handleApi(req, res, pathname, query) {
       }
       try {
         return sendJSON(res, 200, { services: await pttexpress.getAvailableServices(draftCompany) });
+      } catch (e) {
+        return sendJSON(res, 502, { error: e.message });
+      }
+    }
+
+    // Serviciile disponibile pe contul FAN Courier -- citite din contul lor,
+    // ca sa fie alese dintr-o lista in Setari. Se poate apela si inainte de
+    // salvare, cu datele din formular.
+    if (pathname === '/api/company/settings/fan-services' && req.method === 'POST') {
+      if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot accesa setările companiei' });
+      const body = await readBody(req);
+      const draftCompany = {
+        ...company,
+        fanUsername: body.fanUsername || company.fanUsername,
+        fanPassword: body.fanPassword || company.fanPassword,
+        fanClientId: body.fanClientId || company.fanClientId,
+        fanActive: true,
+      };
+      if (!draftCompany.fanUsername || !draftCompany.fanPassword || !draftCompany.fanClientId) {
+        return sendJSON(res, 400, { error: 'Completează mai întâi utilizatorul, parola și codul de client FAN Courier, apoi încearcă din nou.' });
+      }
+      try {
+        return sendJSON(res, 200, { services: await fancourier.getAvailableServices(draftCompany) });
       } catch (e) {
         return sendJSON(res, 502, { error: e.message });
       }
@@ -2084,6 +2112,7 @@ async function handleApi(req, res, pathname, query) {
       else if (courierName.includes('sameday')) candidates = ['sameday'];
       else if (courierName.includes('ptt')) candidates = ['ptt'];
       else if (courierName.includes('cargus')) candidates = ['cargus'];
+      else if (courierName.includes('fan')) candidates = ['fan'];
       else candidates = COURIER_KEYS.filter((key) => COURIER_MODULES[key].isConfigured(company));
 
       if (!candidates.length) {
