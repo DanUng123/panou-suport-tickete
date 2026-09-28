@@ -3773,47 +3773,91 @@ function sectiuneStergereCont(numeCompanie) {
 
 // ---------------- Administrare (doar manageri) ----------------
 
-async function renderAdmin() {
+// Secțiunile din Administrare, în aceeași formă ca la Setări: plăci pe pagina
+// de pornire, fiecare cu ruta ei. Bara de taburi a dispărut -- două locuri din
+// aplicație care fac același lucru merită să arate la fel.
+const SECTIUNI_ADMIN = [
+  {
+    cheie: 'agenti',
+    titlu: 'Agenți',
+    descriere: 'Cine are acces în platformă și cu ce drepturi.',
+    pictograma: 'agenti',
+  },
+  {
+    cheie: 'categorii',
+    titlu: 'Categorii de tichete',
+    descriere: 'Cum se împart cererile pe tipuri, în listele de lucru.',
+    pictograma: 'categorii',
+  },
+  {
+    cheie: 'integrari',
+    titlu: 'Integrări active',
+    descriere: 'Pornește sau oprește o platformă ori un curier, fără să ștergi datele de conectare.',
+    pictograma: 'integrari',
+  },
+  {
+    cheie: 'cont',
+    titlu: 'Contul companiei',
+    descriere: 'Ștergerea definitivă a contului și a tuturor datelor.',
+    pictograma: 'cont',
+    periculoasa: true,
+  },
+];
+
+const PICTOGRAME_ADMIN = {
+  agenti: '<circle cx="10" cy="7" r="3"/><path d="M4 17a6 6 0 0112 0"/>',
+  categorii: '<path d="M3 4h6v6H3zM11 4h6v6h-6zM3 12h6v5H3zM11 12h6v5h-6z"/>',
+  integrari: '<path d="M7 4v5M13 4v5M4 9h12v3a6 6 0 01-12 0z"/><path d="M10 15v3"/>',
+  cont: '<path d="M4 6h12M8 6V4h4v2M6 6l1 11h6l1-11"/>',
+};
+
+async function renderAdmin(sectiune) {
   if (currentAgent.role !== 'manager') {
     navigate('#/dashboard');
     return;
   }
+  const activa = SECTIUNI_ADMIN.find((x) => x.cheie === sectiune) || null;
 
   const content = el(`
     <div>
       <div class="page-header">
         <div>
-          <h1>Administrare</h1>
-          <div class="sub">Agenți, categorii de tichete, integrări și contul companiei</div>
+          ${activa ? `<a href="#/admin" class="setari-inapoi">← Toată administrarea</a>` : ''}
+          <h1>${activa ? escapeHtml(activa.titlu) : 'Administrare'}</h1>
+          <div class="sub">${activa ? escapeHtml(activa.descriere) : 'Agenți, categorii de tichete, integrări și contul companiei'}</div>
         </div>
       </div>
-      <div class="admin-tabs">
-        <button class="admin-tab active" data-tab="agents">Agenți</button>
-        <button class="admin-tab" data-tab="categories">Categorii</button>
-        <button class="admin-tab" data-tab="integrations">Integrări</button>
-        <button class="admin-tab" data-tab="cont">Cont</button>
-      </div>
-      <div id="admin-body">Se încarcă…</div>
+      <div id="admin-body">${activa ? 'Se încarcă…' : ''}</div>
     </div>
   `);
   renderShell('#/admin', content);
 
-  let activeTab = 'agents';
   const body = content.querySelector('#admin-body');
 
-  content.querySelectorAll('.admin-tab').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      content.querySelectorAll('.admin-tab').forEach((b) => b.classList.remove('active'));
-      btn.classList.add('active');
-      activeTab = btn.dataset.tab;
-      paintTab();
-    });
-  });
+  if (!activa) {
+    body.appendChild(el(`
+      <div class="setari-grila">
+        ${SECTIUNI_ADMIN.map((x) => `
+          <a class="setari-placa${x.periculoasa ? ' periculoasa' : ''}" href="#/admin/${x.cheie}">
+            <span class="setari-placa-pictograma">
+              <svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor"
+                   stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                ${PICTOGRAME_ADMIN[x.pictograma] || ''}
+              </svg>
+            </span>
+            <span class="setari-placa-text">
+              <span class="setari-placa-titlu">${escapeHtml(x.titlu)}</span>
+              <span class="setari-placa-descriere">${escapeHtml(x.descriere)}</span>
+            </span>
+          </a>`).join('')}
+      </div>`));
+    return;
+  }
 
   async function paintTab() {
-    if (activeTab === 'agents') await paintAgents();
-    else if (activeTab === 'categories') await paintCategories();
-    else if (activeTab === 'cont') await paintCont();
+    if (activa.cheie === 'agenti') await paintAgents();
+    else if (activa.cheie === 'categorii') await paintCategorii();
+    else if (activa.cheie === 'cont') await paintCont();
     else await paintIntegrations();
   }
 
@@ -3923,7 +3967,7 @@ async function renderAdmin() {
     });
   }
 
-  async function paintCategories() {
+  async function paintCategorii() {
     body.innerHTML = 'Se încarcă…';
     let categories;
     try {
@@ -3963,7 +4007,7 @@ async function renderAdmin() {
         await api('/api/categories', { method: 'POST', body: JSON.stringify({ name }) });
         showToast('Categorie adăugată');
         categoriesCache = await api('/api/categories');
-        paintCategories();
+        paintCategorii();
       } catch (err) {
         showToast('Eroare: ' + err.message);
       }
@@ -3976,7 +4020,7 @@ async function renderAdmin() {
           await api(`/api/categories/${encodeURIComponent(btn.dataset.name)}`, { method: 'DELETE' });
           showToast('Categorie ștearsă');
           categoriesCache = await api('/api/categories');
-          paintCategories();
+          paintCategorii();
         } catch (err) {
           showToast('Eroare: ' + err.message);
         }
@@ -5196,6 +5240,9 @@ function render() {
   } else if (path === '#/admin') {
     hideDrawer();
     renderAdmin();
+  } else if (path.startsWith('#/admin/')) {
+    hideDrawer();
+    renderAdmin(path.replace('#/admin/', ''));
   } else if (path === '#/settings') {
     hideDrawer();
     renderSettings();
