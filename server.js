@@ -813,6 +813,76 @@ async function handleApi(req, res, pathname, query) {
         try { db.addTicketPhoto(magazin.id, tichet.id, { dataBase64: poza.dataBase64, mimeType: poza.mimeType }); } catch (e) { /* peste limita -- sarim */ }
       }
 
+      // ---- emiterea automată a AWB-ului de ridicare ----
+      //
+      // Doar dacă magazinul a cerut-o explicit, pentru TIPUL acesta de cerere,
+      // și doar cu curierul ales de el. Orice eșec (adresă incompletă, curier
+      // picat, localitate negăsită) NU strică cererea: clientul primește
+      // confirmarea ca de obicei, iar în tichet rămâne scris negru pe alb de ce
+      // n-a mers, ca să preia un operator. Altfel am pierde cereri pentru
+      // probleme care nu țin de client.
+      const autoAwbPornit = reguli.autoAwb && reguli.autoAwb[body.type];
+      if (autoAwbPornit && ['retur', 'service'].includes(body.type)) {
+        const cheieCurier = reguli.autoAwbCourier;
+        const curier = COURIER_MODULES[cheieCurier];
+        // `magazin` vine din căutarea după slug-ul public, deci are secretele
+        // așa cum stau în baza de date: criptate. Clientul de curierat are
+        // nevoie de ele descifrate, așa că reîncărcăm compania întreagă.
+        const magazinCuCredentiale = db.getCompany(magazin.id);
+        const numeCurier = COURIER_LABELS[cheieCurier] || cheieCurier || '(nealeș)';
+        // agentul din istoricul tichetului: emiterea n-a făcut-o un om
+        const agentAutomat = { id: 'automat', name: 'Emitere automată' };
+        const noteazaEsecul = (motivEsec) => {
+          try {
+            db.addComment(magazin.id, tichet.id, {
+              authorId: agentAutomat.id,
+              authorName: agentAutomat.name,
+              body: `AWB-ul de ridicare NU a putut fi emis automat: ${motivEsec}\n\nCererea a fost înregistrată normal. Emite AWB-ul manual, din acest tichet.`,
+              internal: 1,
+            });
+          } catch (e) { /* comentariul e informativ; nu blocheaza cererea */ }
+        };
+
+        if (!cheieCurier || !curier) {
+          noteazaEsecul('nu e ales niciun curier pentru emiterea automată, în Setări → Formular de retur.');
+        } else if (!magazinCuCredentiale || !curier.isConfigured(magazinCuCredentiale)) {
+          noteazaEsecul(`curierul ales pentru emiterea automată (${numeCurier}) nu este configurat sau este oprit.`);
+        } else if (!adresa || !oras || !codPostal || !comanda.shippingPhone) {
+          const lipsa = [!adresa && 'adresa', !oras && 'orașul', !codPostal && 'codul poștal', !comanda.shippingPhone && 'telefonul'].filter(Boolean).join(', ');
+          noteazaEsecul(`datele de ridicare sunt incomplete — lipsește: ${lipsa}.`);
+        } else {
+          try {
+            const rezultat = await curier.createPickupAwb(magazinCuCredentiale, {
+              ticketId: tichet.id,
+              reason: body.type,
+              customerName: comanda.shippingName || comanda.billingName || 'Client',
+              address: adresa,
+              city: oras,
+              county: comanda.shippingState || '',
+              postalCode: codPostal,
+              phone: comanda.shippingPhone,
+              email: comanda.customerEmail || '',
+            });
+            db.setTicketPickupAwb(magazin.id, tichet.id, {
+              awbNumber: rezultat.trackingNumber,
+              parcelId: rezultat.parcelId,
+              labelPdf: rezultat.labelPdf ? rezultat.labelPdf.toString('base64') : null,
+              section: tip.section,
+              pickupAddress: adresa,
+              pickupCity: oras,
+              pickupPostalCode: codPostal,
+              pickupPhone: comanda.shippingPhone,
+              courier: cheieCurier,
+              secondaryAwbNumber: rezultat.secondaryAwbNumber,
+            }, agentAutomat);
+            console.log(`AWB emis automat (${numeCurier}) pentru cererea ${tichet.id}, ${magazin.name}: ${rezultat.trackingNumber}`);
+          } catch (e) {
+            noteazaEsecul(`${numeCurier} a refuzat emiterea — ${e.message}`);
+            console.error(`Emitere automată eșuată pentru ${tichet.id} (${magazin.name}): ${e.message}`);
+          }
+        }
+      }
+
       console.log(`Cerere nouă din formularul public: ${tip.eticheta}, comanda #${comanda.mpId}, ${magazin.name}`);
       return sendJSON(res, 201, {
         ok: true,

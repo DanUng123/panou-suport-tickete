@@ -4741,6 +4741,24 @@ async function renderSettings(sectiune) {
       ${bifa('r-banca', R.refundToBank, 'Cer IBAN pentru rambursare', 'Clientul completează contul în care vrea banii. Oprit, presupunem că îi returnezi pe aceeași cale pe care a plătit.')}
       ${bifa('r-auto', R.autoApprove, 'Aprobare automată', 'Clientul primește pe loc confirmarea că cererea e acceptată, în loc de „așteaptă răspunsul magazinului". Cererea îți apare la fel în „Cereri noi" — AWB-ul de ridicare tot tu îl emiți.')}
 
+      <div class="cerere-eticheta" style="margin-top:18px;">Emiterea automată a AWB-ului de ridicare</div>
+      <div class="hint" style="margin-bottom:14px;">
+        Pornit, AWB-ul de ridicare se emite singur în clipa în care clientul trimite cererea, fără să mai
+        aștepte un operator. Oprit — cum e acum — cererea intră în platformă și AWB-ul îl emiți tu, din tichet.
+        Dacă emiterea automată nu reușește (adresă incompletă, curierul nu răspunde, localitate negăsită),
+        cererea se înregistrează oricum, iar în tichet vezi scris de ce nu s-a putut.
+      </div>
+      ${bifa('r-auto-awb-retur', R.autoAwb && R.autoAwb.retur, 'Automat la Retur', 'Cererile de retur primesc AWB de ridicare fără intervenție.')}
+      ${bifa('r-auto-awb-service', R.autoAwb && R.autoAwb.service, 'Automat la Garanție / Service', 'Cererile de service primesc AWB de ridicare fără intervenție.')}
+      <div class="field" style="max-width:340px;margin-top:10px;">
+        <label>Curierul folosit la emiterea automată</label>
+        <select id="r-auto-awb-curier">
+          <option value="">— alege un curier —</option>
+          ${CURIERI.map((c) => `<option value="${c.cheie}" ${R.autoAwbCourier === c.cheie ? 'selected' : ''} ${curieriConfigurati[c.cheie] ? '' : 'disabled'}>${c.nume}${curieriConfigurati[c.cheie] ? '' : ' (neconfigurat)'}</option>`).join('')}
+        </select>
+        <div class="hint" id="r-auto-awb-hint" style="margin-top:6px;"></div>
+      </div>
+
 
       <div class="cerere-eticheta" style="margin-top:18px;">Motivele din care alege clientul</div>
       <div class="hint" style="margin-bottom:14px;">
@@ -4770,6 +4788,34 @@ async function renderSettings(sectiune) {
       </div>
     </section>
   `));
+
+  // Emiterea automată nu are sens fără curier, iar un curier ales degeaba nu
+  // spune nimic. Mesajul de sub selector zice, în orice moment, ce se va
+  // întâmpla de fapt la următoarea cerere.
+  function actualizeazaMesajAutoAwb() {
+    const selector = content.querySelector('#r-auto-awb-curier');
+    const mesaj = content.querySelector('#r-auto-awb-hint');
+    if (!selector || !mesaj) return;
+    const pornit = content.querySelector('#r-auto-awb-retur').checked || content.querySelector('#r-auto-awb-service').checked;
+    if (!pornit) {
+      mesaj.textContent = 'Emiterea automată e oprită pentru ambele tipuri — AWB-urile le emiți tu, din tichet.';
+      mesaj.style.color = '';
+    } else if (!selector.value) {
+      mesaj.textContent = 'Alege curierul: fără el, emiterea automată nu pornește și cererile vor aștepta un operator.';
+      mesaj.style.color = 'var(--priority-urgent)';
+    } else if (!curieriConfigurati[selector.value]) {
+      mesaj.textContent = 'Curierul ales nu e configurat sau e oprit — emiterea automată nu va porni până nu îl pui la punct în Integrări curieri.';
+      mesaj.style.color = 'var(--priority-urgent)';
+    } else {
+      mesaj.textContent = 'Cererile marcate mai sus vor primi AWB de ridicare imediat ce clientul le trimite.';
+      mesaj.style.color = '';
+    }
+  }
+  ['#r-auto-awb-retur', '#r-auto-awb-service', '#r-auto-awb-curier'].forEach((sel) => {
+    const camp = content.querySelector(sel);
+    if (camp) camp.addEventListener('change', actualizeazaMesajAutoAwb);
+  });
+  actualizeazaMesajAutoAwb();
 
   // Editorul de motive: randurile traiesc in DOM, nu intr-o structura paralela,
   // ca sa nu existe doua adevaruri care se pot dezacorda.
@@ -4839,6 +4885,11 @@ async function renderSettings(sectiune) {
           multiplePerOrder: content.querySelector('#r-multiple').checked,
           refundToBank: content.querySelector('#r-banca').checked,
           autoApprove: content.querySelector('#r-auto').checked,
+          autoAwb: {
+            retur: content.querySelector('#r-auto-awb-retur').checked,
+            service: content.querySelector('#r-auto-awb-service').checked,
+          },
+          autoAwbCourier: content.querySelector('#r-auto-awb-curier').value,
           reasons: motive,
         }),
       });
