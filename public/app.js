@@ -5072,10 +5072,11 @@ async function renderSettings(sectiune) {
     formIntegrari.querySelectorAll('.accordion-item').forEach((item) => {
       item.hidden = !activa.integrari.includes(item.dataset.integrare);
     });
-    // prima cutie deschisă din start: cine intră la „Integrări curieri" a venit
-    // să vadă un formular, nu trei antete pe care să le mai apese
-    const prima = formIntegrari.querySelector('.accordion-item:not([hidden])');
-    if (prima) prima.classList.add('open');
+    // Toate cutiile pornesc închise. Cu cinci curieri și două platforme, una
+    // deschisă din start nu mai ajută pe nimeni: împinge restul listei sub
+    // ecran și rareori e chiar aceea de care ai nevoie. Se deschide cea pe
+    // care o apeși.
+    formIntegrari.querySelectorAll('.accordion-item').forEach((item) => item.classList.remove('open'));
   }
 
   // marginea de sus avea sens doar când cardurile veneau după formularul de
