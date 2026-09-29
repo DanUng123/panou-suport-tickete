@@ -1698,7 +1698,7 @@ async function renderServiceReturnList(route, section) {
           </div>
         </div>
       </div>
-      <div class="status-pills segmented-group" id="tabRow" style="margin-bottom:18px;"></div>
+      ${section === 'retur' ? '' : '<div class="status-pills segmented-group" id="tabRow" style="margin-bottom:18px;"></div>'}
       <div class="filters-search-row">
         <input type="text" id="q" placeholder="Caută: cod, comandă, client, produs, AWB…" value="${escapeHtml(initialFilters.q || '')}" />
       </div>
@@ -1749,7 +1749,9 @@ async function renderServiceReturnList(route, section) {
   // până când cineva emite AWB-ul de ridicare.
   const eCerereNoua = (t) => !t.pickupAwbNumber && !t.stage;
   let activeLocation = LOCATION_KEYS_BY_SECTION[section]?.includes(initialFilters.loc) ? initialFilters.loc : 'cereri';
-  let activeTab = initialFilters.tab || 'all';
+  // La Retur nu mai există filtrul de stare, deci nu mai filtrăm nimic pe el:
+  // secțiunea aleasă (etapa) e singurul criteriu.
+  let activeTab = section === 'retur' ? 'all' : (initialFilters.tab || 'all');
   let searchQuery = initialFilters.q || '';
   const selectedRefundTicketIds = new Set(); // pentru selectia manuala de export in "Gata de Retur"
   function updateBulkRefundExportLabel() {
@@ -1864,7 +1866,10 @@ async function renderServiceReturnList(route, section) {
       { key: 'closed', label: 'Închise' },
       { key: 'all', label: 'Toate' },
     ];
-    content.querySelector('#tabRow').innerHTML = tabs.map((t) =>
+    // La Retur rândul ăsta nu mai există: cele șase etape de dedesubt spun deja
+    // unde se află fiecare tichet, iar „Deschise / Închise" doar dubla filtrarea.
+    const randStari = content.querySelector('#tabRow');
+    if (randStari) randStari.innerHTML = tabs.map((t) =>
       `<button class="status-pill ${activeTab === t.key ? 'active' : ''}" data-tab="${t.key}">${t.label}<span class="status-pill-count">${buckets[t.key].length}</span></button>`
     ).join('');
     content.querySelectorAll('#tabRow .status-pill').forEach((btn) => {
