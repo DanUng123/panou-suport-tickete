@@ -146,6 +146,7 @@ function stageStatusLabel(stage, section) {
     return_awb_issued: 'AWB de retur emis',
     in_transit_to_client: 'În drum spre client',
     delivered_to_client: 'Livrat la client',
+    refund_done: 'Retur finalizat',
   };
   return map[stage] || 'Neridicat încă';
 }
@@ -188,6 +189,8 @@ function stageLocationLabel(stage, section) {
     return_awb_issued: 'La service',
     in_transit_to_client: 'În drum spre client',
     delivered_to_client: 'La client',
+    // la un retur finalizat marfa a rămas la noi; banii sunt partea care a plecat
+    refund_done: 'La depozit',
   };
   return map[stage] || 'Neridicat încă';
 }
@@ -200,6 +203,7 @@ function stageDotColor(stage) {
     return_awb_issued: 'var(--status-open)',
     in_transit_to_client: 'var(--status-in_progress)',
     delivered_to_client: 'var(--status-resolved)',
+    refund_done: 'var(--status-resolved)',
   };
   return map[stage] || 'var(--text-dim)';
 }
@@ -1736,7 +1740,7 @@ async function renderServiceReturnList(route, section) {
   // stare locala (nu mai citim din URL la fiecare click -- doar la incarcarea initiala)
   const LOCATION_KEYS_BY_SECTION = {
     service: ['cereri', 'picked', 'inservice', 'returned'],
-    retur: ['cereri', 'picked', 'waitingIban', 'readyRefund'],
+    retur: ['cereri', 'awbEmis', 'ridicate', 'receptionate', 'readyRefund', 'finalizate'],
   };
   // Cererile venite din formularul public intra in secțiune ÎNAINTE de a exista
   // un AWB — coletul nu a fost încă ridicat, deci nu se potrivesc în niciunul
@@ -1796,17 +1800,24 @@ async function renderServiceReturnList(route, section) {
     // nu doar de starea curierului -- mutarea in "Gata de Retur" se intampla
     // automat doar dupa salvarea datelor bancare (vezi butonul din tichet)
     if (section === 'retur') {
+      // Drumul unui retur, pas cu pas: cererea intra, se emite AWB-ul, curierul
+      // ridica coletul, coletul ajunge la depozit, se salveaza datele bancare,
+      // iar tiparirea etichetei de rambursare il scoate din coada.
       const locationBuckets = {
         cereri: allTickets.filter(eCerereNoua),
-        picked: allTickets.filter((t) => t.pickupAwbNumber && ['pickup_awb_issued', 'in_transit_to_service'].includes(t.stage)),
-        waitingIban: allTickets.filter((t) => t.stage === 'at_service' && !t.refundIban),
+        awbEmis: allTickets.filter((t) => t.pickupAwbNumber && t.stage === 'pickup_awb_issued'),
+        ridicate: allTickets.filter((t) => t.stage === 'in_transit_to_service'),
+        receptionate: allTickets.filter((t) => t.stage === 'at_service' && !t.refundIban),
         readyRefund: allTickets.filter((t) => t.stage === 'at_service' && t.refundIban),
+        finalizate: allTickets.filter((t) => t.stage === 'refund_done'),
       };
       const locationTabs = [
         { key: 'cereri', label: 'Cereri noi' },
-        { key: 'picked', label: 'Colete Ridicate' },
-        { key: 'waitingIban', label: 'In așteptare IBAN' },
-        { key: 'readyRefund', label: 'Gata de Retur' },
+        { key: 'awbEmis', label: 'AWB retur emis' },
+        { key: 'ridicate', label: 'Colete ridicate' },
+        { key: 'receptionate', label: 'Colete recepționate' },
+        { key: 'readyRefund', label: 'Gata de retur' },
+        { key: 'finalizate', label: 'Retur finalizat' },
       ];
       content.querySelector('#locationRow').innerHTML = locationTabs.map((t) =>
         `<button class="status-pill ${activeLocation === t.key ? 'active' : ''}" data-loc="${t.key}">${t.label}<span class="status-pill-count">${locationBuckets[t.key].length}</span></button>`
@@ -2260,9 +2271,11 @@ async function paintTicketDrawer(ticket) {
                       <button class="btn btn-sm manual-move-option" data-stage="at_service" style="width:100%;justify-content:flex-start;margin-bottom:4px;">In Service</button>
                       <button class="btn btn-sm manual-move-option" data-stage="delivered_to_client" style="width:100%;justify-content:flex-start;">Inapoi la Client</button>
                     ` : `
-                      <button class="btn btn-sm manual-move-option" data-stage="pickup_awb_issued" style="width:100%;justify-content:flex-start;margin-bottom:4px;">Colete Ridicate</button>
-                      <button class="btn btn-sm manual-move-option" data-stage="at_service" style="width:100%;justify-content:flex-start;margin-bottom:4px;">In așteptare IBAN</button>
-                      <button class="btn btn-sm manual-move-option" data-stage="at_service" data-require-iban="1" style="width:100%;justify-content:flex-start;">Gata de Retur</button>
+                      <button class="btn btn-sm manual-move-option" data-stage="pickup_awb_issued" style="width:100%;justify-content:flex-start;margin-bottom:4px;">AWB retur emis</button>
+                      <button class="btn btn-sm manual-move-option" data-stage="in_transit_to_service" style="width:100%;justify-content:flex-start;margin-bottom:4px;">Colete ridicate</button>
+                      <button class="btn btn-sm manual-move-option" data-stage="at_service" style="width:100%;justify-content:flex-start;margin-bottom:4px;">Colete recepționate</button>
+                      <button class="btn btn-sm manual-move-option" data-stage="at_service" data-require-iban="1" style="width:100%;justify-content:flex-start;margin-bottom:4px;">Gata de retur</button>
+                      <button class="btn btn-sm manual-move-option" data-stage="refund_done" data-require-iban="1" style="width:100%;justify-content:flex-start;">Retur finalizat</button>
                     `}
                   </div>
                 </div>

@@ -2147,7 +2147,9 @@ async function handleApi(req, res, pathname, query) {
       const ticket = db.getTicket(currentAgent.companyId, setStageMatch[1]);
       if (!ticket) return sendJSON(res, 404, { error: 'Tichet negăsit' });
       const body = await readBody(req);
-      const ALLOWED_MANUAL_STAGES = ['pickup_awb_issued', 'at_service', 'delivered_to_client'];
+      // „refund_done" e aici ca sa se poata corecta manual un retur marcat
+      // gresit ca finalizat (sau invers, revenind la „at_service")
+      const ALLOWED_MANUAL_STAGES = ['pickup_awb_issued', 'in_transit_to_service', 'at_service', 'delivered_to_client', 'refund_done'];
       if (!ALLOWED_MANUAL_STAGES.includes(body.stage)) {
         return sendJSON(res, 400, { error: 'Etapă invalidă.' });
       }
