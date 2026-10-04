@@ -1,6 +1,16 @@
 /* ===========================================================
-   Panou Suport — identitate vizuală
-   Paletă: dark navy (slate) de fundal + accent albastru.
+   Easy-Ticket — identitate vizuală
+   ===========================================================
+   Paleta de bază, aceeași pe ambele teme:
+
+     mov închis   #2A143D   chenarul aplicației (meniu), textul pe alb
+     portocaliu   #F36F21   accentul: butoane, linkuri, elementul activ
+     verde        #36B37E   stare rezolvată, confirmări
+     gri-ardezie  #3C4858   text secundar pe fond deschis
+     alb / #FAFBFE          suprafețele temei luminoase
+
+   Tema întunecată așază aceleași culori pe un fond mov-închis, ca aplicația
+   să arate ca același produs indiferent de temă.
    Mono (IBM Plex Mono) pentru ID-uri/date, Inter pentru UI.
    =========================================================== */
 
@@ -12,34 +22,49 @@
 [hidden] { display: none !important; }
 
 :root {
-  --bg: #0a0f1c;
-  --surface: #0d1321;
-  --surface-card: #0c1222;
-  --surface-header: #111827;
-  --surface-raised: #161f2e;
-  --surface-hover: #1e2941;
-  --border: #212d42;
-  --border-light: #2c3a55;
-  --text: #e2e8f0;
-  --text-secondary: #94a3b8;
-  --text-dim: #64748b;
-  --accent: #3b82f6;
-  --accent-dim: #1a2b4c;
-  --accent-border: #1f428b;
+  --bg: #170b23;
+  --surface: #1e0f2f;
+  --surface-card: #1c0e2c;
+  --surface-header: #241337;
+  --surface-raised: #2a143d;
+  --surface-hover: #37204d;
+  --border: #33204a;
+  --border-light: #4a3263;
+  --text: #f1eaf7;
+  --text-secondary: #b5a6c6;
+  --text-dim: #8878a0;
+  --accent: #f36f21;
+  --accent-dim: #3d1f10;
+  --accent-border: #7a3b12;
   --accent-text: #ffffff;
-  --accent-glow: rgba(59,130,246,0.10);
+  --accent-glow: rgba(243,111,33,0.10);
+
+  /* Meniul lateral. Pe tema întunecată e la fel cu restul aplicației; pe cea
+     luminoasă rămâne mov, ca în identitatea de bază — de-aia are jetoane ale
+     lui, în loc să citească direct --surface. */
+  --meniu-fundal: var(--surface);
+  --meniu-chenar: var(--border);
+  --meniu-text: var(--text-secondary);
+  --meniu-text-tare: var(--text);
+  --meniu-text-sters: var(--text-dim);
+  --meniu-hover: var(--surface-hover);
+  --meniu-activ-fundal: var(--accent-dim);
+  --meniu-activ-chenar: var(--accent-border);
+  --meniu-pictograma: var(--surface-hover);
 
   --status-open: #f59e0b;
   --status-in_progress: #38bdf8;
-  --status-waiting: #a78bfa;
-  --status-resolved: #34d399;
-  --status-closed: #64748b;
+  --status-waiting: #c4a6ff;
+  --status-resolved: #36b37e;
+  --status-closed: #8878a0;
   --status-pink: #ec4899;
 
-  --priority-urgent: #f87171;
-  --priority-high: #f59e0b;
+  /* Urgentul stă deliberat departe de portocaliul accentului: dacă ar fi tot
+     portocaliu, un tichet urgent s-ar pierde printre butoanele obișnuite. */
+  --priority-urgent: #fb7185;
+  --priority-high: #fbbf24;
   --priority-medium: #38bdf8;
-  --priority-low: #64748b;
+  --priority-low: #8878a0;
 
   --font-ui: 'Inter', system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
@@ -51,8 +76,8 @@
      lumină din capul unui element apăsat și umbra ferestrelor plutitoare.
      Pe fond deschis, amândouă trebuie altfel — de-aia sunt jetoane. */
   --luciu-sus: rgba(255,255,255,0.04);
-  --umbra-mare: 0 8px 24px rgba(0,0,0,0.35);
-  --umbra-mica: 0 4px 16px rgba(0,0,0,0.30);
+  --umbra-mare: 0 8px 24px rgba(0,0,0,0.40);
+  --umbra-mica: 0 4px 16px rgba(0,0,0,0.32);
   /* Fundalul insignelor discrete (etapă, termen) — o spoială peste suprafață. */
   --insigna-fundal: rgba(255,255,255,0.06);
 }
@@ -73,38 +98,50 @@
    — aceeași familie de griuri, verificată pe ecranele clienților.
    --------------------------------------------------------------------------- */
 :root[data-tema="luminoasa"] {
-  --bg: #f4f6f8;
+  --bg: #fafbfe;
   --surface: #ffffff;
   --surface-card: #ffffff;
   --surface-header: #ffffff;
-  --surface-raised: #eef0f4;
-  --surface-hover: #e4e8ee;
-  --border: #e2e5ea;
-  --border-light: #cbd2dc;
-  --text: #14181f;
-  --text-secondary: #4a5463;
+  --surface-raised: #f1f3f9;
+  --surface-hover: #e7eaf3;
+  --border: #e3e7f0;
+  --border-light: #c9d0df;
+  --text: #2a143d;
+  --text-secondary: #3c4858;
   --text-dim: #6b7484;
   --accent-dim: color-mix(in srgb, var(--accent) 12%, #ffffff);
   --accent-border: color-mix(in srgb, var(--accent) 45%, #ffffff);
-  --accent-glow: rgba(59,130,246,0.08);
+  --accent-glow: rgba(243,111,33,0.08);
+
+  /* Meniul rămâne mov și pe fond deschis — e singura bucată de interfață care
+     nu urmează tema, pentru că el ține identitatea produsului. */
+  --meniu-fundal: #2a143d;
+  --meniu-chenar: #3c2254;
+  --meniu-text: #c5b5d4;
+  --meniu-text-tare: #ffffff;
+  --meniu-text-sters: #9b87ae;
+  --meniu-hover: #3b2152;
+  --meniu-activ-fundal: rgba(243,111,33,0.18);
+  --meniu-activ-chenar: rgba(243,111,33,0.55);
+  --meniu-pictograma: rgba(255,255,255,0.08);
 
   /* Culorile de stare rămân aceleași nuanțe, dar cele deschise nu se mai văd
      pe alb: le închidem exact atât cât să rămână lizibile. */
   --status-open: #b45309;
   --status-in_progress: #0369a1;
   --status-waiting: #6d28d9;
-  --status-resolved: #0f8a5f;
+  --status-resolved: #1a8a5e;
   --status-closed: #64748b;
   --status-pink: #be185d;
-  --priority-urgent: #c0392b;
+  --priority-urgent: #be123c;
   --priority-high: #b45309;
   --priority-medium: #0369a1;
   --priority-low: #64748b;
 
   --luciu-sus: rgba(0,0,0,0.03);
-  --umbra-mare: 0 8px 24px rgba(15,23,42,0.12);
-  --umbra-mica: 0 4px 16px rgba(15,23,42,0.10);
-  --insigna-fundal: rgba(15,23,42,0.05);
+  --umbra-mare: 0 8px 24px rgba(42,20,61,0.12);
+  --umbra-mica: 0 4px 16px rgba(42,20,61,0.10);
+  --insigna-fundal: rgba(42,20,61,0.06);
 }
 
 * { box-sizing: border-box; }
@@ -141,7 +178,7 @@ a { color: inherit; text-decoration: none; }
   align-items: center;
   justify-content: center;
   background:
-    radial-gradient(circle at 20% 20%, rgba(59,130,246,0.08), transparent 40%),
+    radial-gradient(circle at 20% 20%, rgba(243,111,33,0.08), transparent 40%),
     var(--bg);
 }
 
@@ -238,16 +275,16 @@ a { color: inherit; text-decoration: none; }
 }
 .btn:hover { background: var(--surface-hover); border-color: var(--border-light); }
 
-.btn-outline-green { background: transparent; border-color: rgba(52,211,153,0.45); color: var(--status-resolved); }
-.btn-outline-green:hover { background: rgba(52,211,153,0.12); border-color: var(--status-resolved); }
-.btn-outline-red { background: transparent; border-color: rgba(248,113,113,0.45); color: var(--priority-urgent); }
-.btn-outline-red:hover { background: rgba(248,113,113,0.12); border-color: var(--priority-urgent); }
+.btn-outline-green { background: transparent; border-color: rgba(54,179,126,0.45); color: var(--status-resolved); }
+.btn-outline-green:hover { background: rgba(54,179,126,0.12); border-color: var(--status-resolved); }
+.btn-outline-red { background: transparent; border-color: rgba(251,113,133,0.45); color: var(--priority-urgent); }
+.btn-outline-red:hover { background: rgba(251,113,133,0.12); border-color: var(--priority-urgent); }
 .btn-outline-blue { background: transparent; border-color: rgba(56,189,248,0.45); color: var(--status-in_progress); }
 .btn-outline-blue:hover { background: rgba(56,189,248,0.12); border-color: var(--status-in_progress); }
 .btn-outline-amber { background: transparent; border-color: rgba(245,158,11,0.45); color: var(--status-open); }
 .btn-outline-amber:hover { background: rgba(245,158,11,0.12); border-color: var(--status-open); }
-.btn-solid-green { background: rgba(52,211,153,0.16); border-color: rgba(52,211,153,0.4); color: var(--status-resolved); font-weight: 600; }
-.btn-solid-green:hover { background: rgba(52,211,153,0.26); }
+.btn-solid-green { background: rgba(54,179,126,0.16); border-color: rgba(54,179,126,0.4); color: var(--status-resolved); font-weight: 600; }
+.btn-solid-green:hover { background: rgba(54,179,126,0.26); }
 .btn-solid-pink { background: rgba(244,114,182,0.16); border-color: rgba(244,114,182,0.4); color: #f472b6; font-weight: 600; }
 .btn-solid-pink:hover { background: rgba(244,114,182,0.26); }
 .btn-primary {
@@ -263,8 +300,8 @@ a { color: inherit; text-decoration: none; }
 .btn-sm { padding: 6px 10px; font-size: 14px; }
 
 .error-msg {
-  background: rgba(248,113,113, 0.12);
-  border: 1px solid rgba(248,113,113, 0.4);
+  background: rgba(251,113,133, 0.12);
+  border: 1px solid rgba(251,113,133, 0.4);
   color: #fca5a5;
   padding: 8px 12px;
   border-radius: 8px;
@@ -277,8 +314,8 @@ a { color: inherit; text-decoration: none; }
 .sidebar {
   width: var(--sidebar-w);
   flex-shrink: 0;
-  background: var(--surface);
-  border-right: 1px solid var(--border);
+  background: var(--meniu-fundal);
+  border-right: 1px solid var(--meniu-chenar);
   display: flex;
   flex-direction: column;
   padding: 20px 14px;
@@ -296,10 +333,10 @@ a { color: inherit; text-decoration: none; }
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--text-dim);
+  color: var(--meniu-text-sters);
   margin-bottom: 5px;
 }
-.brand .name { font-weight: 700; font-size: 19.5px; color: var(--text); letter-spacing: -0.01em; }
+.brand .name { font-weight: 700; font-size: 19.5px; color: var(--meniu-text-tare); letter-spacing: -0.01em; }
 
 .nav { display: flex; flex-direction: column; gap: 2px; }
 .nav-item {
@@ -308,26 +345,26 @@ a { color: inherit; text-decoration: none; }
   gap: 11px;
   padding: 9px 11px;
   border-radius: 8px;
-  color: var(--text-secondary);
+  color: var(--meniu-text);
   font-size: 15.5px;
   font-weight: 500;
   cursor: pointer;
   border: 1px solid transparent;
 }
-.nav-item:hover { background: var(--surface-hover); color: var(--text); }
+.nav-item:hover { background: var(--meniu-hover); color: var(--meniu-text-tare); }
 .nav-item.active {
-  background: var(--accent-dim);
-  color: var(--text);
-  border-color: var(--accent-border);
+  background: var(--meniu-activ-fundal);
+  color: var(--meniu-text-tare);
+  border-color: var(--meniu-activ-chenar);
   font-weight: 600;
 }
 .nav-item .nav-icon {
   width: 30px; height: 30px; padding: 6px; box-sizing: border-box;
-  border-radius: 9px; background: var(--surface-hover); flex-shrink: 0; opacity: 1;
+  border-radius: 9px; background: var(--meniu-pictograma); flex-shrink: 0; opacity: 1;
 }
-.nav-item.active .nav-icon { background: var(--insigna-fundal); opacity: 1; }
+.nav-item.active .nav-icon { background: var(--meniu-pictograma); opacity: 1; }
 .page-header .nav-icon { width: 30px; height: 30px; flex-shrink: 0; }
-.nav-item .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-dim); }
+.nav-item .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--meniu-text-sters); }
 .nav-item.active .dot { background: var(--accent); }
 
 .nav-new {
@@ -342,8 +379,9 @@ a { color: inherit; text-decoration: none; }
   gap: 10px;
   padding: 10px;
   border-radius: 8px;
-  background: var(--surface-raised);
-  border: 1px solid var(--border);
+  background: var(--meniu-hover);
+  border: 1px solid var(--meniu-chenar);
+  color: var(--meniu-text-tare);
 }
 .avatar {
   width: 30px; height: 30px;
@@ -358,12 +396,12 @@ a { color: inherit; text-decoration: none; }
 }
 .agent-card .info { flex: 1; min-width: 0; }
 .agent-card .agent-name { font-size: 14.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.agent-card .agent-role { font-size: 12.5px; color: var(--text-secondary); text-transform: capitalize; }
+.agent-card .agent-role { font-size: 12.5px; color: var(--meniu-text); text-transform: capitalize; }
 .agent-card .logout-btn {
-  background: none; border: none; color: var(--text-dim); cursor: pointer;
+  background: none; border: none; color: var(--meniu-text); cursor: pointer;
   padding: 4px; border-radius: 4px; font-size: 17px; line-height: 1;
 }
-.agent-card .logout-btn:hover { color: var(--priority-urgent); background: var(--surface-hover); }
+.agent-card .logout-btn:hover { color: var(--priority-urgent); background: rgba(255,255,255,0.10); }
 
 .main {
   flex: 1;
@@ -678,10 +716,10 @@ a { color: inherit; text-decoration: none; }
 .badge-status-open { background: rgba(245,158,11,0.14); color: var(--status-open); }
 .badge-status-in_progress { background: rgba(56,189,248,0.14); color: var(--status-in_progress); }
 .badge-status-waiting { background: rgba(167,139,250,0.14); color: var(--status-waiting); }
-.badge-status-resolved { background: rgba(52,211,153,0.14); color: var(--status-resolved); }
+.badge-status-resolved { background: rgba(54,179,126,0.14); color: var(--status-resolved); }
 .badge-status-closed { background: rgba(100,116,139,0.18); color: var(--text-secondary); }
 
-.badge-priority-urgent { background: rgba(248,113,113,0.14); color: var(--priority-urgent); }
+.badge-priority-urgent { background: rgba(251,113,133,0.14); color: var(--priority-urgent); }
 .badge-priority-high { background: rgba(245,158,11,0.14); color: var(--priority-high); }
 .badge-priority-medium { background: rgba(56,189,248,0.14); color: var(--priority-medium); }
 .badge-priority-low { background: rgba(100,116,139,0.18); color: var(--text-secondary); }
@@ -724,13 +762,13 @@ a { color: inherit; text-decoration: none; }
   border-color: var(--border-light);
 }
 .status-pill.active {
-  background: rgba(59,130,246,0.05);
+  background: rgba(243,111,33,0.05);
   border-color: var(--accent);
   color: var(--text);
 }
 .status-pill-filled-green {
-  background: rgba(52,211,153,0.16) !important;
-  border-color: rgba(52,211,153,0.4) !important;
+  background: rgba(54,179,126,0.16) !important;
+  border-color: rgba(54,179,126,0.4) !important;
   color: var(--status-resolved) !important;
   font-weight: 600;
 }
@@ -751,7 +789,7 @@ a { color: inherit; text-decoration: none; }
   line-height: 1.5;
 }
 .status-pill.active .status-pill-count {
-  background: rgba(59,130,246,0.18);
+  background: rgba(243,111,33,0.18);
   color: var(--accent);
 }
 
@@ -1248,8 +1286,8 @@ a { color: inherit; text-decoration: none; }
   max-width: 100%;
   padding: 3px 9px;
   border-radius: 8px;
-  background: rgba(52,211,153,0.12);
-  border: 1px solid rgba(52,211,153,0.35);
+  background: rgba(54,179,126,0.12);
+  border: 1px solid rgba(54,179,126,0.35);
   color: var(--status-resolved);
   font-family: var(--font-mono);
   font-size: 12.5px;
@@ -1552,7 +1590,7 @@ a { color: inherit; text-decoration: none; }
 .filters-search-row input[type="text"]:focus,
 .period-custom-inputs input[type="date"]:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+  box-shadow: 0 0 0 3px rgba(243,111,33,0.15);
   outline: none;
 }
 
@@ -1641,7 +1679,7 @@ a { color: inherit; text-decoration: none; }
 .field-compact input:focus, .field-compact select:focus,
 .comment-form textarea:focus, .admin-inline-form input:focus, .admin-inline-form select:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+  box-shadow: 0 0 0 3px rgba(243,111,33,0.15);
   outline: none;
 }
 .form-card { padding: 24px 26px; }
@@ -1975,7 +2013,7 @@ a { color: inherit; text-decoration: none; }
   gap: 14px;
   padding: 32px 16px;
   background:
-    radial-gradient(circle at 20% 20%, rgba(59,130,246,0.08), transparent 40%),
+    radial-gradient(circle at 20% 20%, rgba(243,111,33,0.08), transparent 40%),
     var(--bg);
 }
 
@@ -2207,7 +2245,7 @@ a { color: inherit; text-decoration: none; }
 }
 .link-formular input:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+  box-shadow: 0 0 0 3px rgba(243,111,33,0.15);
   outline: none;
 }
 .link-formular .btn { flex-shrink: 0; text-decoration: none; }
@@ -2646,10 +2684,16 @@ html.mod-integrat #app { min-height: 0; display: block; }
 /* ---- chemare finală ---- */
 .pg-final {
   text-align: center; padding: 64px 36px; margin: 20px 0 80px;
-  border: 1px solid var(--accent-border); border-radius: 18px;
-  background: var(--accent-dim);
+  border: 1px solid #3c2254; border-radius: 18px;
+  background: #2a143d; color: #ffffff;
 }
-.pg-final h2 { font-size: 27px; margin-bottom: 12px; }
+.pg-final h2 { font-size: 27px; margin-bottom: 12px; color: #ffffff; }
+.pg-final .pg-intro { color: rgba(255,255,255,0.78); }
+/* Butonul secundar, pe fond mov: contur deschis în loc de suprafața temei. */
+.pg-final .btn:not(.btn-primary) {
+  background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.28); color: #ffffff;
+}
+.pg-final .btn:not(.btn-primary):hover { background: rgba(255,255,255,0.16); border-color: rgba(255,255,255,0.45); }
 
 @media (max-width: 1000px) {
   .pg-grila-4 { grid-template-columns: repeat(2, 1fr); }
@@ -2679,7 +2723,7 @@ html.mod-integrat #app { min-height: 0; display: block; }
    ========================================================================= */
 
 .ct-banda {
-  background: var(--accent);
+  background: #2a143d;
   color: #ffffff;
   padding: 54px 24px 58px;
   text-align: center;

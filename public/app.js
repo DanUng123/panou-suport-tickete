@@ -1151,7 +1151,7 @@ async function renderPlatformAdminPanel() {
       `;
       const rowsHtml = companies.map((c) => `
         <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);font-size:13px;">
-          <div style="flex:1.5;min-width:0;font-weight:500;">${escapeHtml(c.name)}${c.isTestAccount ? ' <span class="badge" style="background:rgba(59,130,246,0.15);color:var(--accent);font-size:10.5px;">contul tău</span>' : ''}</div>
+          <div style="flex:1.5;min-width:0;font-weight:500;">${escapeHtml(c.name)}${c.isTestAccount ? ' <span class="badge" style="background:rgba(243,111,33,0.15);color:var(--accent);font-size:10.5px;">contul tău</span>' : ''}</div>
           <div style="flex:1;min-width:0;color:var(--text-secondary);">${escapeHtml(fmtDate(c.createdAt))}</div>
           <div style="flex:1.3;min-width:0;">
             ${c.lastLoginAt
@@ -1161,7 +1161,7 @@ async function renderPlatformAdminPanel() {
           </div>
           <div style="flex:0.7;min-width:0;color:var(--text-secondary);">${c.agentCount}</div>
           <div style="flex:0.8;min-width:0;">
-            <span class="badge" style="background:${c.active ? 'rgba(52,211,153,0.18)' : 'rgba(248,113,113,0.18)'};color:${c.active ? 'var(--status-resolved)' : 'var(--priority-urgent)'};">${c.active ? '✓ Activă' : '✕ Dezactivată'}</span>
+            <span class="badge" style="background:${c.active ? 'rgba(54,179,126,0.18)' : 'rgba(251,113,133,0.18)'};color:${c.active ? 'var(--status-resolved)' : 'var(--priority-urgent)'};">${c.active ? '✓ Activă' : '✕ Dezactivată'}</span>
           </div>
           ${c.isTestAccount
             ? '<div style="flex-shrink:0;width:110px;font-size:11px;color:var(--text-dim);">protejat</div>'
@@ -1200,9 +1200,9 @@ async function renderPlatformAdminPanel() {
 const ETICHETE_STATUS_MESAJ = { nou: 'Nou', citit: 'Citit', rezolvat: 'Rezolvat' };
 
 function culoareStatusMesaj(status) {
-  if (status === 'rezolvat') return 'background:rgba(52,211,153,0.18);color:var(--status-resolved);';
+  if (status === 'rezolvat') return 'background:rgba(54,179,126,0.18);color:var(--status-resolved);';
   if (status === 'citit') return 'background:var(--insigna-fundal);color:var(--text-secondary);';
-  return 'background:rgba(59,130,246,0.18);color:var(--accent);';
+  return 'background:rgba(243,111,33,0.18);color:var(--accent);';
 }
 
 async function renderPlatformMessagesPanel() {
@@ -1573,7 +1573,7 @@ function renderForgotPassword(statusMsg, isError) {
         </div>
         <h1>Am uitat parola</h1>
         <p class="sub">Introdu emailul contului tău — dacă există, primești un link de resetare.</p>
-        ${statusMsg ? `<div class="${isError ? 'error-msg' : 'hint'}" style="${isError ? '' : 'background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.3);border-radius:8px;padding:10px 12px;margin-bottom:14px;'}">${escapeHtml(statusMsg)}</div>` : ''}
+        ${statusMsg ? `<div class="${isError ? 'error-msg' : 'hint'}" style="${isError ? '' : 'background:rgba(54,179,126,0.1);border:1px solid rgba(54,179,126,0.3);border-radius:8px;padding:10px 12px;margin-bottom:14px;'}">${escapeHtml(statusMsg)}</div>` : ''}
         <form id="forgot-form">
           <div class="field">
             <label for="fpEmail">Email</label>
@@ -1826,7 +1826,7 @@ function renderShell(activeRoute, contentNode) {
         <div class="nav-item" data-route="#/schimb">${NAV_ICONS.schimb}Colet la Schimb</div>
         ${isPlatformAdmin ? `<div class="nav-item" data-route="#/administrare-platforma" style="color:var(--accent);">${NAV_ICONS.admin}Administrare Platformă</div>` : ''}
         ${isPlatformAdmin ? `<div class="nav-item" data-route="#/administrare-platforma-clienti" style="color:var(--accent);"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20a8 8 0 0 1 16 0"/></svg>Clienți (toate companiile)</div>` : ''}
-        ${isPlatformAdmin ? `<div class="nav-item" data-route="#/administrare-platforma-mesaje" style="color:var(--accent);"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v14H4z"/><path d="M4 7l8 6 8-6"/></svg>Mesaje de contact<span id="navMesajeBadge" class="badge" style="display:none;margin-left:8px;background:rgba(59,130,246,0.2);color:var(--accent);"></span></div>` : ''}
+        ${isPlatformAdmin ? `<div class="nav-item" data-route="#/administrare-platforma-mesaje" style="color:var(--accent);"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v14H4z"/><path d="M4 7l8 6 8-6"/></svg>Mesaje de contact<span id="navMesajeBadge" class="badge" style="display:none;margin-left:8px;background:rgba(243,111,33,0.2);color:var(--accent);"></span></div>` : ''}
       </nav>
       <div class="sidebar-spacer"></div>
       <nav class="nav" style="border-top:1px solid var(--border);padding-top:8px;margin-bottom:4px;">
@@ -2778,7 +2778,7 @@ async function paintTicketDrawer(ticket) {
               <span class="badge badge-priority-${ticket.priority}">${PRIORITY_LABELS[ticket.priority]}</span>
               ${ticket.section === 'service' ? '<span class="badge badge-status-in_progress">🔧 Service</span>' : ''}
               ${ticket.section === 'retur' ? '<span class="badge badge-priority-urgent">↩ Retur</span>' : ''}
-              ${ticket.refundPaidAt ? '<span class="badge" style="background:rgba(52,211,153,0.18);color:var(--status-resolved);border:1px solid rgba(52,211,153,0.4);">✓ Bani Returnați</span>' : ''}
+              ${ticket.refundPaidAt ? '<span class="badge" style="background:rgba(54,179,126,0.18);color:var(--status-resolved);border:1px solid rgba(54,179,126,0.4);">✓ Bani Returnați</span>' : ''}
               ${ticket.stage ? `<span class="badge" style="background:var(--insigna-fundal);"><span class="status-pill-dot" style="background:${stageDotColor(ticket.stage)};"></span>${stageStatusLabel(ticket.stage, ticket.section)}</span>` : ''}
               ${computeDeadline(ticket) ? `<span class="badge" style="background:var(--insigna-fundal);color:${isPastDeadline(ticket) ? 'var(--priority-urgent)' : 'var(--text-secondary)'};">⏱ ${fmtShortDate(computeDeadline(ticket))}</span>` : ''}
               ${relatedOrder ? `<span class="badge badge-status-waiting" id="relatedOrderLink" style="cursor:pointer;">📦 Comandă #${relatedOrder.mpId}</span>` : ''}

@@ -74,6 +74,21 @@ function sistemulEDeschis() {
   try { return window.matchMedia('(prefers-color-scheme: light)').matches; } catch (e) { return false; }
 }
 
+/*
+ * Site-ul public e mereu luminos, indiferent ce temă și-a ales operatorul în
+ * aplicație. Motivul e simplu: paginile de prezentare sunt vitrina, iar o
+ * vitrină trebuie să arate la fel pentru toată lumea. Preferința de temă
+ * rămâne salvată și își face efectul imediat ce se intră în panou.
+ */
+const RUTE_PUBLICE = [
+  '', '#', '#/', '#/acasa', '#/ce-este', '#/preturi', '#/despre', '#/contact',
+  '#/termeni', '#/confidentialitate', '#/cookies', '#/login', '#/signup',
+];
+
+function eRutaPublica(hash) {
+  return RUTE_PUBLICE.includes((hash || '').split('?')[0]);
+}
+
 /** Pune pe <html> tema REALĂ, cea pe care o înțelege foaia de stil. */
 function aplicaTema(preferinta) {
   // Formularul clientului nu se atinge — nici cel integrat în magazin, nici cel
@@ -82,6 +97,10 @@ function aplicaTema(preferinta) {
   if (document.documentElement.classList.contains('mod-integrat')) return;
   const cale = location.pathname + location.hash;
   if (cale.includes('/cerere/')) return;
+  if (eRutaPublica(location.hash)) {
+    document.documentElement.dataset.tema = 'luminoasa';
+    return;
+  }
   const pref = TEME_POSIBILE.includes(preferinta) ? preferinta : temaPreferata();
   const reala = pref === 'sistem' ? (sistemulEDeschis() ? 'luminoasa' : 'intunecata') : pref;
   document.documentElement.dataset.tema = reala;
@@ -94,6 +113,10 @@ function salveazaTema(preferinta) {
 }
 
 aplicaTema(temaPreferata());
+
+// Navigarea în aplicație se face prin hash, fără reîncărcare: fără ascultătorul
+// ăsta, cineva care intră din panou pe „Acasă" ar duce tema întunecată cu el.
+window.addEventListener('hashchange', () => aplicaTema(temaPreferata()));
 
 // dacă utilizatorul a ales „ca în sistem", urmărim schimbarea lui (de pildă
 // trecerea automată la tema întunecată seara) fără să fie nevoie de reîncărcare
