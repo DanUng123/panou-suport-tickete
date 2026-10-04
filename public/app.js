@@ -511,43 +511,181 @@ function renderMarketingShell(activeRoute, innerHtml) {
   return page;
 }
 
+const PG_CIFRE = [
+  { cifra: '6', text: 'etape urmărite automat pe fiecare retur' },
+  { cifra: '5', text: 'curieri integrați, cu AWB și tracking' },
+  { cifra: '3', text: 'fluxuri dedicate: service, retur, schimb' },
+  { cifra: '0', text: 'AWB-uri tastate manual de operator' },
+];
+
+const PG_PROBLEME = [
+  {
+    pictograma: '⧉',
+    titlu: 'Patru panouri pentru un retur',
+    text: 'Deschizi magazinul pentru comandă, panoul curierului pentru AWB, un Excel pentru IBAN-uri și mailul pentru client. Pentru fiecare cerere, de la zero.',
+  },
+  {
+    pictograma: '?',
+    titlu: '„Unde e coletul meu?"',
+    text: 'Clientul sună, iar răspunsul e într-un alt tab. Până îl găsești, ai pus pe pauză tot ce aveai în lucru.',
+  },
+  {
+    pictograma: '✎',
+    titlu: 'Date rescrise de mână',
+    text: 'Adresa, telefonul și codul poștal se copiază din comandă în formularul curierului. O literă greșită și coletul nu se ridică.',
+  },
+  {
+    pictograma: '⏱',
+    titlu: 'Rambursări care stau pe loc',
+    text: 'IBAN-urile se adună în mesaje și fișiere separate, se verifică manual, iar plata se amână până se strânge „un lot mai mare".',
+  },
+];
+
+const PG_SOLUTII = [
+  'Cererea clientului intră singură ca tichet, cu datele comenzii deja completate.',
+  'AWB-ul de ridicare se poate emite automat, în clipa cererii, fără operator.',
+  'Etapele avansează din statusul real de la curier — nu din presupuneri.',
+  'IBAN-ul se validează la introducere, iar plata iese ca fișier pentru bancă.',
+  'Etichetele de retur se scot în bloc: fișier bancar, Excel sau PDF, cum preferi.',
+  'Comenzile din magazin se sincronizează automat, la interval regulat.',
+];
+
+const PG_FLUX = [
+  { titlu: 'Cereri noi', text: 'Clientul completează formularul tău public. Tichetul apare cu comanda atașată.' },
+  { titlu: 'AWB retur emis', text: 'Eticheta de ridicare se generează la curierul ales — automat sau dintr-un clic.' },
+  { titlu: 'Colete ridicate', text: 'Curierul a luat coletul de la client. Etapa se mută singură.' },
+  { titlu: 'Colete recepționate', text: 'Coletul a ajuns în depozitul tău și poate fi verificat.' },
+  { titlu: 'Gata de retur', text: 'Datele bancare sunt salvate și validate. Tichetul intră în lotul de plată.' },
+  { titlu: 'Retur finalizat', text: 'Plata a plecat, tichetul se închide. Istoricul rămâne complet.' },
+];
+
 function renderMarketingHome() {
   renderMarketingShell('#/acasa', `
-    <section style="max-width:920px;margin:0 auto;padding:80px 24px 60px;text-align:center;">
-      <div style="display:inline-block;padding:6px 14px;border-radius:20px;background:var(--surface-raised);color:var(--accent);font-size:12.5px;font-weight:600;margin-bottom:20px;">Platformă pentru magazine online din România</div>
-      <h1 style="font-size:40px;line-height:1.15;margin-bottom:16px;">Suport clienți, comenzi și curieri — totul dintr-un singur loc</h1>
-      <p style="font-size:16px;color:var(--text-secondary);max-width:640px;margin:0 auto 32px;">Easy-Ticket unește tichetele de service, retur și schimb, sincronizarea automată a comenzilor din magazinul tău și generarea AWB-urilor — într-o singură platformă, gândită pentru echipe reale.</p>
-      <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
-        <button class="btn btn-primary" id="heroSignupBtn" style="padding:12px 24px;font-size:14.5px;">Creează cont gratuit</button>
-        <button class="btn" id="heroPricingBtn" style="padding:12px 24px;font-size:14.5px;">Vezi prețurile</button>
-      </div>
-    </section>
-
-    <section style="max-width:1080px;margin:0 auto;padding:20px 24px 80px;">
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px;">
-        ${[
-          { icon: '🎫', title: 'Tichete Service, Retur, Schimb', desc: 'Fiecare tip de solicitare are propriul flux, cu etape urmărite automat, de la ridicare până la finalizare.' },
-          { icon: '📦', title: 'Curieri conectați direct', desc: 'AWB-uri generate și urmărite automat la curierii cu care lucrezi, fără să părăsești platforma.' },
-          { icon: '🔄', title: 'Comenzi sincronizate automat', desc: 'Comenzile din magazinul tău intră singure, la interval regulat, fără introducere manuală.' },
-        ].map((f) => `
-          <div class="panel">
-            <div style="font-size:26px;margin-bottom:10px;">${f.icon}</div>
-            <div style="font-weight:600;margin-bottom:6px;">${f.title}</div>
-            <div style="font-size:13px;color:var(--text-secondary);line-height:1.5;">${f.desc}</div>
+    <div class="pg">
+      <section class="pg-erou">
+        <div>
+          <span class="pg-eticheta">Pentru magazine online din România</span>
+          <h1>Returul care îți lua o dimineață <em>se rezolvă singur</em></h1>
+          <p class="pg-erou-lead">Easy-Ticket leagă cererile clienților, comenzile din magazin și curierii într-un singur flux. Cererea intră, AWB-ul se emite, etapele avansează, banii se întorc la client — fără să sari între patru panouri.</p>
+          <div class="pg-butoane">
+            <button class="btn btn-primary" id="heroSignupBtn">Creează cont gratuit</button>
+            <button class="btn" id="heroFluxBtn">Vezi cum funcționează</button>
           </div>
-        `).join('')}
-      </div>
-    </section>
+          <div class="pg-sub-butoane">Fără card la înscriere · devii manager pe contul companiei tale</div>
+        </div>
+        <div class="pg-maceta" aria-hidden="true">
+          <div class="pg-maceta-cap">
+            <div>
+              <div class="pg-maceta-cod">RET-10428</div>
+              <div class="pg-maceta-titlu">Retur · produs nepotrivit</div>
+            </div>
+            <span class="pg-insigna pg-insigna-verde">Gata de retur</span>
+          </div>
+          <div class="pg-pas gata"><span class="pg-pas-bulina">✓</span><span class="pg-pas-text">Cerere nouă primită</span></div>
+          <div class="pg-pas gata"><span class="pg-pas-bulina">✓</span><span class="pg-pas-text">AWB retur emis automat</span></div>
+          <div class="pg-pas gata"><span class="pg-pas-bulina">✓</span><span class="pg-pas-text">Colet ridicat de la client</span></div>
+          <div class="pg-pas gata"><span class="pg-pas-bulina">✓</span><span class="pg-pas-text">Colet recepționat în depozit</span></div>
+          <div class="pg-pas acum"><span class="pg-pas-bulina"></span><span class="pg-pas-text">Gata de retur · IBAN validat</span></div>
+          <div class="pg-pas"><span class="pg-pas-bulina"></span><span class="pg-pas-text">Retur finalizat</span></div>
+          <div class="pg-maceta-subsol">
+            <span>Rambursare 249,90 RON</span>
+            <span class="pg-insigna">Inclus în lotul de plată</span>
+          </div>
+        </div>
+      </section>
+    </div>
 
-    <section style="text-align:center;padding:20px 24px 90px;">
-      <h2 style="font-size:24px;margin-bottom:12px;">Gata să simplifici procesul de suport?</h2>
-      <p style="color:var(--text-secondary);margin-bottom:24px;">Pornește gratuit — devii automat manager pe contul companiei tale.</p>
-      <button class="btn btn-primary" id="ctaSignupBtn" style="padding:12px 24px;font-size:14.5px;">Creează cont gratuit</button>
-    </section>
+    <div class="pg-banda">
+      <div class="pg">
+        <div class="pg-banda-grila">
+          ${PG_CIFRE.map((c) => `
+            <div>
+              <div class="pg-cifra">${c.cifra}</div>
+              <div class="pg-cifra-text">${c.text}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+
+    <div class="pg">
+      <section class="pg-sectiune pg-sectiune-centrat">
+        <span class="pg-eticheta">Situația de dinainte</span>
+        <h2 class="pg-titlu-sectiune">Recunoști ziua asta?</h2>
+        <p class="pg-intro">Nu lipsesc instrumentele. Lipsește legătura dintre ele — și timpul se duce exact în golurile dintre două panouri.</p>
+        <div class="pg-grila-carduri pg-grila-4">
+          ${PG_PROBLEME.map((p) => `
+            <div class="pg-card pg-card-rosu">
+              <div class="pg-card-pictograma">${p.pictograma}</div>
+              <h3>${p.titlu}</h3>
+              <p>${p.text}</p>
+            </div>
+          `).join('')}
+        </div>
+      </section>
+
+      <section class="pg-sectiune">
+        <div class="pg-doua-coloane">
+          <div>
+            <span class="pg-eticheta">Cum rezolvă Easy-Ticket</span>
+            <h2 class="pg-titlu-sectiune">Un singur loc, de la cerere până la banii înapoi</h2>
+            <p class="pg-intro">Fiecare pas care putea fi automatizat este automatizat. Ce rămâne pentru operator sunt deciziile, nu tastarea.</p>
+            <ul class="pg-lista-bife">
+              ${PG_SOLUTII.map((s) => `<li><span class="pg-bifa">✓</span><span>${s}</span></li>`).join('')}
+            </ul>
+          </div>
+          <div class="pg-grila-carduri" style="margin-top:0;grid-template-columns:1fr;">
+            <div class="pg-card">
+              <div class="pg-card-pictograma">⇄</div>
+              <h3>Trei fluxuri, nu un singur „tichet"</h3>
+              <p>Service, Retur și Colet la Schimb au etape proprii, pentru că în realitate nu seamănă între ele. La schimb, ambele AWB-uri se urmăresc separat.</p>
+            </div>
+            <div class="pg-card">
+              <div class="pg-card-pictograma">⬓</div>
+              <h3>Curierii, direct din tichet</h3>
+              <p>Emiți eticheta, vezi traseul, descarci PDF-ul — fără să deschizi panoul curierului. Credențialele tale rămân criptate, pe compania ta.</p>
+            </div>
+            <div class="pg-card">
+              <div class="pg-card-pictograma">⌁</div>
+              <h3>Plățile pregătite pentru bancă</h3>
+              <p>IBAN validat la introducere, banca recunoscută automat, iar lotul de rambursări iese ca fișier de import — nu ca plăți introduse una câte una.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="pg-sectiune pg-sectiune-centrat" id="pgFlux">
+        <span class="pg-eticheta">Pas cu pas</span>
+        <h2 class="pg-titlu-sectiune">Cum arată un retur în Easy-Ticket</h2>
+        <p class="pg-intro">Șase etape, aceleași pentru toată echipa. Oricine deschide tichetul vede imediat unde s-a ajuns.</p>
+        <div class="pg-flux">
+          ${PG_FLUX.map((p, i) => `
+            <div class="pg-flux-pas">
+              <div class="pg-flux-numar">PASUL ${i + 1}</div>
+              <div class="pg-flux-titlu">${p.titlu}</div>
+              <div class="pg-flux-text">${p.text}</div>
+            </div>
+          `).join('')}
+        </div>
+      </section>
+
+      <section class="pg-final">
+        <h2>Începe cu primul tichet</h2>
+        <p class="pg-intro" style="margin:0 auto 26px;">Îți creezi contul, conectezi magazinul și curierul, iar următoarea cerere de retur intră singură în platformă.</p>
+        <div class="pg-butoane" style="justify-content:center;">
+          <button class="btn btn-primary" id="ctaSignupBtn">Creează cont gratuit</button>
+          <button class="btn" id="ctaPricingBtn">Vezi prețurile</button>
+        </div>
+      </section>
+    </div>
   `);
   document.getElementById('heroSignupBtn').addEventListener('click', () => navigate('#/signup'));
-  document.getElementById('heroPricingBtn').addEventListener('click', () => navigate('#/preturi'));
+  document.getElementById('heroFluxBtn').addEventListener('click', () => {
+    const tinta = document.getElementById('pgFlux');
+    if (tinta) tinta.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
   document.getElementById('ctaSignupBtn').addEventListener('click', () => navigate('#/signup'));
+  document.getElementById('ctaPricingBtn').addEventListener('click', () => navigate('#/preturi'));
 }
 
 function renderMarketingWhatIs() {

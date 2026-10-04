@@ -2513,3 +2513,158 @@ html.mod-integrat #app { min-height: 0; display: block; }
 .tema-descriere { font-size: 13px; line-height: 1.45; color: var(--text-secondary); }
 .tema-bifa { color: var(--accent); font-weight: 700; opacity: 0; flex-shrink: 0; }
 .tema-optiune.aleasa .tema-bifa { opacity: 1; }
+
+/* =========================================================================
+   Pagina principală (marketing)
+   =========================================================================
+   Totul desenat cu jetoanele temei, ca pagina să arate la fel de bine și pe
+   fond întunecat, și pe cel deschis. Fără imagini: machetele sunt HTML, deci
+   se încarcă instantaneu și rămân clare pe orice ecran.
+   ========================================================================= */
+
+.pg { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+.pg-eticheta {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 13px; border-radius: 999px;
+  background: var(--accent-dim); border: 1px solid var(--accent-border);
+  color: var(--accent); font-size: 12.5px; font-weight: 600;
+}
+.pg-titlu-sectiune { font-size: 28px; line-height: 1.25; margin: 14px 0 10px; }
+.pg-intro { color: var(--text-secondary); font-size: 15px; line-height: 1.6; max-width: 620px; }
+
+/* ---- erou ---- */
+.pg-erou {
+  display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 56px; align-items: center;
+  padding: 72px 0 64px;
+}
+.pg-erou h1 { font-size: 44px; line-height: 1.1; letter-spacing: -0.5px; margin: 20px 0 18px; }
+.pg-erou h1 em { font-style: normal; color: var(--accent); }
+.pg-erou-lead { font-size: 16.5px; line-height: 1.65; color: var(--text-secondary); max-width: 540px; }
+.pg-butoane { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 30px; }
+.pg-butoane .btn { padding: 13px 24px; font-size: 14.5px; }
+.pg-sub-butoane { margin-top: 16px; font-size: 13px; color: var(--text-dim); }
+
+/* ---- macheta din dreapta: un tichet, cum arată el în platformă ---- */
+.pg-maceta {
+  background: var(--surface-card); border: 1px solid var(--border);
+  border-radius: 16px; padding: 18px; box-shadow: var(--umbra-mare);
+}
+.pg-maceta-cap {
+  display: flex; align-items: center; justify-content: space-between;
+  padding-bottom: 14px; margin-bottom: 14px; border-bottom: 1px solid var(--border);
+}
+.pg-maceta-cod { font-family: var(--font-mono); font-size: 12.5px; color: var(--text-dim); }
+.pg-maceta-titlu { font-size: 15px; font-weight: 600; margin-top: 3px; }
+.pg-insigna {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
+  background: var(--insigna-fundal); color: var(--text-secondary);
+}
+.pg-insigna-verde { background: color-mix(in srgb, var(--status-resolved) 16%, transparent); color: var(--status-resolved); }
+.pg-pas { display: flex; align-items: flex-start; gap: 11px; padding: 7px 0; }
+.pg-pas-bulina {
+  width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0; margin-top: 1px;
+  border: 2px solid var(--border-light); display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 700; color: var(--accent-text);
+}
+.pg-pas.gata .pg-pas-bulina { background: var(--status-resolved); border-color: var(--status-resolved); }
+.pg-pas.acum .pg-pas-bulina { border-color: var(--accent); background: var(--accent-dim); }
+.pg-pas-text { font-size: 13.5px; color: var(--text-secondary); }
+.pg-pas.acum .pg-pas-text { color: var(--text); font-weight: 600; }
+.pg-maceta-subsol {
+  margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  font-size: 12.5px; color: var(--text-dim);
+}
+
+/* ---- banda cu cifre ---- */
+.pg-banda {
+  border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.pg-banda-grila {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 28px; padding: 30px 0; text-align: center;
+}
+.pg-cifra { font-size: 30px; font-weight: 700; color: var(--accent); line-height: 1.1; }
+.pg-cifra-text { font-size: 13px; color: var(--text-secondary); margin-top: 6px; }
+
+/* ---- secțiuni ---- */
+.pg-sectiune { padding: 72px 0; }
+.pg-sectiune-centrat { text-align: center; }
+.pg-sectiune-centrat .pg-intro { margin: 0 auto; }
+.pg-grila-carduri {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+  gap: 18px; margin-top: 38px; text-align: left;
+}
+.pg-card {
+  background: var(--surface-card); border: 1px solid var(--border);
+  border-radius: 12px; padding: 20px;
+}
+.pg-card-pictograma {
+  width: 38px; height: 38px; border-radius: 10px; margin-bottom: 13px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent-dim); color: var(--accent);
+  font-size: 18px; font-weight: 600; line-height: 1;
+}
+.pg-grila-4 { grid-template-columns: repeat(4, 1fr); }
+.pg-card-rosu .pg-card-pictograma {
+  background: color-mix(in srgb, var(--priority-urgent) 14%, transparent);
+  color: var(--priority-urgent);
+}
+.pg-card h3 { font-size: 15.5px; margin: 0 0 7px; }
+.pg-card p { font-size: 13.5px; line-height: 1.55; color: var(--text-secondary); margin: 0; }
+
+/* ---- „cum rezolvă", două coloane ---- */
+.pg-doua-coloane {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: center;
+}
+.pg-lista-bife { list-style: none; padding: 0; margin: 26px 0 0; }
+.pg-lista-bife li {
+  display: flex; align-items: flex-start; gap: 11px;
+  padding: 9px 0; font-size: 14.5px; color: var(--text);
+}
+.pg-bifa {
+  width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0; margin-top: 1px;
+  background: var(--status-resolved); color: #ffffff;
+  display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700;
+}
+
+/* ---- fluxul returului ---- */
+.pg-flux { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 40px; }
+.pg-flux-pas {
+  background: var(--surface-card); border: 1px solid var(--border);
+  border-radius: 12px; padding: 16px; text-align: left; position: relative;
+}
+.pg-flux-numar {
+  font-family: var(--font-mono); font-size: 11.5px; font-weight: 600;
+  color: var(--accent); margin-bottom: 8px;
+}
+.pg-flux-titlu { font-size: 13.5px; font-weight: 600; margin-bottom: 5px; }
+.pg-flux-text { font-size: 12.5px; line-height: 1.5; color: var(--text-secondary); }
+
+/* ---- chemare finală ---- */
+.pg-final {
+  text-align: center; padding: 64px 36px; margin: 20px 0 80px;
+  border: 1px solid var(--accent-border); border-radius: 18px;
+  background: var(--accent-dim);
+}
+.pg-final h2 { font-size: 27px; margin-bottom: 12px; }
+
+@media (max-width: 1000px) {
+  .pg-grila-4 { grid-template-columns: repeat(2, 1fr); }
+  .pg-flux { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 900px) {
+  .pg-erou { grid-template-columns: 1fr; gap: 40px; padding: 48px 0 44px; }
+  .pg-erou h1 { font-size: 34px; }
+  .pg-doua-coloane { grid-template-columns: 1fr; gap: 32px; }
+  .pg-sectiune { padding: 52px 0; }
+}
+@media (max-width: 560px) {
+  .pg { padding: 0 18px; }
+  .pg-grila-4, .pg-flux { grid-template-columns: 1fr; }
+  .pg-erou h1 { font-size: 29px; }
+  .pg-butoane .btn { width: 100%; }
+  .pg-final { padding: 44px 22px; }
+}
