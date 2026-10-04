@@ -429,6 +429,43 @@ const DATE_FIRMA = {
   platitorTva: null,    // true / false -- lasat null cat timp nu e confirmat
 };
 
+// Datele afisate pe pagina de contact. Fiecare camp lasat gol pur si simplu
+// NU se afiseaza -- mai bine lipseste o casuta decat sa scrie „Telefon: —".
+// Se completeaza aici, intr-un singur loc, si apar si in subsolul site-ului.
+const DATE_CONTACT = {
+  email: '',            // ex: contact@easy-ticket.ro
+  telefon: '',          // ex: +40 7xx xxx xxx
+  whatsapp: '',         // numarul de WhatsApp, daca e altul decat telefonul
+  adresa: '',           // punctul de lucru, pe un singur rand sau cu virgule
+  program: '',          // ex: Luni – Vineri: 9:00 – 18:00
+  timpRaspuns: 'Răspundem în maximum o zi lucrătoare.',
+};
+
+const PICTOGRAME_CONTACT = {
+  email: '<path d="M3 5h14v10H3z"/><path d="M3 6l7 5 7-5"/>',
+  telefon: '<path d="M5 3h3l1.5 4-2 1.5a10 10 0 004 4L13 10.5 17 12v3a1 1 0 01-1.1 1A13 13 0 014 4.1 1 1 0 015 3z"/>',
+  whatsapp: '<path d="M4 16l1-3a6.5 6.5 0 112.5 2.4z"/><path d="M7.5 8.2c.3 1.6 1.8 3.1 3.4 3.4l.8-1 1.6.7v1.1c-2.3.4-4.9-2-5.3-4.3z"/>',
+  adresa: '<path d="M10 17s5-4.6 5-8a5 5 0 10-10 0c0 3.4 5 8 5 8z"/><circle cx="10" cy="9" r="1.8"/>',
+  program: '<circle cx="10" cy="10" r="7"/><path d="M10 6v4l2.5 2"/>',
+};
+
+const PLANURI_CONTACT = [
+  'Nu știu încă — vreau o recomandare',
+  'Start — până la 2 agenți',
+  'Business — până la 5 agenți',
+  'Enterprise — agenți nelimitați',
+];
+
+const PLATFORME_CONTACT = [
+  'Nu am încă magazin online',
+  'MerchantPro',
+  'GoMag',
+  'Shopify',
+  'WooCommerce',
+  'PrestaShop',
+  'Magazin propriu / altceva',
+];
+
 /** Randurile de date ale firmei, in ordinea in care se citesc firesc. */
 function randuriDateFirma() {
   const f = DATE_FIRMA;
@@ -761,29 +798,131 @@ function renderMarketingAbout() {
   `);
 }
 
+/** O casuta din coloana de contact. Nu randeaza nimic daca valoarea lipseste. */
+function canalContact({ pictograma, eticheta, valoare, href, detaliu }) {
+  if (!valoare) return '';
+  const continut = href
+    ? `<a href="${escapeHtml(href)}">${escapeHtml(valoare)}</a>`
+    : escapeHtml(valoare);
+  return `
+    <div class="ct-canal">
+      <div class="ct-canal-pictograma">
+        <svg width="19" height="19" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+             stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${PICTOGRAME_CONTACT[pictograma]}</svg>
+      </div>
+      <div style="min-width:0;">
+        <div class="ct-canal-eticheta">${escapeHtml(eticheta)}</div>
+        <div class="ct-canal-valoare">${continut}</div>
+        ${detaliu ? `<div class="ct-canal-detaliu">${escapeHtml(detaliu)}</div>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+/** Datele de facturare, in forma de tabel — ce trebuie sa stie un client juridic. */
+function cardFacturare() {
+  const f = DATE_FIRMA;
+  const randuri = [
+    ['Denumire', f.denumire],
+    ['CUI', f.cui ? (f.platitorTva === false ? `${f.cui} (neplătitor de TVA)` : f.cui) : ''],
+    ['Reg. Comerțului', f.regCom],
+    ['Sediu social', f.sediu],
+    ['IBAN', f.iban ? `${f.iban}${f.banca ? ` — ${f.banca}` : ''}` : ''],
+  ].filter(([, v]) => v);
+  if (!randuri.length) return '';
+  return `
+    <div class="ct-facturare">
+      <div class="ct-facturare-titlu">Date de facturare</div>
+      <dl style="margin:0;">
+        ${randuri.map(([k, v]) => `
+          <div class="ct-facturare-rand"><dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd></div>
+        `).join('')}
+      </dl>
+    </div>
+  `;
+}
+
 function renderMarketingContact() {
+  const c = DATE_CONTACT;
+  const canale = [
+    canalContact({ pictograma: 'email', eticheta: 'Email', valoare: c.email, href: c.email ? `mailto:${c.email}` : '' }),
+    canalContact({ pictograma: 'telefon', eticheta: 'Telefon', valoare: c.telefon, href: c.telefon ? `tel:${c.telefon.replace(/\s/g, '')}` : '' }),
+    canalContact({ pictograma: 'whatsapp', eticheta: 'WhatsApp', valoare: c.whatsapp, href: c.whatsapp ? `https://wa.me/${c.whatsapp.replace(/[^\d]/g, '')}` : '' }),
+    canalContact({ pictograma: 'adresa', eticheta: 'Punct de lucru', valoare: c.adresa }),
+    canalContact({ pictograma: 'program', eticheta: 'Program', valoare: c.program, detaliu: c.timpRaspuns }),
+  ].join('');
+
   const page = renderMarketingShell('#/contact', `
-    <section style="max-width:560px;margin:0 auto;padding:60px 24px;">
-      <h1 style="font-size:32px;margin-bottom:12px;">Contact</h1>
-      <p style="color:var(--text-secondary);font-size:14.5px;margin-bottom:28px;">Ai o întrebare despre platformă? Scrie-ne — revenim cât mai curând.</p>
-      ${blocDateFirma('Datele firmei')}
-      <form id="contactForm">
-        <div class="field">
-          <label>Nume</label>
-          <input type="text" id="contactName" required />
-        </div>
-        <div class="field">
-          <label>Email</label>
-          <input type="email" id="contactEmail" required />
-        </div>
-        <div class="field">
-          <label>Mesaj</label>
-          <textarea id="contactMessage" style="min-height:120px;" required></textarea>
-        </div>
-        <button class="btn btn-primary btn-block" type="submit">Trimite mesajul</button>
-        <div id="contactResult" style="margin-top:14px;"></div>
-      </form>
-    </section>
+    <div class="ct-banda">
+      <div class="ct-firimituri"><a href="#/acasa">Acasă</a> &rsaquo; Contact</div>
+      <h1>Hai să discutăm</h1>
+      <p>Spune-ne cum arată procesul tău de retur și service acum, iar noi îți arătăm concret ce s-ar automatiza în Easy-Ticket.</p>
+    </div>
+
+    <div class="ct-corp">
+      <div>
+        <h2 class="ct-titlu-coloana">Date de contact</h2>
+        ${canale || `<p style="font-size:13.5px;color:var(--text-secondary);line-height:1.6;">
+          Momentan cel mai rapid mod de a ne scrie e formularul din dreapta — revenim pe email.</p>`}
+        ${cardFacturare()}
+      </div>
+
+      <div class="ct-card-formular">
+        <h2>Cere o prezentare</h2>
+        <p class="ct-sub">Completează formularul și te contactăm cu o recomandare potrivită pentru volumul și fluxul tău de lucru.</p>
+        <form id="contactForm" novalidate>
+          <div class="ct-perechi">
+            <div class="field">
+              <label for="contactName">Nume și prenume *</label>
+              <input type="text" id="contactName" autocomplete="name" placeholder="Ion Popescu" required />
+            </div>
+            <div class="field">
+              <label for="contactCompany">Firma</label>
+              <input type="text" id="contactCompany" autocomplete="organization" placeholder="Magazinul meu SRL" />
+            </div>
+            <div class="field">
+              <label for="contactEmail">Email *</label>
+              <input type="email" id="contactEmail" autocomplete="email" placeholder="ion@firma.ro" required />
+            </div>
+            <div class="field">
+              <label for="contactPhone">Telefon</label>
+              <input type="tel" id="contactPhone" autocomplete="tel" placeholder="+40 7xx xxx xxx" />
+            </div>
+          </div>
+          <div class="field">
+            <label for="contactPlan">Plan de interes</label>
+            <select id="contactPlan">
+              ${PLANURI_CONTACT.map((p) => `<option>${escapeHtml(p)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field">
+            <label for="contactPlatform">Platforma magazinului</label>
+            <select id="contactPlatform">
+              <option value="">Selectează platforma</option>
+              ${PLATFORME_CONTACT.map((p) => `<option>${escapeHtml(p)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field">
+            <label for="contactMessage">Mesaj *</label>
+            <textarea id="contactMessage" style="min-height:120px;"
+              placeholder="Câte retururi ai pe lună, cu ce curieri lucrezi și ce te încurcă cel mai tare acum." required></textarea>
+          </div>
+
+          <label class="ct-acord" for="contactConsent">
+            <input type="checkbox" id="contactConsent" />
+            <span>Am citit și sunt de acord cu <a href="#/confidentialitate">Politica de confidențialitate</a> și cu prelucrarea datelor mele în scopul primirii unui răspuns la această solicitare. *</span>
+          </label>
+          <label class="ct-acord" for="contactNewsletter">
+            <input type="checkbox" id="contactNewsletter" />
+            <span>Accept să primesc ocazional informații utile și noutăți despre Easy-Ticket (opțional; mă pot dezabona oricând).</span>
+          </label>
+
+          <button class="btn btn-primary btn-block" type="submit" style="margin-top:20px;padding:12px;">Trimite mesajul</button>
+          <div class="ct-nota-final">Datele tale rămân la noi — nu le partajăm cu terți.</div>
+          <div class="ct-rezultat" id="contactResult" style="margin-top:14px;"></div>
+        </form>
+      </div>
+    </div>
   `);
 
   page.querySelector('#contactForm').addEventListener('submit', async (e) => {
@@ -794,12 +933,27 @@ function renderMarketingContact() {
       name: page.querySelector('#contactName').value.trim(),
       email: page.querySelector('#contactEmail').value.trim(),
       message: page.querySelector('#contactMessage').value.trim(),
+      company: page.querySelector('#contactCompany').value.trim(),
+      phone: page.querySelector('#contactPhone').value.trim(),
+      plan: page.querySelector('#contactPlan').value,
+      platform: page.querySelector('#contactPlatform').value,
+      consent: page.querySelector('#contactConsent').checked,
+      newsletter: page.querySelector('#contactNewsletter').checked,
     };
+    // Verificam aici ca sa dam un mesaj in romana, nu bula implicita a browserului.
+    if (!payload.name || !payload.email || !payload.message) {
+      resultBox.innerHTML = '<div class="error-msg">Completează numele, emailul și mesajul.</div>';
+      return;
+    }
+    if (!payload.consent) {
+      resultBox.innerHTML = '<div class="error-msg">Bifează acordul pentru prelucrarea datelor ca să putem răspunde.</div>';
+      return;
+    }
     btn.disabled = true;
     btn.textContent = 'Se trimite…';
     try {
       await api('/api/public/contact', { method: 'POST', body: JSON.stringify(payload) });
-      resultBox.innerHTML = `<div class="hint" style="background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.3);border-radius:8px;padding:10px 12px;">✓ Mesaj trimis — revenim cât mai curând.</div>`;
+      resultBox.innerHTML = '<div class="ct-succes">✓ Mesajul a plecat. Îți răspundem pe email în maximum o zi lucrătoare.</div>';
       page.querySelector('#contactForm').reset();
     } catch (err) {
       resultBox.innerHTML = `<div class="error-msg">${escapeHtml(err.message)}</div>`;
@@ -1039,6 +1193,154 @@ async function renderPlatformAdminPanel() {
     }
   }
   loadCompanies();
+}
+
+// ---------- mesajele din formularul public de contact ----------
+
+const ETICHETE_STATUS_MESAJ = { nou: 'Nou', citit: 'Citit', rezolvat: 'Rezolvat' };
+
+function culoareStatusMesaj(status) {
+  if (status === 'rezolvat') return 'background:rgba(52,211,153,0.18);color:var(--status-resolved);';
+  if (status === 'citit') return 'background:var(--insigna-fundal);color:var(--text-secondary);';
+  return 'background:rgba(59,130,246,0.18);color:var(--accent);';
+}
+
+async function renderPlatformMessagesPanel() {
+  const content = el(`
+    <div>
+      <div class="page-header">
+        <div>
+          <h1>Mesaje de contact</h1>
+          <div class="sub">Tot ce intră prin formularul public de pe site — cine a scris, ce plan îl interesează și ce a cerut.</div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="status-pills-label">Status</div>
+        <div class="status-pills" id="msgPills"></div>
+        <div id="msgListArea" style="margin-top:14px;">Se încarcă…</div>
+      </div>
+    </div>
+  `);
+  renderShell('#/administrare-platforma-mesaje', content);
+
+  let toate = [];
+  let filtru = 'toate';
+  // Ce mesaje sunt desfasurate. Se tine separat de lista, ca o reincarcare
+  // (dupa „citit" sau „rezolvat") sa nu inchida mesajul pe care tocmai il citesti.
+  const desfasurate = new Set();
+
+  function deschideMesaj(m, corp, buton) {
+    const deschis = corp.style.display !== 'none';
+    corp.style.display = deschis ? 'none' : 'block';
+    buton.textContent = deschis ? 'Deschide' : 'Închide';
+    if (deschis) desfasurate.delete(m.id); else desfasurate.add(m.id);
+    // Prima deschidere il scoate din „nou", ca sa nu ramana marcat la nesfarsit.
+    if (!deschis && m.status === 'nou') schimbaStatus(m.id, 'citit', { tacut: true });
+  }
+
+  async function schimbaStatus(id, status, { tacut } = {}) {
+    try {
+      await api(`/api/platform-admin/contact-messages/${id}/status`, {
+        method: 'POST', body: JSON.stringify({ status }),
+      });
+      if (!tacut) showToast(status === 'rezolvat' ? 'Marcat ca rezolvat' : 'Status actualizat');
+      incarca();
+    } catch (e) {
+      showToast('Eroare: ' + e.message);
+    }
+  }
+
+  function deseneaza() {
+    const zona = content.querySelector('#msgListArea');
+    const vizibile = filtru === 'toate' ? toate : toate.filter((m) => m.status === filtru);
+
+    const numara = (s) => (s === 'toate' ? toate.length : toate.filter((m) => m.status === s).length);
+    content.querySelector('#msgPills').innerHTML = ['toate', 'nou', 'citit', 'rezolvat'].map((s) => `
+      <button class="status-pill${filtru === s ? ' active' : ''}" data-status="${s}">
+        ${s === 'toate' ? 'Toate' : ETICHETE_STATUS_MESAJ[s]} <span class="count">${numara(s)}</span>
+      </button>
+    `).join('');
+    content.querySelectorAll('#msgPills .status-pill').forEach((b) => {
+      b.addEventListener('click', () => { filtru = b.dataset.status; deseneaza(); });
+    });
+
+    if (!vizibile.length) {
+      zona.innerHTML = `<div class="hint">${toate.length ? 'Niciun mesaj cu statusul ăsta.' : 'Niciun mesaj primit încă.'}</div>`;
+      return;
+    }
+
+    zona.innerHTML = '';
+    vizibile.forEach((m) => {
+      const detalii = [
+        m.company ? ['Firma', m.company] : null,
+        m.phone ? ['Telefon', m.phone] : null,
+        m.plan ? ['Plan de interes', m.plan] : null,
+        m.platform ? ['Platformă', m.platform] : null,
+        ['Newsletter', m.newsletter ? 'acceptat' : 'nu'],
+      ].filter(Boolean);
+
+      const rand = el(`
+        <div style="border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px;background:var(--surface-card);">
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <span class="badge" style="${culoareStatusMesaj(m.status)}">${ETICHETE_STATUS_MESAJ[m.status] || m.status}</span>
+            <div style="font-weight:600;font-size:13.5px;">${escapeHtml(m.name)}</div>
+            <div style="font-size:12.5px;color:var(--text-secondary);">${escapeHtml(m.email)}</div>
+            <div style="font-size:12px;color:var(--text-dim);margin-left:auto;">${escapeHtml(fmtDateTime(m.createdAt))}</div>
+            <button class="btn btn-sm msg-toggle">${desfasurate.has(m.id) ? 'Închide' : 'Deschide'}</button>
+          </div>
+          <div class="msg-corp" style="display:${desfasurate.has(m.id) ? 'block' : 'none'};margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px 18px;margin-bottom:14px;">
+              ${detalii.map(([k, v]) => `
+                <div>
+                  <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-dim);">${escapeHtml(k)}</div>
+                  <div style="font-size:13px;">${escapeHtml(v)}</div>
+                </div>
+              `).join('')}
+            </div>
+            <div style="font-size:13.5px;line-height:1.6;white-space:pre-wrap;background:var(--surface-raised);border-radius:8px;padding:12px 14px;">${escapeHtml(m.message)}</div>
+            <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;">
+              <a class="btn btn-sm" href="mailto:${escapeHtml(m.email)}?subject=${encodeURIComponent('Re: solicitarea ta pe Easy-Ticket')}">Răspunde pe email</a>
+              ${m.status !== 'rezolvat'
+                ? '<button class="btn btn-sm msg-rezolvat">Marchează rezolvat</button>'
+                : '<button class="btn btn-sm msg-redeschide">Redeschide</button>'}
+            </div>
+          </div>
+        </div>
+      `);
+      const corp = rand.querySelector('.msg-corp');
+      const buton = rand.querySelector('.msg-toggle');
+      buton.addEventListener('click', () => deschideMesaj(m, corp, buton));
+      const bRez = rand.querySelector('.msg-rezolvat');
+      if (bRez) bRez.addEventListener('click', () => schimbaStatus(m.id, 'rezolvat'));
+      const bRed = rand.querySelector('.msg-redeschide');
+      if (bRed) bRed.addEventListener('click', () => schimbaStatus(m.id, 'citit'));
+      zona.appendChild(rand);
+    });
+  }
+
+  async function incarca() {
+    try {
+      const { items } = await api('/api/platform-admin/contact-messages');
+      toate = items;
+      deseneaza();
+      actualizeazaPastilaMesaje();
+    } catch (e) {
+      content.querySelector('#msgListArea').innerHTML = `<div class="error-msg">${escapeHtml(e.message)}</div>`;
+    }
+  }
+  incarca();
+}
+
+/** Numarul de mesaje necitite, afisat langa intrarea din meniu. */
+async function actualizeazaPastilaMesaje() {
+  if (!isPlatformAdmin) return;
+  const tinta = document.getElementById('navMesajeBadge');
+  if (!tinta) return;
+  try {
+    const { noi } = await api('/api/platform-admin/contact-messages');
+    tinta.textContent = noi ? String(noi) : '';
+    tinta.style.display = noi ? 'inline-block' : 'none';
+  } catch (e) { /* meniul merge si fara pastila */ }
 }
 
 async function renderPlatformClientsPanel() {
@@ -1524,6 +1826,7 @@ function renderShell(activeRoute, contentNode) {
         <div class="nav-item" data-route="#/schimb">${NAV_ICONS.schimb}Colet la Schimb</div>
         ${isPlatformAdmin ? `<div class="nav-item" data-route="#/administrare-platforma" style="color:var(--accent);">${NAV_ICONS.admin}Administrare Platformă</div>` : ''}
         ${isPlatformAdmin ? `<div class="nav-item" data-route="#/administrare-platforma-clienti" style="color:var(--accent);"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20a8 8 0 0 1 16 0"/></svg>Clienți (toate companiile)</div>` : ''}
+        ${isPlatformAdmin ? `<div class="nav-item" data-route="#/administrare-platforma-mesaje" style="color:var(--accent);"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v14H4z"/><path d="M4 7l8 6 8-6"/></svg>Mesaje de contact<span id="navMesajeBadge" class="badge" style="display:none;margin-left:8px;background:rgba(59,130,246,0.2);color:var(--accent);"></span></div>` : ''}
       </nav>
       <div class="sidebar-spacer"></div>
       <nav class="nav" style="border-top:1px solid var(--border);padding-top:8px;margin-bottom:4px;">
@@ -1555,6 +1858,8 @@ function renderShell(activeRoute, contentNode) {
   sidebar.querySelector('#logoutBtn').addEventListener('click', logout);
 
   main.appendChild(contentNode);
+  // Pastila cu mesaje necitite se completeaza dupa ce meniul exista in pagina.
+  if (isPlatformAdmin) actualizeazaPastilaMesaje();
   return main;
 }
 
@@ -5643,6 +5948,9 @@ function render() {
   } else if (path === '#/administrare-platforma-clienti') {
     hideDrawer();
     if (isPlatformAdmin) renderPlatformClientsPanel(); else navigate('#/dashboard');
+  } else if (path === '#/administrare-platforma-mesaje') {
+    hideDrawer();
+    if (isPlatformAdmin) renderPlatformMessagesPanel(); else navigate('#/dashboard');
   } else if (path.startsWith('#/tickets/')) {
     renderTicketDetail(path.replace('#/tickets/', ''));
   } else if (path.startsWith('#/orders/')) {

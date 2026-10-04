@@ -524,16 +524,34 @@ async function handleApi(req, res, pathname, query) {
         return sendJSON(res, 429, { error: 'Prea multe mesaje trimise. Încearcă din nou mai târziu.' });
       }
       const body = await readBody(req);
-      const name = (body.name || '').trim();
-      const email = (body.email || '').trim();
-      const message = (body.message || '').trim();
+      const taie = (v, max) => String(v == null ? '' : v).trim().slice(0, max);
+      const name = taie(body.name, 120);
+      const email = taie(body.email, 160);
+      const message = taie(body.message, 5001);
       if (!name || !email || !message) {
-        return sendJSON(res, 400, { error: 'Toate câmpurile sunt obligatorii.' });
+        return sendJSON(res, 400, { error: 'Numele, emailul și mesajul sunt obligatorii.' });
+      }
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+        return sendJSON(res, 400, { error: 'Adresa de email nu pare validă.' });
       }
       if (message.length > 5000) {
         return sendJSON(res, 400, { error: 'Mesajul e prea lung.' });
       }
-      const result = db.createContactMessage({ name, email, message });
+      // Fara acordul explicit nu avem temei sa pastram datele -- deci nici
+      // mesajul. Verificarea se face si pe server, nu doar in formular.
+      if (!body.consent) {
+        return sendJSON(res, 400, { error: 'Trebuie să fii de acord cu prelucrarea datelor pentru a trimite mesajul.' });
+      }
+      const result = db.createContactMessage({
+        name,
+        email,
+        message,
+        company: taie(body.company, 160),
+        phone: taie(body.phone, 40),
+        plan: taie(body.plan, 60),
+        platform: taie(body.platform, 60),
+        newsletter: Boolean(body.newsletter),
+      });
       return sendJSON(res, 201, result);
     }
 
@@ -1091,6 +1109,25 @@ async function handleApi(req, res, pathname, query) {
     if (pathname === '/api/platform-admin/client-companies' && req.method === 'GET') {
       if (!isPlatformAdminRequest(req)) return sendJSON(res, 401, { error: 'Neautentificat' });
       return sendJSON(res, 200, db.listPlatformClientCompanies());
+    }
+
+    // Mesajele din formularul public de contact. Sunt adresate platformei, nu
+    // unui magazin anume, deci stau in zona de administrare a platformei.
+    if (pathname === '/api/platform-admin/contact-messages' && req.method === 'GET') {
+      if (!isPlatformAdminRequest(req)) return sendJSON(res, 401, { error: 'Neautentificat' });
+      return sendJSON(res, 200, {
+        items: db.listContactMessages(),
+        noi: db.countNewContactMessages(),
+      });
+    }
+
+    const statusMesajMatch = pathname.match(/^\/api\/platform-admin\/contact-messages\/([^/]+)\/status$/);
+    if (statusMesajMatch && req.method === 'POST') {
+      if (!isPlatformAdminRequest(req)) return sendJSON(res, 401, { error: 'Neautentificat' });
+      const body = await readBody(req);
+      const ok = db.setContactMessageStatus(statusMesajMatch[1], String(body.status || ''));
+      if (!ok) return sendJSON(res, 400, { error: 'Mesaj negăsit sau status invalid.' });
+      return sendJSON(res, 200, { ok: true, noi: db.countNewContactMessages() });
     }
 
     const toggleCompanyMatch = pathname.match(/^\/api\/platform-admin\/companies\/([^/]+)\/active$/);
