@@ -75,7 +75,7 @@ function sistemulEDeschis() {
 }
 
 /*
- * Site-ul public e mereu luminos, indiferent ce temă și-a ales operatorul în
+ * Site-ul public e mereu întunecat, indiferent ce temă și-a ales operatorul în
  * aplicație. Motivul e simplu: paginile de prezentare sunt vitrina, iar o
  * vitrină trebuie să arate la fel pentru toată lumea. Preferința de temă
  * rămâne salvată și își face efectul imediat ce se intră în panou.
@@ -98,7 +98,7 @@ function aplicaTema(preferinta) {
   const cale = location.pathname + location.hash;
   if (cale.includes('/cerere/')) return;
   if (eRutaPublica(location.hash)) {
-    document.documentElement.dataset.tema = 'luminoasa';
+    document.documentElement.dataset.tema = 'intunecata';
     return;
   }
   const pref = TEME_POSIBILE.includes(preferinta) ? preferinta : temaPreferata();
