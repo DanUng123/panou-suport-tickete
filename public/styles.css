@@ -46,6 +46,65 @@
 
   --radius: 10px;
   --sidebar-w: 232px;
+
+  /* Două efecte care depind de cât de întunecat e fundalul: dunga fină de
+     lumină din capul unui element apăsat și umbra ferestrelor plutitoare.
+     Pe fond deschis, amândouă trebuie altfel — de-aia sunt jetoane. */
+  --luciu-sus: rgba(255,255,255,0.04);
+  --umbra-mare: 0 8px 24px rgba(0,0,0,0.35);
+  --umbra-mica: 0 4px 16px rgba(0,0,0,0.30);
+  /* Fundalul insignelor discrete (etapă, termen) — o spoială peste suprafață. */
+  --insigna-fundal: rgba(255,255,255,0.06);
+}
+
+/* ---------------------------------------------------------------------------
+   Tema luminoasă
+   ---------------------------------------------------------------------------
+   Aceleași jetoane, alte valori. Nimic altceva din foaia de stil nu știe de
+   existența temelor: tot ce desenează interfața citește jetoanele, deci se
+   schimbă singur.
+
+   Atributul de pe <html> e pus de comun.js ÎNAINTE de primul desen, ca să nu
+   clipească ecranul întunecat o fracțiune de secundă. „Ca în sistem" nu apare
+   aici: JavaScript-ul îl traduce în una dintre cele două teme reale și
+   reascultă dacă sistemul se răzgândește.
+
+   Valorile vin din paleta deja folosită de formularul public pe fond deschis
+   — aceeași familie de griuri, verificată pe ecranele clienților.
+   --------------------------------------------------------------------------- */
+:root[data-tema="luminoasa"] {
+  --bg: #f4f6f8;
+  --surface: #ffffff;
+  --surface-card: #ffffff;
+  --surface-header: #ffffff;
+  --surface-raised: #eef0f4;
+  --surface-hover: #e4e8ee;
+  --border: #e2e5ea;
+  --border-light: #cbd2dc;
+  --text: #14181f;
+  --text-secondary: #4a5463;
+  --text-dim: #6b7484;
+  --accent-dim: color-mix(in srgb, var(--accent) 12%, #ffffff);
+  --accent-border: color-mix(in srgb, var(--accent) 45%, #ffffff);
+  --accent-glow: rgba(59,130,246,0.08);
+
+  /* Culorile de stare rămân aceleași nuanțe, dar cele deschise nu se mai văd
+     pe alb: le închidem exact atât cât să rămână lizibile. */
+  --status-open: #b45309;
+  --status-in_progress: #0369a1;
+  --status-waiting: #6d28d9;
+  --status-resolved: #0f8a5f;
+  --status-closed: #64748b;
+  --status-pink: #be185d;
+  --priority-urgent: #c0392b;
+  --priority-high: #b45309;
+  --priority-medium: #0369a1;
+  --priority-low: #64748b;
+
+  --luciu-sus: rgba(0,0,0,0.03);
+  --umbra-mare: 0 8px 24px rgba(15,23,42,0.12);
+  --umbra-mica: 0 4px 16px rgba(15,23,42,0.10);
+  --insigna-fundal: rgba(15,23,42,0.05);
 }
 
 * { box-sizing: border-box; }
@@ -258,7 +317,7 @@ a { color: inherit; text-decoration: none; }
 .nav-item:hover { background: var(--surface-hover); color: var(--text); }
 .nav-item.active {
   background: var(--accent-dim);
-  color: #f1f5f9;
+  color: var(--text);
   border-color: var(--accent-border);
   font-weight: 600;
 }
@@ -266,7 +325,7 @@ a { color: inherit; text-decoration: none; }
   width: 30px; height: 30px; padding: 6px; box-sizing: border-box;
   border-radius: 9px; background: var(--surface-hover); flex-shrink: 0; opacity: 1;
 }
-.nav-item.active .nav-icon { background: rgba(255,255,255,0.10); opacity: 1; }
+.nav-item.active .nav-icon { background: var(--insigna-fundal); opacity: 1; }
 .page-header .nav-icon { width: 30px; height: 30px; flex-shrink: 0; }
 .nav-item .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-dim); }
 .nav-item.active .dot { background: var(--accent); }
@@ -620,12 +679,12 @@ a { color: inherit; text-decoration: none; }
 .badge-status-in_progress { background: rgba(56,189,248,0.14); color: var(--status-in_progress); }
 .badge-status-waiting { background: rgba(167,139,250,0.14); color: var(--status-waiting); }
 .badge-status-resolved { background: rgba(52,211,153,0.14); color: var(--status-resolved); }
-.badge-status-closed { background: rgba(100,116,139,0.18); color: #cbd5e1; }
+.badge-status-closed { background: rgba(100,116,139,0.18); color: var(--text-secondary); }
 
 .badge-priority-urgent { background: rgba(248,113,113,0.14); color: var(--priority-urgent); }
 .badge-priority-high { background: rgba(245,158,11,0.14); color: var(--priority-high); }
 .badge-priority-medium { background: rgba(56,189,248,0.14); color: var(--priority-medium); }
-.badge-priority-low { background: rgba(100,116,139,0.18); color: #cbd5e1; }
+.badge-priority-low { background: rgba(100,116,139,0.18); color: var(--text-secondary); }
 
 /* ---------------- Listă tichete ---------------- */
 
@@ -714,7 +773,7 @@ a { color: inherit; text-decoration: none; }
 .segmented-group .status-pill.active {
   background: var(--surface-raised);
   color: var(--text);
-  box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset;
+  box-shadow: 0 1px 0 var(--luciu-sus) inset;
 }
 .segmented-group .status-pill:hover:not(.active) { background: var(--surface-hover); }
 
@@ -1018,7 +1077,7 @@ a { color: inherit; text-decoration: none; }
   padding: 12px 18px;
   border-radius: 8px;
   font-size: 15px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+  box-shadow: var(--umbra-mare);
   z-index: 50;
   animation: toast-in 0.18s ease;
 }
@@ -2426,3 +2485,31 @@ html.mod-integrat #app { min-height: 0; display: block; }
   .pagina-legala { padding: 36px 18px !important; }
   .pagina-legala h1 { font-size: 26px !important; }
 }
+
+/* ---------------- Alegerea temei (Setări → Temă) ---------------- */
+.tema-lista { display: flex; flex-direction: column; gap: 10px; }
+.tema-optiune {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface-card);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+}
+.tema-optiune:hover { background: var(--surface-hover); }
+.tema-optiune.aleasa {
+  border-color: var(--accent-border);
+  background: var(--accent-dim);
+}
+.tema-pictograma { color: var(--accent); flex-shrink: 0; margin-top: 1px; }
+.tema-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+.tema-titlu { font-size: 14.5px; font-weight: 600; }
+.tema-descriere { font-size: 13px; line-height: 1.45; color: var(--text-secondary); }
+.tema-bifa { color: var(--accent); font-weight: 700; opacity: 0; flex-shrink: 0; }
+.tema-optiune.aleasa .tema-bifa { opacity: 1; }

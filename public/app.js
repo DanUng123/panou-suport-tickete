@@ -1463,7 +1463,7 @@ async function renderDashboard() {
         <span class="badge badge-priority-urgent">Peste 10 zile</span>
         <span class="qid">${escapeHtml(t.sectionCode || t.id)}</span>
         <span class="qsubject">${escapeHtml(t.subject)} — ${escapeHtml(t.requesterName)}</span>
-        <span class="badge" style="background:rgba(255,255,255,0.06);">${stageStatusLabel(t.stage, t.section)}</span>
+        <span class="badge" style="background:var(--insigna-fundal);">${stageStatusLabel(t.stage, t.section)}</span>
       </div>
     `),
     ...unassignedOpen.slice(0, 5).map((t) => `
@@ -2237,8 +2237,8 @@ async function paintTicketDrawer(ticket) {
               ${ticket.section === 'service' ? '<span class="badge badge-status-in_progress">🔧 Service</span>' : ''}
               ${ticket.section === 'retur' ? '<span class="badge badge-priority-urgent">↩ Retur</span>' : ''}
               ${ticket.refundPaidAt ? '<span class="badge" style="background:rgba(52,211,153,0.18);color:var(--status-resolved);border:1px solid rgba(52,211,153,0.4);">✓ Bani Returnați</span>' : ''}
-              ${ticket.stage ? `<span class="badge" style="background:rgba(255,255,255,0.06);"><span class="status-pill-dot" style="background:${stageDotColor(ticket.stage)};"></span>${stageStatusLabel(ticket.stage, ticket.section)}</span>` : ''}
-              ${computeDeadline(ticket) ? `<span class="badge" style="background:rgba(255,255,255,0.06);color:${isPastDeadline(ticket) ? 'var(--priority-urgent)' : 'var(--text-secondary)'};">⏱ ${fmtShortDate(computeDeadline(ticket))}</span>` : ''}
+              ${ticket.stage ? `<span class="badge" style="background:var(--insigna-fundal);"><span class="status-pill-dot" style="background:${stageDotColor(ticket.stage)};"></span>${stageStatusLabel(ticket.stage, ticket.section)}</span>` : ''}
+              ${computeDeadline(ticket) ? `<span class="badge" style="background:var(--insigna-fundal);color:${isPastDeadline(ticket) ? 'var(--priority-urgent)' : 'var(--text-secondary)'};">⏱ ${fmtShortDate(computeDeadline(ticket))}</span>` : ''}
               ${relatedOrder ? `<span class="badge badge-status-waiting" id="relatedOrderLink" style="cursor:pointer;">📦 Comandă #${relatedOrder.mpId}</span>` : ''}
             </div>
             <div class="description">${escapeHtml(ticket.description)}</div>
@@ -2269,7 +2269,7 @@ async function paintTicketDrawer(ticket) {
               ${['service', 'retur'].includes(ticket.section) ? `
                 <div class="thc-actions">
                   <button class="btn btn-sm btn-block" id="manualMoveBtn">↕ Mută tichetul manual</button>
-                  <div id="manualMoveMenu" style="display:none;position:absolute;top:calc(100% + 6px);right:0;left:0;background:var(--surface-raised);border:1px solid var(--border);border-radius:8px;padding:6px;z-index:20;box-shadow:0 4px 16px rgba(0,0,0,0.3);">
+                  <div id="manualMoveMenu" style="display:none;position:absolute;top:calc(100% + 6px);right:0;left:0;background:var(--surface-raised);border:1px solid var(--border);border-radius:8px;padding:6px;z-index:20;box-shadow:var(--umbra-mica);">
                     ${ticket.section === 'service' ? `
                       <button class="btn btn-sm manual-move-option" data-stage="pickup_awb_issued" style="width:100%;justify-content:flex-start;margin-bottom:4px;">Colete Ridicate</button>
                       <button class="btn btn-sm manual-move-option" data-stage="at_service" style="width:100%;justify-content:flex-start;margin-bottom:4px;">In Service</button>
@@ -4119,6 +4119,65 @@ async function renderAdmin(sectiune) {
   paintTab();
 }
 
+// ---------------- Tema interfeței ----------------
+
+const OPTIUNI_TEMA = [
+  {
+    cheie: 'intunecata',
+    pictograma: '<path d="M14.5 11.8A6 6 0 018.2 5.5a6 6 0 106.3 6.3z"/>',
+    titlu: 'Întunecată',
+    descriere: 'Implicit. Potrivită pentru monitorul de birou, toată ziua.',
+  },
+  {
+    cheie: 'luminoasa',
+    pictograma: '<circle cx="10" cy="10" r="3.4"/><path d="M10 2.6v1.8M10 15.6v1.8M17.4 10h-1.8M4.4 10H2.6M15.2 4.8l-1.3 1.3M6.1 13.9l-1.3 1.3M15.2 15.2l-1.3-1.3M6.1 6.1L4.8 4.8"/>',
+    titlu: 'Luminoasă',
+    descriere: 'Potrivită într-o cameră cu lumină puternică sau lângă fereastră.',
+  },
+  {
+    cheie: 'sistem',
+    pictograma: '<rect x="2.5" y="4" width="15" height="9.5" rx="1.2"/><path d="M1 16.5h18"/>',
+    titlu: 'Ca în sistem',
+    descriere: 'Urmează setarea calculatorului sau a telefonului.',
+  },
+];
+
+/** Secțiunea „Temă" din Setări, gata legată. */
+function sectiuneTema() {
+  const alesa = temaPreferata();
+  const sectiune = el(`
+    <section class="panel" id="cardTema">
+      <h2 style="margin:0 0 4px;font-size:16px;">Temă</h2>
+      <div class="hint" style="margin-bottom:16px;">
+        Alege cum arată platforma pe acest calculator. Se aplică imediat și se ține minte doar aici —
+        pe alt calculator sau pe telefon poți alege altfel.
+      </div>
+      <div class="tema-lista">
+        ${OPTIUNI_TEMA.map((t) => `
+          <button type="button" class="tema-optiune${t.cheie === alesa ? ' aleasa' : ''}" data-tema="${t.cheie}">
+            <span class="tema-pictograma">
+              <svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor"
+                   stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${t.pictograma}</svg>
+            </span>
+            <span class="tema-text">
+              <span class="tema-titlu">${escapeHtml(t.titlu)}</span>
+              <span class="tema-descriere">${escapeHtml(t.descriere)}</span>
+            </span>
+            <span class="tema-bifa" aria-hidden="true">✓</span>
+          </button>`).join('')}
+      </div>
+    </section>
+  `);
+
+  sectiune.querySelectorAll('.tema-optiune').forEach((buton) => {
+    buton.addEventListener('click', () => {
+      salveazaTema(buton.dataset.tema);
+      sectiune.querySelectorAll('.tema-optiune').forEach((b) => b.classList.toggle('aleasa', b === buton));
+    });
+  });
+  return sectiune;
+}
+
 // ---------------- Setari companie (credentiale curieri/MerchantPro/GoMag, doar manageri) ----------------
 
 /**
@@ -4156,12 +4215,19 @@ const SECTIUNI_SETARI = [
     descriere: 'Codul de integrat în magazin și regulile după care se fac cererile.',
     pictograma: 'formular',
   },
+  {
+    cheie: 'tema',
+    titlu: 'Temă',
+    descriere: 'Cum arată platforma pe acest calculator — întunecată, luminoasă sau ca în sistem.',
+    pictograma: 'tema',
+  },
 ];
 
 const PICTOGRAME_SETARI = {
   magazin: '<path d="M3 7l1.5-3h11L17 7M3 7h14M3 7v8a1 1 0 001 1h12a1 1 0 001-1V7M7 16v-4h6v4"/>',
   curier: '<path d="M1 5h10v8H1zM11 8h4l3 3v2h-7zM5 16a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM14.5 16a1.5 1.5 0 100-3 1.5 1.5 0 000 3z"/>',
   formular: '<path d="M4 2h9l3 3v13H4zM7 8h6M7 11h6M7 14h4"/>',
+  tema: '<circle cx="10" cy="10" r="7"/><path d="M10 3a7 7 0 000 14z" fill="currentColor" stroke="none"/>',
 };
 
 async function renderSettings(sectiune) {
@@ -5189,6 +5255,15 @@ async function renderSettings(sectiune) {
           </a>`).join('')}
       </div>`);
     body.insertBefore(grila, body.firstChild);
+    return;
+  }
+
+  // Tema nu se încarcă de la server și nu se salvează în contul companiei:
+  // e o alegere a calculatorului de pe care lucrezi. Secțiunea ei se
+  // construiește separat, iar restul cardurilor rămân ascunse.
+  if (activa.cheie === 'tema') {
+    [formIntegrari, formular, retur].forEach((n) => { if (n) n.hidden = true; });
+    body.insertBefore(sectiuneTema(), body.firstChild);
     return;
   }
 
