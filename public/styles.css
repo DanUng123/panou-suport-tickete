@@ -439,10 +439,8 @@ a { color: inherit; text-decoration: none; }
 .stat-tile {
   --tile-accent: var(--text-secondary);
   position: relative;
-  background:
-    radial-gradient(circle at 96% 50%, color-mix(in srgb, var(--tile-accent) 14%, transparent), transparent 62%),
-    var(--surface-card);
-  border: 1px solid color-mix(in srgb, var(--tile-accent) 18%, var(--border));
+  background: var(--surface-card);
+  border: 1px solid color-mix(in srgb, var(--tile-accent) 22%, var(--border));
   border-radius: var(--radius);
   padding: 16px 18px;
   overflow: hidden;
@@ -480,7 +478,7 @@ a { color: inherit; text-decoration: none; }
   border-radius: 50%;
 }
 
-/* ---------------- Buline neon (glow) ---------------- */
+/* ---------------- Buline de stare ---------------- */
 
 .glow-dot {
   display: inline-block;
@@ -495,6 +493,9 @@ a { color: inherit; text-decoration: none; }
   height: 10px;
 }
 
+/* Bulinele sunt doar cercuri pline: fără aură, fără blur. Un ecran cu
+   douăsprezece lumini aprinse nu spune nimic — ochiul nu mai știe unde să se
+   uite. Culoarea singură face aceeași treabă, mai liniștit. */
 .glow-dot,
 .corner-dot,
 .platform-dot,
@@ -502,43 +503,6 @@ a { color: inherit; text-decoration: none; }
 .awb-status-dot,
 .nav-item .dot {
   position: relative;
-  isolation: isolate;
-}
-.glow-dot::before, .glow-dot::after,
-.corner-dot::before, .corner-dot::after,
-.platform-dot::before, .platform-dot::after,
-.status-pill-dot::before, .status-pill-dot::after,
-.awb-status-dot::before, .awb-status-dot::after,
-.nav-item .dot::before, .nav-item .dot::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  background: inherit;
-  pointer-events: none;
-}
-.glow-dot::before,
-.corner-dot::before,
-.platform-dot::before,
-.status-pill-dot::before,
-.awb-status-dot::before,
-.nav-item .dot::before {
-  filter: blur(9px);
-  opacity: 0.6;
-}
-.glow-dot::after,
-.corner-dot::after,
-.platform-dot::after,
-.status-pill-dot::after,
-.awb-status-dot::after,
-.nav-item .dot::after {
-  filter: blur(2.5px);
-  opacity: 0.85;
-}
-
-.badge::before,
-.history-dot {
-  box-shadow: 0 0 6px currentColor;
 }
 
 .dash-grid {
@@ -1937,7 +1901,7 @@ a { color: inherit; text-decoration: none; }
   color: var(--text-dim);
   margin-top: 1px;
 }
-/* bulina preia stilul neon comun, prin .glow-dot -- aici doar culoarea */
+/* bulina preia forma comuna, prin .glow-dot -- aici doar culoarea */
 .dz-dot { background: var(--priority-urgent); margin-top: 7px; }
 
 .dz-row {
