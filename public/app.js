@@ -1707,7 +1707,7 @@ async function renderServiceReturnList(route, section) {
       ${section === 'retur' ? `
         <div id="bulkRefundExportArea" style="display:none;margin-bottom:14px;gap:8px;align-items:center;">
           <button class="btn btn-sm" id="selectAllRefundBtn">Selectează toate</button>
-          <button class="btn btn-sm btn-primary" id="bulkRefundExportBtn">↓ Descarcă date bancare (<span id="bulkRefundCount">0</span> selectate)</button>
+          <button class="btn btn-sm btn-primary" id="bulkRefundExportBtn">↓ Fișier de plăți pentru bancă (<span id="bulkRefundCount">0</span> selectate)</button>
         </div>
       ` : ''}
       <div id="list-body">Se încarcă…</div>
@@ -1958,30 +1958,59 @@ async function renderServiceReturnList(route, section) {
   if (bulkRefundExportBtn) {
     bulkRefundExportBtn.addEventListener('click', async () => {
       if (!selectedRefundTicketIds.size) { showToast('Selectează cel puțin un tichet.'); return; }
-      const selectedTickets = allTickets.filter((t) => selectedRefundTicketIds.has(t.id));
-      const ws = XLSX.utils.json_to_sheet(selectedTickets.map((t) => ({
-        Tichet: t.sectionCode || t.id,
-        Client: t.requesterName || '',
-        IBAN: t.refundIban || '',
-        'Titular cont': t.refundAccountHolder || '',
-        'Banca': t.refundBankName || '',
-        'Sumă (RON)': t.refundAmount != null ? t.refundAmount : '',
-        Motiv: t.refundReason || '',
-      })));
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Date bancare');
-      XLSX.writeFile(wb, `date-bancare-retur-${new Date().toISOString().slice(0, 10)}.xlsx`);
 
+      // Serverul construiește fișierul în formatul băncii și ne spune ce
+      // tichete n-au intrat în el. Marcăm ca plătite DOAR pe cele incluse:
+      // altfel un tichet cu IBAN greșit ar ieși din coadă fără ca banii să fi
+      // plecat vreodată.
+      let rezultat;
       try {
-        const idsToMark = Array.from(selectedRefundTicketIds);
-        await api('/api/tickets/mark-refund-paid-bulk', { method: 'POST', body: JSON.stringify({ ticketIds: idsToMark }) });
-        const markedSet = new Set(idsToMark);
-        allTickets.forEach((t) => { if (markedSet.has(t.id)) t.refundPaidAt = new Date().toISOString(); });
-        showToast(`${idsToMark.length} tichete marcate „Bani Returnați"`);
+        rezultat = await api('/api/tickets/export-plati-banca', {
+          method: 'POST',
+          body: JSON.stringify({ ticketIds: Array.from(selectedRefundTicketIds) }),
+        });
+      } catch (e) {
+        showToast('Eroare: ' + e.message);
+        return;
+      }
+
+      if (rezultat.total) {
+        // BOM, ca Excel să deschidă fișierul cu diacriticele la locul lor
+        const blob = new Blob(['\uFEFF' + rezultat.csv], { type: 'text/csv;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = rezultat.numeFisier;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
+
+      if (rezultat.sarite.length) {
+        const lista = rezultat.sarite.map((s) => `${s.cod}: ${s.motiv}`).join('\n');
+        const unul = rezultat.sarite.length === 1;
+        alert(`${rezultat.total} ${rezultat.total === 1 ? 'plată a intrat' : 'plăți au intrat'} în fișier.\n\n`
+          + (unul
+            ? `Un tichet a rămas pe dinafară și NU a fost marcat ca plătit:`
+            : `${rezultat.sarite.length} tichete au rămas pe dinafară și NU au fost marcate ca plătite:`)
+          + `\n\n${lista}`);
+      }
+
+      if (!rezultat.incluse.length) { renderAll(); return; }
+      try {
+        await api('/api/tickets/mark-refund-paid-bulk', { method: 'POST', body: JSON.stringify({ ticketIds: rezultat.incluse }) });
+        const marcate = new Set(rezultat.incluse);
+        // actualizăm și etapa, nu doar data plății: altfel tichetele ar rămâne
+        // pe ecran în „Gata de retur" până la următoarea reîncărcare, deși pe
+        // server au trecut deja în „Retur finalizat"
+        allTickets.forEach((t) => {
+          if (!marcate.has(t.id)) return;
+          t.refundPaidAt = new Date().toISOString();
+          t.stage = 'refund_done';
+        });
+        showToast(`${rezultat.incluse.length} ${rezultat.incluse.length === 1 ? 'tichet trecut' : 'tichete trecute'} în „Retur finalizat"`);
         selectedRefundTicketIds.clear();
         renderAll();
       } catch (e) {
-        showToast('Export reușit, dar marcarea a eșuat: ' + e.message);
+        showToast('Fișierul s-a descărcat, dar marcarea a eșuat: ' + e.message);
       }
     });
   }
@@ -4824,6 +4853,13 @@ async function renderSettings(sectiune) {
       ${bifa('r-banca', R.refundToBank, 'Cer IBAN pentru rambursare', 'Clientul completează contul în care vrea banii. Oprit, presupunem că îi returnezi pe aceeași cale pe care a plătit.')}
       ${bifa('r-auto', R.autoApprove, 'Aprobare automată', 'Clientul primește pe loc confirmarea că cererea e acceptată, în loc de „așteaptă răspunsul magazinului". Cererea îți apare la fel în „Cereri noi" — AWB-ul de ridicare tot tu îl emiți.')}
 
+      <div class="cerere-eticheta" style="margin-top:18px;">Rambursările</div>
+      <div class="field" style="max-width:420px;">
+        <label>Contul din care plătești rambursările (IBAN)</label>
+        <input type="text" id="r-iban-sursa" placeholder="RO00 BTRL 0000 0000 0000 0000" value="${escapeHtml(R.sourceIban || '')}" style="font-family:var(--font-mono);text-transform:uppercase;" />
+        <div class="hint" style="margin-top:6px;">Apare ca plătitor în fișierul de plăți pentru bancă. Fără el, fișierul nu se poate genera.</div>
+      </div>
+
       <div class="cerere-eticheta" style="margin-top:18px;">Emiterea automată a AWB-ului de ridicare</div>
       <div class="hint" style="margin-bottom:14px;">
         Pornit, AWB-ul de ridicare se emite singur în clipa în care clientul trimite cererea, fără să mai
@@ -4973,6 +5009,7 @@ async function renderSettings(sectiune) {
             service: content.querySelector('#r-auto-awb-service').checked,
           },
           autoAwbCourier: content.querySelector('#r-auto-awb-curier').value,
+          sourceIban: content.querySelector('#r-iban-sursa').value,
           reasons: motive,
         }),
       });

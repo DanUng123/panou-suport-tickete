@@ -75,6 +75,7 @@ const SCHIMB_COURIERS = ['sameday'];
 const NO_REISSUE_COURIERS = ['ptt'];
 const mp = require('./lib/merchantpro');
 const gomag = require('./lib/gomag');
+const platiBt = require('./lib/plati-bt');
 const resend = require('./lib/resend');
 const pdf = require('./lib/pdf');
 const backup = require('./lib/backup');
@@ -2335,6 +2336,34 @@ async function handleApi(req, res, pathname, query) {
       }
       const result = db.markTicketsRefundPaidBulk(currentAgent.companyId, body.ticketIds, currentAgent);
       return sendJSON(res, 200, result);
+    }
+
+    // Fișierul de plăți în lot pentru bancă. Întoarce JSON, nu direct fișierul,
+    // ca să putem spune și ce tichete AU RĂMAS pe dinafară și de ce — un
+    // download simplu n-ar avea unde să scrie asta.
+    if (pathname === '/api/tickets/export-plati-banca' && req.method === 'POST') {
+      const body = await readBody(req);
+      if (!Array.isArray(body.ticketIds) || !body.ticketIds.length) {
+        return sendJSON(res, 400, { error: 'Lipsesc id-urile tichetelor.' });
+      }
+      // citim regulile din randul companiei, nu din obiectul deja mapat:
+      // acela nu poarta cu el coloanele brute ale setarilor de retur
+      const reguli = db.getReturSettings(currentAgent.companyId);
+      if (!reguli.sourceIban) {
+        return sendJSON(res, 400, { error: 'Completează mai întâi contul din care faci rambursările, în Setări → Formular de retur.' });
+      }
+      const tichete = body.ticketIds
+        .map((id) => db.getTicket(currentAgent.companyId, id))
+        .filter(Boolean)
+        .filter((t) => t.section === 'retur');
+      const rezultat = platiBt.construiesteFisier({ tichete, ibanSursa: reguli.sourceIban });
+      return sendJSON(res, 200, {
+        csv: rezultat.csv,
+        incluse: rezultat.incluse,
+        sarite: rezultat.sarite,
+        total: rezultat.total,
+        numeFisier: `plati-retur-${new Date().toISOString().slice(0, 10)}.csv`,
+      });
     }
 
     const refundLabelMatch = pathname.match(/^\/api\/tickets\/([^/]+)\/refund-label\.(pdf|csv)$/);
