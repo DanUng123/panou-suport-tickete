@@ -1360,7 +1360,7 @@ async function renderPlatformClientsPanel() {
         <div id="platformClientsPendingNote"></div>
         <div class="status-pills-label">Magazin</div>
         <div class="status-pills" id="platformClientsShopPills">Se încarcă…</div>
-        <input type="text" id="platformClientsSearchInput" placeholder="Caută după nume, telefon sau email…" style="width:100%;margin:12px 0;background:var(--surface-raised);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:13px;color:var(--text);" />
+        <input type="text" class="camp-cautare" id="platformClientsSearchInput" placeholder="Caută după nume, telefon sau email…" />
         <div id="platformClientsListArea">Se încarcă…</div>
         <div id="platformClientsPager" style="display:flex;justify-content:center;align-items:center;gap:12px;margin-top:16px;"></div>
       </div>
@@ -1801,6 +1801,31 @@ const NAV_ICONS = {
   settings: '<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 6a2 2 0 1 0 4 0 2 2 0 1 0-4 0"/><path d="M4 12h16M14 12a2 2 0 1 0 4 0 2 2 0 1 0-4 0"/><path d="M4 18h16M7 18a2 2 0 1 0 4 0 2 2 0 1 0-4 0"/></svg>',
 };
 
+// Titlul din bara de sus de pe telefon. Pe ecran mic nu încape și meniul, și
+// titlul paginii, deci bara spune unde ești.
+const TITLURI_RUTE = {
+  '#/dashboard': 'Panou Control',
+  '#/orders': 'Comenzi',
+  '#/tickets': 'Tichete',
+  '#/service': 'Service',
+  '#/retur': 'Retur',
+  '#/schimb': 'Colet la Schimb',
+  '#/admin': 'Administrare',
+  '#/settings': 'Setări',
+  '#/administrare-platforma': 'Administrare Platformă',
+  '#/administrare-platforma-clienti': 'Clienți',
+  '#/administrare-platforma-mesaje': 'Mesaje de contact',
+};
+
+function titluDinRuta(ruta) {
+  const r = (ruta || '').split('?')[0];
+  if (r.startsWith('#/tickets/')) return 'Tichet';
+  if (r.startsWith('#/orders/')) return 'Comandă';
+  if (r.startsWith('#/settings/')) return 'Setări';
+  if (r.startsWith('#/admin/')) return 'Administrare';
+  return 'Easy-Ticket';
+}
+
 function renderShell(activeRoute, contentNode) {
   app.innerHTML = '';
   currentMainRoute = activeRoute;
@@ -1845,15 +1870,59 @@ function renderShell(activeRoute, contentNode) {
   `);
   const main = el(`<div class="main" id="main"></div>`);
 
+  // Pe telefon meniul stă în afara ecranului și se scoate cu butonul din bara
+  // de sus. Bara și fundalul sunt mereu în pagină, dar foaia de stil le ascunde
+  // peste 720px — așa nu trebuie să redesenăm nimic la rotirea telefonului.
+  const bara = el(`
+    <header class="bara-mobil">
+      <button class="buton-meniu" id="butonMeniu" aria-label="Deschide meniul" aria-expanded="false" aria-controls="sidebar">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M4 7h16M4 12h16M4 17h16"/>
+        </svg>
+      </button>
+      <div class="bara-mobil-titlu">${escapeHtml(TITLURI_RUTE[activeRoute] || titluDinRuta(activeRoute))}</div>
+      <div class="bara-mobil-marca">
+        <svg width="15" height="15" viewBox="0 0 64 64"><path d="M34 6L14 34H26L20 58L50 24H36Z" fill="currentColor"/></svg>
+      </div>
+    </header>
+  `);
+  const voal = el('<div class="voal-meniu" id="voalMeniu" hidden></div>');
+
+  app.appendChild(bara);
+  app.appendChild(voal);
   app.appendChild(sidebar);
   app.appendChild(main);
+
+  const inchideMeniu = () => {
+    sidebar.classList.remove('open');
+    voal.hidden = true;
+    document.body.classList.remove('meniu-deschis');
+    bara.querySelector('#butonMeniu').setAttribute('aria-expanded', 'false');
+  };
+  const deschideMeniu = () => {
+    sidebar.classList.add('open');
+    voal.hidden = false;
+    // Blocăm derularea paginii din spate: altfel degetul mișcă lista, nu meniul.
+    document.body.classList.add('meniu-deschis');
+    bara.querySelector('#butonMeniu').setAttribute('aria-expanded', 'true');
+  };
+  bara.querySelector('#butonMeniu').addEventListener('click', () => {
+    if (sidebar.classList.contains('open')) inchideMeniu(); else deschideMeniu();
+  });
+  voal.addEventListener('click', inchideMeniu);
+  document.addEventListener('keydown', function peEscape(e) {
+    if (e.key !== 'Escape') return;
+    if (!document.body.contains(sidebar)) { document.removeEventListener('keydown', peEscape); return; }
+    inchideMeniu();
+  });
+  inchideMeniu();
 
   sidebar.querySelectorAll('.nav-item').forEach((item) => {
     const route = item.dataset.route;
     if (route === activeRoute || (activeRoute.startsWith('#/tickets/') && route === '#/tickets') || (activeRoute.startsWith('#/orders/') && route === '#/orders')) {
       item.classList.add('active');
     }
-    item.addEventListener('click', () => navigate(route));
+    item.addEventListener('click', () => { inchideMeniu(); navigate(route); });
   });
   sidebar.querySelector('#logoutBtn').addEventListener('click', logout);
 
