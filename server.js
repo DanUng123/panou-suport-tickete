@@ -2338,6 +2338,49 @@ async function handleApi(req, res, pathname, query) {
       return sendJSON(res, 200, result);
     }
 
+    // Etichetele de rambursare ale mai multor tichete, într-un singur PDF —
+    // câte o pagină de fiecare. Aceeași informație ca la eticheta individuală,
+    // doar că nu mai deschizi douăzeci de file ca să le tipărești.
+    if (pathname === '/api/tickets/export-etichete-pdf' && req.method === 'POST') {
+      const body = await readBody(req);
+      if (!Array.isArray(body.ticketIds) || !body.ticketIds.length) {
+        return sendJSON(res, 400, { error: 'Lipsesc id-urile tichetelor.' });
+      }
+      const tichete = body.ticketIds
+        .map((id) => db.getTicket(currentAgent.companyId, id))
+        .filter(Boolean)
+        .filter((t) => t.refundIban && t.refundAmount != null);
+      if (!tichete.length) {
+        return sendJSON(res, 400, { error: 'Niciunul dintre tichetele alese nu are date bancare complete.' });
+      }
+      const pagini = tichete.map((ticket) => {
+        const comanda = ticket.relatedOrderId ? db.getOrder(currentAgent.companyId, ticket.relatedOrderId) : null;
+        return {
+          title: `Etichetă rambursare — ${ticket.sectionCode || ticket.id}`,
+          subtitle: `Generat la ${new Date().toLocaleString('ro-RO')}`,
+          lines: [
+            `Cod tichet: ${ticket.sectionCode || ticket.id}`,
+            `Comandă asociată: ${comanda ? `#${comanda.mpId}` : '—'}`,
+            `Client: ${ticket.requesterName}`,
+            `Telefon: ${ticket.requesterPhone || ticket.pickupPhone || '—'}`,
+            `IBAN: ${ticket.refundIban}`,
+            `Titular cont: ${ticket.refundAccountHolder || ticket.requesterName}`,
+            `Banca: ${ticket.refundBankName || '—'}`,
+            `Sumă de returnat: ${Number(ticket.refundAmount).toFixed(2)} RON`,
+            `Motiv retur: ${ticket.refundReason || ticket.description || '—'}`,
+          ],
+        };
+      });
+      const buffer = pdf.generateMultiPagePdf(pagini);
+      res.writeHead(200, {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="etichete-rambursare-${new Date().toISOString().slice(0, 10)}.pdf"`,
+        'Content-Length': buffer.length,
+        'X-Tichete-Incluse': tichete.map((t) => t.id).join(','),
+      });
+      return res.end(buffer);
+    }
+
     // Fișierul de plăți în lot pentru bancă. Întoarce JSON, nu direct fișierul,
     // ca să putem spune și ce tichete AU RĂMAS pe dinafară și de ce — un
     // download simplu n-ar avea unde să scrie asta.

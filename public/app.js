@@ -1707,7 +1707,12 @@ async function renderServiceReturnList(route, section) {
       ${section === 'retur' ? `
         <div id="bulkRefundExportArea" style="display:none;margin-bottom:14px;gap:8px;align-items:center;">
           <button class="btn btn-sm" id="selectAllRefundBtn">Selectează toate</button>
-          <button class="btn btn-sm btn-primary" id="bulkRefundExportBtn">↓ Fișier de plăți pentru bancă (<span id="bulkRefundCount">0</span> selectate)</button>
+          <select id="bulkRefundFormat" style="max-width:260px;">
+            <option value="banca">Fișier de plăți pentru bancă</option>
+            <option value="excel">Excel cu datele bancare</option>
+            <option value="pdf">Etichete PDF (una pe pagină)</option>
+          </select>
+          <button class="btn btn-sm btn-primary" id="bulkRefundExportBtn">↓ Descarcă (<span id="bulkRefundCount">0</span> selectate)</button>
         </div>
       ` : ''}
       <div id="list-body">Se încarcă…</div>
@@ -1954,10 +1959,96 @@ async function renderServiceReturnList(route, section) {
 
   renderAll();
 
+  /**
+   * Trece tichetele exportate în „Retur finalizat".
+   *
+   * Indiferent de formatul ales, pasul final e același: banii sunt pe drum,
+   * tichetul iese din coadă. Actualizăm și etapa în memorie, nu doar data
+   * plății — altfel rândurile ar rămâne pe ecran în „Gata de retur" până la
+   * următoarea reîncărcare, deși pe server au trecut deja mai departe.
+   */
+  async function marcheazaPlatite(ids) {
+    if (!ids || !ids.length) { renderAll(); return; }
+    try {
+      await api('/api/tickets/mark-refund-paid-bulk', { method: 'POST', body: JSON.stringify({ ticketIds: ids }) });
+      const marcate = new Set(ids);
+      allTickets.forEach((t) => {
+        if (!marcate.has(t.id)) return;
+        t.refundPaidAt = new Date().toISOString();
+        t.stage = 'refund_done';
+      });
+      showToast(`${ids.length} ${ids.length === 1 ? 'tichet trecut' : 'tichete trecute'} în „Retur finalizat"`);
+      selectedRefundTicketIds.clear();
+      renderAll();
+    } catch (e) {
+      showToast('Fișierul s-a descărcat, dar marcarea a eșuat: ' + e.message);
+    }
+  }
+
   const bulkRefundExportBtn = content.querySelector('#bulkRefundExportBtn');
   if (bulkRefundExportBtn) {
     bulkRefundExportBtn.addEventListener('click', async () => {
       if (!selectedRefundTicketIds.size) { showToast('Selectează cel puțin un tichet.'); return; }
+      const idsAlese = Array.from(selectedRefundTicketIds);
+      const format = content.querySelector('#bulkRefundFormat')?.value || 'banca';
+
+      /** Pornește descărcarea unui fișier făcut în browser. */
+      const descarca = (continut, numeFisier, tip) => {
+        const blob = continut instanceof Blob ? continut : new Blob([continut], { type: tip });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = numeFisier;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      };
+      const azi = new Date().toISOString().slice(0, 10);
+
+      // Excel și PDF nu verifică nimic: sunt pentru ochii tăi, nu pentru
+      // mașina băncii, deci includ tot ce ai bifat.
+      if (format === 'excel') {
+        // Biblioteca de Excel vine de pe un CDN. Dacă rețeaua n-a adus-o,
+        // spunem asta pe șleau, în loc să pară că butonul nu face nimic.
+        if (typeof XLSX === 'undefined') {
+          showToast('Nu am putut încărca biblioteca pentru Excel. Verifică conexiunea sau alege alt format.');
+          return;
+        }
+        const alese = allTickets.filter((t) => selectedRefundTicketIds.has(t.id));
+        const ws = XLSX.utils.json_to_sheet(alese.map((t) => ({
+          Tichet: t.sectionCode || t.id,
+          Client: t.requesterName || '',
+          IBAN: t.refundIban || '',
+          'Titular cont': t.refundAccountHolder || '',
+          'Banca': t.refundBankName || '',
+          'Sumă (RON)': t.refundAmount != null ? t.refundAmount : '',
+          Motiv: t.refundReason || '',
+        })));
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Date bancare');
+        XLSX.writeFile(wb, `date-bancare-retur-${azi}.xlsx`);
+        await marcheazaPlatite(idsAlese);
+        return;
+      }
+
+      if (format === 'pdf') {
+        let raspuns;
+        try {
+          raspuns = await fetch('/api/tickets/export-etichete-pdf', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ticketIds: idsAlese }),
+          });
+        } catch (e) { showToast('Eroare: ' + e.message); return; }
+        if (!raspuns.ok) {
+          let mesaj = `Eroare ${raspuns.status}`;
+          try { mesaj = (await raspuns.json()).error || mesaj; } catch (e) { /* raspuns fara JSON */ }
+          showToast('Eroare: ' + mesaj);
+          return;
+        }
+        const incluse = (raspuns.headers.get('X-Tichete-Incluse') || '').split(',').filter(Boolean);
+        descarca(await raspuns.blob(), `etichete-rambursare-${azi}.pdf`, 'application/pdf');
+        await marcheazaPlatite(incluse.length ? incluse : idsAlese);
+        return;
+      }
 
       // Serverul construiește fișierul în formatul băncii și ne spune ce
       // tichete n-au intrat în el. Marcăm ca plătite DOAR pe cele incluse:
@@ -1967,7 +2058,7 @@ async function renderServiceReturnList(route, section) {
       try {
         rezultat = await api('/api/tickets/export-plati-banca', {
           method: 'POST',
-          body: JSON.stringify({ ticketIds: Array.from(selectedRefundTicketIds) }),
+          body: JSON.stringify({ ticketIds: idsAlese }),
         });
       } catch (e) {
         showToast('Eroare: ' + e.message);
@@ -1976,12 +2067,7 @@ async function renderServiceReturnList(route, section) {
 
       if (rezultat.total) {
         // BOM, ca Excel să deschidă fișierul cu diacriticele la locul lor
-        const blob = new Blob(['\uFEFF' + rezultat.csv], { type: 'text/csv;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = rezultat.numeFisier;
-        document.body.appendChild(a); a.click(); a.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        descarca('\uFEFF' + rezultat.csv, rezultat.numeFisier, 'text/csv;charset=utf-8');
       }
 
       if (rezultat.sarite.length) {
@@ -1995,23 +2081,7 @@ async function renderServiceReturnList(route, section) {
       }
 
       if (!rezultat.incluse.length) { renderAll(); return; }
-      try {
-        await api('/api/tickets/mark-refund-paid-bulk', { method: 'POST', body: JSON.stringify({ ticketIds: rezultat.incluse }) });
-        const marcate = new Set(rezultat.incluse);
-        // actualizăm și etapa, nu doar data plății: altfel tichetele ar rămâne
-        // pe ecran în „Gata de retur" până la următoarea reîncărcare, deși pe
-        // server au trecut deja în „Retur finalizat"
-        allTickets.forEach((t) => {
-          if (!marcate.has(t.id)) return;
-          t.refundPaidAt = new Date().toISOString();
-          t.stage = 'refund_done';
-        });
-        showToast(`${rezultat.incluse.length} ${rezultat.incluse.length === 1 ? 'tichet trecut' : 'tichete trecute'} în „Retur finalizat"`);
-        selectedRefundTicketIds.clear();
-        renderAll();
-      } catch (e) {
-        showToast('Fișierul s-a descărcat, dar marcarea a eșuat: ' + e.message);
-      }
+      await marcheazaPlatite(rezultat.incluse);
     });
   }
 
