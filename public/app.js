@@ -4797,275 +4797,6 @@ const OPTIUNI_TEMA = [
 ];
 
 /** Secțiunea „Temă" din Setări, gata legată. */
-// ---------------- Magazine ----------------
-// Un cont poate avea mai multe magazine, dar toate pe aceeasi platforma.
-// Fiecare isi are datele lui de conectare si propriul formular public.
-
-const ETICHETE_PLATFORMA = {
-  merchantpro: 'MerchantPro',
-  gomag: 'GoMag',
-  opencart: 'OpenCart',
-};
-
-/** Campurile de conectare, dupa platforma magazinului. */
-function campuriPlatforma(m) {
-  const v = (x) => escapeHtml(x || '');
-  if (m.platform === 'gomag') {
-    return `
-      <div class="form-row">
-        <div class="field">
-          <label>Adresa magazinului</label>
-          <input type="text" data-camp="gomagShopUrl" placeholder="https://magazinul-tau.gomag.ro" value="${v(m.gomagShopUrl)}" />
-        </div>
-        <div class="field">
-          <label>Cheie API${m.gomagApiKeySet ? ' — setată ✓' : ''}</label>
-          <input type="password" data-camp="gomagApiKey" placeholder="${m.gomagApiKeySet ? '••••••••  (lasă gol ca să păstrezi)' : 'Introdu cheia API'}" />
-        </div>
-      </div>`;
-  }
-  if (m.platform === 'opencart') {
-    return `
-      <div class="hint" style="margin-bottom:14px;line-height:1.6;">
-        OpenCart nu are un API prin care să se poată citi comenzile. Primești de la noi un fișier
-        pe care îl urci în magazin — citește doar, nu modifică nimic.
-      </div>
-      <ol class="pasi-opencart">
-        <li>
-          <div class="pas-titlu">Generează cheia magazinului</div>
-          <div class="pas-text">${m.opencartApiKeySet
-            ? '<strong>Ai deja o cheie.</strong> Dacă generezi alta, fișierul urcat nu mai funcționează până nu îl înlocuiești.'
-            : 'Cheia e unică pentru acest magazin și se scrie automat în fișier.'}</div>
-          <button type="button" class="btn btn-sm" data-actiune="oc-cheie">${m.opencartApiKeySet ? 'Generează o cheie nouă' : 'Generează cheia'}</button>
-        </li>
-        <li>
-          <div class="pas-titlu">Descarcă fișierul</div>
-          <div class="pas-text">Se descarcă <code>easyticket.php</code>, cu cheia ta scrisă în el.</div>
-          <button type="button" class="btn btn-sm" data-actiune="oc-descarca" ${m.opencartApiKeySet ? '' : 'disabled'}>Descarcă easyticket.php</button>
-        </li>
-        <li>
-          <div class="pas-titlu">Urcă-l în magazin</div>
-          <div class="pas-text">În folderul principal al magazinului, lângă <code>index.php</code>.</div>
-        </li>
-        <li>
-          <div class="pas-titlu">Scrie adresa lui aici</div>
-          <div class="field" style="margin-top:8px;">
-            <input type="text" data-camp="opencartConnectorUrl" placeholder="https://magazinul-tau.ro/easyticket.php" value="${v(m.opencartConnectorUrl)}" />
-          </div>
-        </li>
-      </ol>`;
-  }
-  return `
-    <div class="field">
-      <label>Adresa magazinului</label>
-      <input type="text" data-camp="merchantProShopUrl" placeholder="https://magazinul-tau.ro/" value="${v(m.merchantProShopUrl)}" />
-    </div>
-    <div class="form-row">
-      <div class="field">
-        <label>Cheie API</label>
-        <input type="text" data-camp="merchantProApiKey" value="${v(m.merchantProApiKey)}" />
-      </div>
-      <div class="field">
-        <label>Secret API${m.merchantProApiSecretSet ? ' — setat ✓' : ''}</label>
-        <input type="password" data-camp="merchantProApiSecret" placeholder="${m.merchantProApiSecretSet ? '••••••••  (lasă gol ca să păstrezi)' : 'Introdu secretul API'}" />
-      </div>
-    </div>`;
-}
-
-async function sectiuneMagazine(gazda) {
-  gazda.innerHTML = '<div class="panel">Se încarcă magazinele…</div>';
-  let date;
-  try {
-    date = await api('/api/company/shops');
-  } catch (e) {
-    gazda.innerHTML = `<div class="error-msg">${escapeHtml(e.message)}</div>`;
-    return;
-  }
-
-  const active = date.shops.filter((m) => m.active);
-  const inactive = date.shops.filter((m) => !m.active);
-  const limitaText = date.limit === null ? 'nelimitate' : `${date.limit} ${date.limit === 1 ? 'magazin' : 'magazine'}`;
-
-  gazda.innerHTML = `
-    <div class="panel" style="margin-bottom:18px;">
-      <div class="magazine-cap">
-        <div>
-          <h2 style="margin:0 0 4px;font-size:16px;">Magazinele tale</h2>
-          <div class="hint" style="margin:0;">
-            ${active.length} ${active.length === 1 ? 'magazin activ' : 'magazine active'} ·
-            planul <strong>${escapeHtml(date.plan)}</strong> permite ${limitaText}.
-            Toate magazinele unui cont sunt pe aceeași platformă.
-          </div>
-        </div>
-        <button type="button" class="btn btn-primary" id="adaugaMagazin" ${date.canAdd ? '' : 'disabled'}>+ Adaugă magazin</button>
-      </div>
-      ${date.canAdd ? '' : `<div class="hint" style="margin-top:12px;color:var(--priority-urgent);">Ai atins limita planului. Treci pe un plan superior ca să adaugi alt magazin.</div>`}
-    </div>
-    <div id="listaMagazine"></div>
-    ${inactive.length ? `<div class="hint" style="margin-top:14px;">${inactive.length} ${inactive.length === 1 ? 'magazin dezactivat' : 'magazine dezactivate'} — comenzile și tichetele lor rămân în istoric.</div>` : ''}
-  `;
-
-  const lista = gazda.querySelector('#listaMagazine');
-  for (const m of date.shops) {
-    const card = el(`
-      <div class="panel magazin-card${m.active ? '' : ' magazin-inactiv'}" data-magazin="${escapeHtml(m.id)}" style="margin-bottom:14px;">
-        <div class="magazin-cap">
-          <div style="min-width:0;flex:1;">
-            <input type="text" class="magazin-nume" data-camp="name" value="${escapeHtml(m.name)}" maxlength="80" />
-            <div class="magazin-sub">
-              <span class="badge">${escapeHtml(ETICHETE_PLATFORMA[m.platform] || m.platform)}</span>
-              ${m.configured
-                ? '<span class="badge" style="background:rgba(54,179,126,0.16);color:var(--status-resolved);">Conectat</span>'
-                : '<span class="badge" style="background:rgba(243,111,33,0.18);color:var(--accent);">Date incomplete</span>'}
-              ${m.active ? '' : '<span class="badge" style="background:var(--insigna-fundal);">Dezactivat</span>'}
-            </div>
-          </div>
-          ${m.active && date.shops.filter((x) => x.active).length > 1
-            ? '<button type="button" class="btn btn-sm" data-actiune="dezactiveaza" style="color:var(--priority-urgent);">Dezactivează</button>'
-            : ''}
-        </div>
-
-        ${campuriPlatforma(m)}
-
-        <div class="magazin-formular">
-          <div class="magazin-formular-eticheta">Formularul public al acestui magazin</div>
-          <div class="magazin-formular-link">${m.publicFormSlug
-            ? `<code>${escapeHtml(location.origin)}/cerere/${escapeHtml(m.publicFormSlug)}</code>`
-            : '<span style="color:var(--text-dim);">se generează la prima salvare</span>'}</div>
-        </div>
-
-        <div class="magazin-actiuni">
-          <button type="button" class="btn btn-primary btn-sm" data-actiune="salveaza">Salvează</button>
-          <button type="button" class="btn btn-sm" data-actiune="testeaza">Testează conexiunea</button>
-        </div>
-        <div class="magazin-rezultat"></div>
-      </div>
-    `);
-    lista.appendChild(card);
-    legaMagazin(card, m, gazda);
-  }
-
-  gazda.querySelector('#adaugaMagazin').addEventListener('click', async () => {
-    const platforma = date.shops.length ? date.shops[0].platform : null;
-    const nume = prompt('Cum se numește magazinul nou?', '');
-    if (nume === null) return;
-    try {
-      await api('/api/company/shops', {
-        method: 'POST',
-        body: JSON.stringify({ name: nume.trim() || 'Magazin nou', platform: platforma || 'merchantpro' }),
-      });
-      showToast('Magazin adăugat');
-      sectiuneMagazine(gazda);
-    } catch (e) {
-      showToast('Eroare: ' + e.message);
-    }
-  });
-}
-
-/** Butoanele unui card de magazin. */
-function legaMagazin(card, m, gazda) {
-  const rezultat = card.querySelector('.magazin-rezultat');
-  const spune = (text, fel) => {
-    const culori = {
-      bine: 'background:rgba(54,179,126,0.12);border:1px solid rgba(54,179,126,0.4);',
-      rau: 'background:rgba(190,18,60,0.10);border:1px solid rgba(190,18,60,0.35);',
-      neutru: 'background:var(--surface-raised);border:1px solid var(--border);',
-    };
-    rezultat.innerHTML = `<div style="${culori[fel] || culori.neutru}border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.55;margin-top:12px;">${text}</div>`;
-  };
-
-  const dateleDinCard = () => {
-    const corp = { name: card.querySelector('[data-camp="name"]').value.trim() };
-    card.querySelectorAll('[data-camp]').forEach((camp) => {
-      if (camp.dataset.camp === 'name') return;
-      // Un câmp de secret lăsat gol înseamnă „păstrează ce e salvat".
-      if (camp.type === 'password' && !camp.value.trim()) return;
-      corp[camp.dataset.camp] = camp.value.trim();
-    });
-    return corp;
-  };
-
-  const btnSalveaza = card.querySelector('[data-actiune="salveaza"]');
-  btnSalveaza.addEventListener('click', async () => {
-    btnSalveaza.disabled = true;
-    btnSalveaza.textContent = 'Se salvează…';
-    try {
-      await api(`/api/company/shops/${m.id}`, { method: 'PATCH', body: JSON.stringify(dateleDinCard()) });
-      showToast('Magazin salvat');
-      sectiuneMagazine(gazda);
-      return;
-    } catch (e) {
-      spune('Nu am putut salva: ' + escapeHtml(e.message), 'rau');
-    }
-    btnSalveaza.disabled = false;
-    btnSalveaza.textContent = 'Salvează';
-  });
-
-  const btnTest = card.querySelector('[data-actiune="testeaza"]');
-  btnTest.addEventListener('click', async () => {
-    btnTest.disabled = true;
-    btnTest.textContent = 'Se verifică…';
-    spune('Întreb magazinul…', 'neutru');
-    try {
-      const corp = {};
-      const adresa = card.querySelector('[data-camp="opencartConnectorUrl"]');
-      if (adresa) corp.opencartConnectorUrl = adresa.value.trim();
-      const r = await api(`/api/company/shops/${m.id}/test`, { method: 'POST', body: JSON.stringify(corp) });
-      const i = r.info || {};
-      const detalii = [
-        i.opencartVersion ? `OpenCart ${escapeHtml(i.opencartVersion)}` : null,
-        i.php ? `PHP ${escapeHtml(i.php)}` : null,
-      ].filter(Boolean).join(' · ');
-      spune('<strong>✓ Conexiune reușită.</strong>' +
-        (detalii ? '<br>' + detalii : '') +
-        (i.ordersTotal != null ? `<br>${i.ordersTotal} comenzi în magazin` : '') +
-        (i.lastOrderAt ? ` · ultima pe ${escapeHtml(i.lastOrderAt)}` : ''), 'bine');
-    } catch (e) {
-      spune('<strong>Conexiunea nu a funcționat.</strong><br>' + escapeHtml(e.message), 'rau');
-    }
-    btnTest.disabled = false;
-    btnTest.textContent = 'Testează conexiunea';
-  });
-
-  const btnDezactiveaza = card.querySelector('[data-actiune="dezactiveaza"]');
-  if (btnDezactiveaza) {
-    btnDezactiveaza.addEventListener('click', async () => {
-      if (!confirm(`Dezactivezi magazinul „${m.name}"?\n\nComenzile și tichetele lui RĂMÂN în istoric. Magazinul nu se mai sincronizează, iar formularul lui public nu mai primește cereri noi.`)) return;
-      try {
-        await api(`/api/company/shops/${m.id}`, { method: 'DELETE' });
-        showToast('Magazin dezactivat');
-        sectiuneMagazine(gazda);
-      } catch (e) {
-        showToast('Eroare: ' + e.message);
-      }
-    });
-  }
-
-  const btnCheie = card.querySelector('[data-actiune="oc-cheie"]');
-  if (btnCheie) {
-    btnCheie.addEventListener('click', async () => {
-      if (m.opencartApiKeySet && !confirm('Generezi o cheie nouă?\n\nFișierul deja urcat în magazin NU va mai funcționa până nu îl înlocuiești.')) return;
-      try {
-        // Generarea cheii redesenează secțiunea. Salvăm întâi ce e scris în
-        // card, altfel adresa tocmai tastată s-ar pierde fără ca omul să
-        // înțeleagă de ce — iar la a doua încercare ar păți la fel.
-        await api(`/api/company/shops/${m.id}`, { method: 'PATCH', body: JSON.stringify(dateleDinCard()) });
-        await api(`/api/company/shops/${m.id}/opencart-key`, { method: 'POST', body: '{}' });
-        showToast('Cheie generată. Descarcă fișierul și urcă-l în magazin.');
-        sectiuneMagazine(gazda);
-      } catch (e) {
-        showToast('Eroare: ' + e.message);
-      }
-    });
-  }
-
-  const btnDescarca = card.querySelector('[data-actiune="oc-descarca"]');
-  if (btnDescarca) {
-    btnDescarca.addEventListener('click', () => {
-      window.location.href = `/api/company/shops/${m.id}/opencart-connector`;
-    });
-  }
-}
-
 function sectiuneTema() {
   const alesa = temaPreferata();
   const sectiune = el(`
@@ -5117,10 +4848,12 @@ function sectiuneTema() {
  */
 const SECTIUNI_SETARI = [
   {
-    cheie: 'magazine',
-    titlu: 'Magazine',
-    descriere: 'Magazinele din care vin comenzile, cu datele lor de conectare.',
+    cheie: 'platforme',
+    titlu: 'Integrări platforme',
+    descriere: 'MerchantPro, GoMag și OpenCart — de unde vin comenzile.',
     pictograma: 'magazin',
+    tab: 'platforme',
+    integrari: ['merchantpro', 'gomag', 'opencart'],
   },
   {
     cheie: 'curieri',
@@ -5187,10 +4920,101 @@ async function renderSettings(sectiune) {
   body.appendChild(el(`
     <form id="settingsForm">
       <div class="settings-tabs">
-        <div class="settings-tab active" data-tab="curieri">Integrări curieri</div>
+        <div class="settings-tab active" data-tab="platforme">Integrări platforme</div>
+        <div class="settings-tab" data-tab="curieri">Integrări curieri</div>
       </div>
 
-      <div class="settings-tab-panel active" data-tab-panel="curieri">
+      <div class="settings-tab-panel active" data-tab-panel="platforme">
+        <div class="accordion-item" data-integrare="merchantpro">
+          <div class="accordion-header">
+            <h2>MerchantPro</h2>
+            <span class="accordion-chevron">▾</span>
+          </div>
+          <div class="accordion-body">
+            <div class="accordion-body-inner">
+              <div class="field">
+                <label>URL magazin</label>
+                <input type="text" id="s-mp-url" placeholder="https://magazinul-tau.ro/" value="${v(s.merchantProShopUrl)}" />
+              </div>
+              <div class="form-row">
+                <div class="field">
+                  <label>Cheie API (API Key)</label>
+                  <input type="text" id="s-mp-key" value="${v(s.merchantProApiKey)}" />
+                </div>
+                <div class="field">
+                  <label>Secret API${s.merchantProApiSecretSet ? ' — setat ✓' : ''}</label>
+                  <input type="password" id="s-mp-secret" placeholder="${s.merchantProApiSecretSet ? '••••••••  (lasă gol ca să păstrezi)' : 'Introdu secretul API'}" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="accordion-item" data-integrare="gomag">
+          <div class="accordion-header">
+            <h2>GoMag</h2>
+            <span class="accordion-chevron">▾</span>
+          </div>
+          <div class="accordion-body">
+            <div class="accordion-body-inner">
+              <div class="form-row">
+                <div class="field">
+                  <label>URL magazin</label>
+                  <input type="text" id="s-gomag-url" placeholder="https://magazinul-tau.gomag.ro" value="${v(s.gomagShopUrl)}" />
+                </div>
+                <div class="field">
+                  <label>Cheie API${s.gomagApiKeySet ? ' — setată ✓' : ''}</label>
+                  <input type="password" id="s-gomag-key" placeholder="${s.gomagApiKeySet ? '••••••••  (lasă gol ca să păstrezi)' : 'Introdu cheia API'}" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="accordion-item" data-integrare="opencart">
+          <div class="accordion-header">
+            <h2>OpenCart</h2>
+            <span class="accordion-chevron">▾</span>
+          </div>
+          <div class="accordion-body">
+            <div class="accordion-body-inner">
+              <div class="hint" style="margin-bottom:16px;line-height:1.6;">
+                OpenCart nu are un API prin care să se poată citi comenzile — nici în versiunea 3, nici în 4.
+                De aceea primești de la noi un fișier pe care îl urci în magazinul tău. Fișierul doar citește:
+                nu scrie și nu modifică nimic în OpenCart.
+              </div>
+
+              <ol class="pasi-opencart">
+                <li>
+                  <div class="pas-titlu">Generează cheia magazinului</div>
+                  <div class="pas-text">Cheia e unică pentru magazinul tău și se scrie automat în fișier. ${s.opencartApiKeySet ? '<strong>Ai deja o cheie generată.</strong> Dacă generezi alta, fișierul urcat în magazin nu mai funcționează până nu îl înlocuiești.' : 'Deocamdată nu ai nicio cheie.'}</div>
+                  <button type="button" class="btn btn-sm" id="s-oc-genkey">${s.opencartApiKeySet ? 'Generează o cheie nouă' : 'Generează cheia'}</button>
+                </li>
+                <li>
+                  <div class="pas-titlu">Descarcă fișierul</div>
+                  <div class="pas-text">Se descarcă <code>easyticket.php</code>, cu cheia ta deja scrisă în el.</div>
+                  <button type="button" class="btn btn-sm" id="s-oc-download" ${s.opencartApiKeySet ? '' : 'disabled'}>Descarcă easyticket.php</button>
+                </li>
+                <li>
+                  <div class="pas-titlu">Urcă-l în magazin</div>
+                  <div class="pas-text">Prin FTP sau din File Manager-ul găzduirii, pune fișierul în folderul principal al magazinului — acolo unde stă <code>index.php</code> și <code>config.php</code>.</div>
+                </li>
+                <li>
+                  <div class="pas-titlu">Scrie adresa lui aici</div>
+                  <div class="pas-text">Deschide adresa în browser ca să verifici: trebuie să scrie „Conector Easy-Ticket activ”.</div>
+                  <div class="field" style="margin-top:10px;">
+                    <input type="text" id="s-oc-url" placeholder="https://magazinul-tau.ro/easyticket.php" value="${v(s.opencartConnectorUrl)}" />
+                  </div>
+                  <button type="button" class="btn btn-sm" id="s-oc-test">Testează conexiunea</button>
+                  <div id="s-oc-rezultat" style="margin-top:10px;"></div>
+                </li>
+              </ol>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-tab-panel" data-tab-panel="curieri">
         <div class="accordion-item" data-integrare="gls">
           <div class="accordion-header">
             <h2>GLS</h2>
@@ -5566,12 +5390,15 @@ async function renderSettings(sectiune) {
       </div>
 
       <div class="cerere-eticheta" style="margin-top:18px;">Cod de lipit în pagina magazinului</div>
-      <div class="hint" style="margin-bottom:12px;">
-        Fiecare magazin are codul lui. Pune-l pe site-ul magazinului potrivit: cererea ajunge
-        direct în magazinul acela, deci clientul nu e întrebat de unde a cumpărat, chiar dacă
-        două magazine au comenzi cu același număr.
+      <textarea class="cod-integrare" id="codIntegrare" readonly>${escapeHtml(codIntegrare(slugFormular))}</textarea>
+      <div class="form-actions" style="justify-content:flex-start;margin-top:8px;">
+        <button type="button" class="btn" id="copiazaCod">Copiază codul</button>
+        <a class="btn" href="/cerere/${escapeHtml(slugFormular)}" target="_blank" rel="noopener">Deschide separat</a>
       </div>
-      <div id="coduriMagazine">Se încarcă…</div>
+      <div class="hint" style="margin-top:8px;">
+        În MerchantPro: creează o pagină nouă (ex. „Retur și service"), treci editorul pe HTML și lipește cele două rânduri.
+        Formularul își potrivește singur înălțimea și se așază centrat în pagină.
+      </div>
 
       <div class="cerere-eticheta" style="margin-top:18px;">Așa îl vede clientul tău</div>
       <div class="hint" style="margin-bottom:2px;">
@@ -5610,45 +5437,16 @@ async function renderSettings(sectiune) {
     if (cadru) cadru.style.height = e.data.height + 'px';
   });
 
-  // Codul de integrare, câte unul pe magazin.
-  (async () => {
-    const gazdaCoduri = content.querySelector('#coduriMagazine');
-    if (!gazdaCoduri) return;
-    let magazine = [];
+  content.querySelector('#copiazaCod').addEventListener('click', async () => {
+    const camp = content.querySelector('#codIntegrare');
+    camp.select();
     try {
-      magazine = (await api('/api/company/shops')).shops.filter((m) => m.active);
+      await navigator.clipboard.writeText(camp.value);
+      showToast('Cod copiat');
     } catch (e) {
-      gazdaCoduri.innerHTML = `<div class="error-msg">${escapeHtml(e.message)}</div>`;
-      return;
+      showToast('Apasă Ctrl+C ca să copiezi codul selectat');
     }
-    if (!magazine.length) { gazdaCoduri.innerHTML = '<div class="hint">Niciun magazin activ.</div>'; return; }
-
-    gazdaCoduri.innerHTML = '';
-    for (const m of magazine) {
-      if (!m.publicFormSlug) continue;
-      const bloc = el(`
-        <div class="cod-magazin">
-          ${magazine.length > 1 ? `<div class="cod-magazin-nume">${escapeHtml(m.name)}</div>` : ''}
-          <textarea class="cod-integrare" readonly>${escapeHtml(codIntegrare(m.publicFormSlug))}</textarea>
-          <div class="form-actions" style="justify-content:flex-start;margin-top:8px;">
-            <button type="button" class="btn btn-sm" data-actiune="copiaza">Copiază codul</button>
-            <a class="btn btn-sm" href="/cerere/${escapeHtml(m.publicFormSlug)}" target="_blank" rel="noopener">Deschide separat</a>
-          </div>
-        </div>
-      `);
-      bloc.querySelector('[data-actiune="copiaza"]').addEventListener('click', async () => {
-        const camp = bloc.querySelector('textarea');
-        camp.select();
-        try {
-          await navigator.clipboard.writeText(camp.value);
-          showToast('Cod copiat');
-        } catch (e) {
-          showToast('Apasă Ctrl+C ca să copiezi codul selectat');
-        }
-      });
-      gazdaCoduri.appendChild(bloc);
-    }
-  })();
+  });
 
   content.querySelector('#salveazaAspect').addEventListener('click', async (e) => {
     const btn = e.currentTarget;
@@ -6067,10 +5865,90 @@ async function renderSettings(sectiune) {
   if (fanServicesBtn) fanServicesBtn.addEventListener('click', () => loadFanServices());
   if (s.fanUsername && s.fanPasswordSet && s.fanClientId) loadFanServices({ silent: true });
 
+  // ---- OpenCart: cheie, descărcare conector, test ----
+  const ocRezultat = content.querySelector('#s-oc-rezultat');
+  const ocMesaj = (text, fel) => {
+    if (!ocRezultat) return;
+    const culori = {
+      bine: 'background:rgba(54,179,126,0.12);border:1px solid rgba(54,179,126,0.4);',
+      rau: 'background:rgba(190,18,60,0.10);border:1px solid rgba(190,18,60,0.35);',
+      neutru: 'background:var(--surface-raised);border:1px solid var(--border);',
+    };
+    ocRezultat.innerHTML = `<div style="${culori[fel] || culori.neutru}border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.55;">${text}</div>`;
+  };
+
+  const ocGenKey = content.querySelector('#s-oc-genkey');
+  if (ocGenKey) {
+    ocGenKey.addEventListener('click', async () => {
+      if (s.opencartApiKeySet && !confirm('Generezi o cheie nouă?\n\nFișierul deja urcat în magazin NU va mai funcționa până nu îl înlocuiești cu cel descărcat după generare.')) return;
+      ocGenKey.disabled = true;
+      const textVechi = ocGenKey.textContent;
+      ocGenKey.textContent = 'Se generează…';
+      try {
+        // Salvăm întâi adresa tastată: generarea redesenează secțiunea, iar
+        // altfel s-ar pierde fără ca omul să înțeleagă de ce.
+        const adresa = content.querySelector('#s-oc-url');
+        if (adresa && adresa.value.trim()) {
+          await api('/api/company/settings', { method: 'PATCH', body: JSON.stringify({ opencartConnectorUrl: adresa.value.trim() }) });
+        }
+        await api('/api/company/settings/opencart-key', { method: 'POST', body: '{}' });
+        showToast('Cheie generată. Descarcă fișierul și urcă-l în magazin.');
+        renderSettings('platforme');
+        return;
+      } catch (e) {
+        ocMesaj('Nu am putut genera cheia: ' + escapeHtml(e.message), 'rau');
+      }
+      ocGenKey.disabled = false;
+      ocGenKey.textContent = textVechi;
+    });
+  }
+
+  const ocDownload = content.querySelector('#s-oc-download');
+  if (ocDownload) {
+    ocDownload.addEventListener('click', () => {
+      window.location.href = '/api/company/settings/opencart-connector';
+    });
+  }
+
+  const ocTest = content.querySelector('#s-oc-test');
+  if (ocTest) {
+    ocTest.addEventListener('click', async () => {
+      const adresa = content.querySelector('#s-oc-url').value.trim();
+      if (!adresa) { ocMesaj('Completează mai întâi adresa fișierului.', 'rau'); return; }
+      ocTest.disabled = true;
+      ocTest.textContent = 'Se verifică…';
+      ocMesaj('Întreb magazinul…', 'neutru');
+      try {
+        const r = await api('/api/company/settings/opencart-test', {
+          method: 'POST', body: JSON.stringify({ opencartConnectorUrl: adresa }),
+        });
+        const i = r.info || {};
+        ocMesaj(
+          '<strong>✓ Conexiune reușită.</strong><br>' +
+          `OpenCart ${escapeHtml(i.opencartVersion || '(versiune necunoscută)')} · PHP ${escapeHtml(i.php || '?')}<br>` +
+          `${i.ordersTotal} comenzi în magazin` +
+          (i.lastOrderAt ? ` · ultima pe ${escapeHtml(i.lastOrderAt)}` : '') +
+          '<br><span style="color:var(--text-dim);">Salvează setările ca sincronizarea să pornească.</span>',
+          'bine'
+        );
+      } catch (e) {
+        ocMesaj('<strong>Conexiunea nu a funcționat.</strong><br>' + escapeHtml(e.message), 'rau');
+      }
+      ocTest.disabled = false;
+      ocTest.textContent = 'Testează conexiunea';
+    });
+  }
+
   content.querySelector('#settingsForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const q = (id) => content.querySelector(id).value.trim();
     const payload = {
+      merchantProShopUrl: q('#s-mp-url'),
+      merchantProApiKey: q('#s-mp-key'),
+      merchantProApiSecret: q('#s-mp-secret'),
+      gomagShopUrl: q('#s-gomag-url'),
+      gomagApiKey: q('#s-gomag-key'),
+      opencartConnectorUrl: q('#s-oc-url'),
       glsUsername: q('#s-gls-user'),
       glsPassword: q('#s-gls-pass'),
       glsClientNumber: q('#s-gls-client'),
@@ -6168,16 +6046,6 @@ async function renderSettings(sectiune) {
     return;
   }
 
-  // Magazinele nu mai sunt un formular unic al companiei: fiecare magazin se
-  // salvează separat, cu datele lui. De-aia secțiunea își are propriul bloc,
-  // în afara formularului de setări.
-  if (activa.cheie === 'magazine') {
-    [formIntegrari, formular, retur].forEach((n) => { if (n) n.hidden = true; });
-    const gazda = el('<div></div>');
-    body.insertBefore(gazda, body.firstChild);
-    sectiuneMagazine(gazda);
-    return;
-  }
 
   // O singură secțiune, deschisă.
   const eIntegrare = Boolean(activa.integrari);

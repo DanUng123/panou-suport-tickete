@@ -1893,15 +1893,21 @@ async function handleApi(req, res, pathname, query) {
       for (const shop of magazine) {
         const tinta = db.magazinPentruClient(shop, company);
         const eticheta = magazine.length > 1 ? `${shop.name}: ` : '';
-        if (shop.platform === 'merchantpro' && mp.isConfigured(tinta)) {
+        // Sincronizam ORICE platforma are date complete pe magazin, nu doar pe
+        // cea declarata: in Setari sunt toate trei casetele, iar un cont poate
+        // avea date ramase in doua dintre ele. Mai bine aducem comenzi in plus
+        // decat sa taca sincronizarea fara explicatie.
+        if (mp.isConfigured(tinta)) {
           vreunulConfigurat = true;
           try { result = await orderSync.runSyncForCompany(company, shop) || result; }
           catch (e) { erori.push(`${eticheta}MerchantPro: ${e.message}`); }
-        } else if (shop.platform === 'gomag' && gomag.isConfigured(tinta)) {
+        }
+        if (gomag.isConfigured(tinta)) {
           vreunulConfigurat = true;
           try { gomagResult = await orderSync.runGomagSyncForCompany(company, shop) || gomagResult; }
           catch (e) { erori.push(`${eticheta}GoMag: ${e.message}`); }
-        } else if (shop.platform === 'opencart' && opencart.isConfigured(tinta)) {
+        }
+        if (opencart.isConfigured(tinta)) {
           vreunulConfigurat = true;
           try { opencartResult = await orderSync.runOpenCartSyncForCompany(company, { magazin: shop }) || opencartResult; }
           catch (e) { erori.push(`${eticheta}OpenCart: ${e.message}`); }
