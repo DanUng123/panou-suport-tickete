@@ -76,6 +76,14 @@ const NO_REISSUE_COURIERS = ['ptt'];
 const mp = require('./lib/merchantpro');
 const gomag = require('./lib/gomag');
 const opencart = require('./lib/opencart');
+
+/** Magazinul e gata de sincronizat pe platforma lui? */
+function platformaConfigurata(magazin, company) {
+  const tinta = db.magazinPentruClient(magazin, company);
+  if (magazin.platform === 'gomag') return gomag.isConfigured(tinta);
+  if (magazin.platform === 'opencart') return opencart.isConfigured(tinta);
+  return mp.isConfigured(tinta);
+}
 const platiBt = require('./lib/plati-bt');
 const resend = require('./lib/resend');
 const pdf = require('./lib/pdf');
@@ -1438,6 +1446,154 @@ async function handleApi(req, res, pathname, query) {
     // adresa scrisa de mana, ci un punct definit in contul lor -- asa ca il
     // citim de acolo si il alegem dintr-o lista. Se poate apela si inainte de
     // salvare, cu datele din formular; campurile goale cad pe cele salvate.
+    // ---- magazinele companiei ----
+    // Un client poate avea mai multe magazine, dar toate pe aceeasi platforma.
+    // Credentialele platformei sunt ale magazinului; curierii si regulile de
+    // retur raman ale companiei, comune tuturor magazinelor ei.
+
+    if (pathname === '/api/company/shops' && req.method === 'GET') {
+      if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot accesa magazinele' });
+      const proaspat = db.getCompany(currentAgent.companyId);
+      const magazine = db.listShops(currentAgent.companyId).map((m) => {
+        // Secretele nu pleaca niciodata in clar spre browser -- doar daca sunt puse.
+        const { merchantProApiSecret, gomagApiKey, opencartApiKey, ...rest } = m;
+        return {
+          ...rest,
+          merchantProApiSecretSet: Boolean(merchantProApiSecret),
+          gomagApiKeySet: Boolean(gomagApiKey),
+          opencartApiKeySet: Boolean(opencartApiKey),
+          configured: platformaConfigurata(m, proaspat),
+        };
+      });
+      const limita = db.limitaMagazine(proaspat.plan);
+      return sendJSON(res, 200, {
+        shops: magazine,
+        plan: proaspat.plan || 'start',
+        limit: limita,
+        canAdd: limita === null || magazine.length < limita,
+      });
+    }
+
+    if (pathname === '/api/company/shops' && req.method === 'POST') {
+      if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot adăuga magazine' });
+      const body = await readBody(req);
+      try {
+        const magazin = db.createShop(currentAgent.companyId, {
+          name: String(body.name || '').trim().slice(0, 80),
+          platform: String(body.platform || '').trim(),
+        });
+        return sendJSON(res, 201, magazin);
+      } catch (e) {
+        return sendJSON(res, 400, { error: e.message });
+      }
+    }
+
+    const magazinMatch = pathname.match(/^\/api\/company\/shops\/([^/]+)$/);
+    if (magazinMatch && (req.method === 'PATCH' || req.method === 'DELETE')) {
+      if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot modifica magazinele' });
+      const magazin = db.getShop(magazinMatch[1]);
+      // Verificarea apartenentei e obligatorie: altfel, un manager ar putea
+      // trimite identificatorul unui magazin al altei firme.
+      if (!magazin || magazin.companyId !== currentAgent.companyId) {
+        return sendJSON(res, 404, { error: 'Magazin negăsit' });
+      }
+
+      if (req.method === 'DELETE') {
+        const magazine = db.listShops(currentAgent.companyId, { doarActive: true });
+        if (magazine.length <= 1) {
+          return sendJSON(res, 400, { error: 'Nu poți dezactiva singurul magazin al contului.' });
+        }
+        return sendJSON(res, 200, db.deactivateShop(magazin.id));
+      }
+
+      const body = await readBody(req);
+      const patch = {};
+      if (body.name !== undefined) patch.name = String(body.name).trim().slice(0, 80);
+      if (body.active !== undefined) patch.active = Boolean(body.active);
+      for (const camp of ['merchantProShopUrl', 'merchantProApiKey', 'gomagShopUrl', 'opencartConnectorUrl']) {
+        if (body[camp] !== undefined) patch[camp] = String(body[camp]).trim();
+      }
+      // Camp de secret gol inseamna "pastreaza ce e salvat", nu "sterge".
+      for (const secret of ['merchantProApiSecret', 'gomagApiKey', 'opencartApiKey']) {
+        if (body[secret]) patch[secret] = String(body[secret]).trim();
+      }
+      try {
+        const actualizat = db.updateShop(magazin.id, patch);
+        const { merchantProApiSecret, gomagApiKey, opencartApiKey, ...rest } = actualizat;
+        return sendJSON(res, 200, rest);
+      } catch (e) {
+        return sendJSON(res, 400, { error: e.message });
+      }
+    }
+
+    /** Cheie noua pentru conectorul OpenCart al UNUI magazin anume. */
+    const cheieMagazinMatch = pathname.match(/^\/api\/company\/shops\/([^/]+)\/opencart-key$/);
+    if (cheieMagazinMatch && req.method === 'POST') {
+      if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot accesa setările' });
+      const magazin = db.getShop(cheieMagazinMatch[1]);
+      if (!magazin || magazin.companyId !== currentAgent.companyId) return sendJSON(res, 404, { error: 'Magazin negăsit' });
+      db.updateShop(magazin.id, { opencartApiKey: crypto.randomBytes(36).toString('base64url') });
+      return sendJSON(res, 200, { ok: true });
+    }
+
+    /** Conectorul OpenCart, cu cheia magazinului scrisa in el. */
+    const conectorMagazinMatch = pathname.match(/^\/api\/company\/shops\/([^/]+)\/opencart-connector$/);
+    if (conectorMagazinMatch && req.method === 'GET') {
+      if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot descărca conectorul' });
+      const magazin = db.getShop(conectorMagazinMatch[1]);
+      if (!magazin || magazin.companyId !== currentAgent.companyId) return sendJSON(res, 404, { error: 'Magazin negăsit' });
+      if (!magazin.opencartApiKey) return sendJSON(res, 400, { error: 'Generează mai întâi cheia, apoi descarcă fișierul.' });
+      let sursa;
+      try {
+        sursa = fs.readFileSync(path.join(__dirname, 'conector-opencart', 'easyticket.php'), 'utf8');
+      } catch (e) {
+        return sendJSON(res, 500, { error: 'Fișierul conectorului lipsește de pe server.' });
+      }
+      const continut = sursa.replace(
+        /define\('EASYTICKET_KEY',\s*'[^']*'\);/,
+        `define('EASYTICKET_KEY', '${magazin.opencartApiKey}');`
+      );
+      res.writeHead(200, {
+        'Content-Type': 'application/x-php; charset=utf-8',
+        'Content-Disposition': 'attachment; filename="easyticket.php"',
+        'Content-Length': Buffer.byteLength(continut),
+        'Cache-Control': 'no-store',
+      });
+      return res.end(continut);
+    }
+
+    /** Testeaza legatura magazinului cu platforma lui. */
+    const testMagazinMatch = pathname.match(/^\/api\/company\/shops\/([^/]+)\/test$/);
+    if (testMagazinMatch && req.method === 'POST') {
+      if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot accesa setările' });
+      const magazin = db.getShop(testMagazinMatch[1]);
+      if (!magazin || magazin.companyId !== currentAgent.companyId) return sendJSON(res, 404, { error: 'Magazin negăsit' });
+      const body = await readBody(req);
+      const proaspat = db.getCompany(currentAgent.companyId);
+      const tinta = db.magazinPentruClient({
+        ...magazin,
+        // Adresa poate veni din formular, inainte de salvare: asa poti verifica
+        // o adresa gresita fara s-o salvezi mai intai.
+        opencartConnectorUrl: body.opencartConnectorUrl || magazin.opencartConnectorUrl,
+      }, proaspat);
+
+      try {
+        if (magazin.platform === 'opencart') {
+          if (!tinta.opencartConnectorUrl) return sendJSON(res, 400, { error: 'Completează adresa conectorului.' });
+          if (!tinta.opencartApiKey) return sendJSON(res, 400, { error: 'Generează mai întâi cheia și urcă fișierul în magazin.' });
+          return sendJSON(res, 200, { ok: true, info: await opencart.ping(tinta) });
+        }
+        if (magazin.platform === 'gomag') {
+          const r = await gomag.listOrders(tinta, { page: 1, limit: 1 });
+          return sendJSON(res, 200, { ok: true, info: { ordersTotal: r.total } });
+        }
+        const r = await mp.listOrders(tinta, { limit: 1 });
+        return sendJSON(res, 200, { ok: true, info: { ordersTotal: (r.pagination && r.pagination.total) || (r.data || []).length } });
+      } catch (e) {
+        return sendJSON(res, 502, { error: e.message });
+      }
+    }
+
     // ---- OpenCart ----
     // OpenCart nu are API de citire a comenzilor, deci magazinul primeste de la
     // noi un fisier PHP pe care il pune la el. Rutele de mai jos genereaza
