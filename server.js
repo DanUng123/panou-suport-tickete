@@ -75,6 +75,7 @@ const SCHIMB_COURIERS = ['sameday'];
 const NO_REISSUE_COURIERS = ['ptt'];
 const mp = require('./lib/merchantpro');
 const gomag = require('./lib/gomag');
+const opencart = require('./lib/opencart');
 const platiBt = require('./lib/plati-bt');
 const resend = require('./lib/resend');
 const pdf = require('./lib/pdf');
@@ -1223,9 +1224,10 @@ async function handleApi(req, res, pathname, query) {
       if (!company) return sendJSON(res, 404, { error: 'Companie negăsită' });
       // secretele nu se trimit niciodata in clar catre browser -- doar daca sunt setate sau nu
       const { merchantProApiSecret, glsPassword, samedayPassword, gomagApiKey, pttPassword,
-        cargusPassword, cargusSubscriptionKey, fanPassword, ...rest } = company;
+        cargusPassword, cargusSubscriptionKey, fanPassword, opencartApiKey, ...rest } = company;
       return sendJSON(res, 200, {
         ...rest,
+        opencartApiKeySet: Boolean(opencartApiKey),
         merchantProApiSecretSet: Boolean(merchantProApiSecret),
         glsPasswordSet: Boolean(glsPassword),
         samedayPasswordSet: Boolean(samedayPassword),
@@ -1254,6 +1256,7 @@ async function handleApi(req, res, pathname, query) {
       if (patch.cargusPassword === '') delete patch.cargusPassword;
       if (patch.cargusSubscriptionKey === '') delete patch.cargusSubscriptionKey;
       if (patch.fanPassword === '') delete patch.fanPassword;
+      if (patch.opencartApiKey === '') delete patch.opencartApiKey;
 
       // retinem starea DINAINTE de salvare, ca sa detectam daca MerchantPro
       // sau GoMag tocmai au fost configurate pentru PRIMA DATA -- caz in
@@ -1271,7 +1274,7 @@ async function handleApi(req, res, pathname, query) {
       }
 
       const { merchantProApiSecret, glsPassword, samedayPassword, gomagApiKey, pttPassword,
-        cargusPassword, cargusSubscriptionKey, fanPassword, ...rest } = updated;
+        cargusPassword, cargusSubscriptionKey, fanPassword, opencartApiKey, ...rest } = updated;
       return sendJSON(res, 200, {
         ...rest,
         merchantProApiSecretSet: Boolean(merchantProApiSecret),
@@ -1282,6 +1285,7 @@ async function handleApi(req, res, pathname, query) {
         cargusPasswordSet: Boolean(cargusPassword),
         cargusSubscriptionKeySet: Boolean(cargusSubscriptionKey),
         fanPasswordSet: Boolean(fanPassword),
+        opencartApiKeySet: Boolean(opencartApiKey),
         accountPreparing: merchantProJustConfigured || gomagJustConfigured,
       });
     }
@@ -1316,7 +1320,7 @@ async function handleApi(req, res, pathname, query) {
       const body = await readBody(req);
       const updated = db.setIntegrationActive(currentAgent.companyId, integration, Boolean(body.active));
       const { merchantProApiSecret, glsPassword, samedayPassword, gomagApiKey, pttPassword,
-        cargusPassword, cargusSubscriptionKey, fanPassword, ...rest } = updated;
+        cargusPassword, cargusSubscriptionKey, fanPassword, opencartApiKey, ...rest } = updated;
       return sendJSON(res, 200, rest);
     }
 
@@ -1419,6 +1423,69 @@ async function handleApi(req, res, pathname, query) {
     // adresa scrisa de mana, ci un punct definit in contul lor -- asa ca il
     // citim de acolo si il alegem dintr-o lista. Se poate apela si inainte de
     // salvare, cu datele din formular; campurile goale cad pe cele salvate.
+    // ---- OpenCart ----
+    // OpenCart nu are API de citire a comenzilor, deci magazinul primeste de la
+    // noi un fisier PHP pe care il pune la el. Rutele de mai jos genereaza
+    // cheia, servesc fisierul cu cheia deja scrisa in el si verifica legatura.
+
+    /** Cheie noua pentru conector. Generarea ei INVALIDEAZA fisierul deja urcat. */
+    if (pathname === '/api/company/settings/opencart-key' && req.method === 'POST') {
+      if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot accesa setările companiei' });
+      // 36 de octeti in base64url => 48 de caractere, fara caractere care sa
+      // puna probleme in adrese sau in sursa PHP.
+      const cheie = crypto.randomBytes(36).toString('base64url');
+      db.updateCompanyCredentials(currentAgent.companyId, { opencartApiKey: cheie });
+      return sendJSON(res, 200, { ok: true });
+    }
+
+    /** Fisierul conector, cu cheia companiei scrisa deja in el. */
+    if (pathname === '/api/company/settings/opencart-connector' && req.method === 'GET') {
+      if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot descărca conectorul' });
+      const proaspat = db.getCompany(currentAgent.companyId);
+      if (!proaspat.opencartApiKey) {
+        return sendJSON(res, 400, { error: 'Generează mai întâi cheia, apoi descarcă fișierul.' });
+      }
+      let sursa;
+      try {
+        sursa = fs.readFileSync(path.join(__dirname, 'conector-opencart', 'easyticket.php'), 'utf8');
+      } catch (e) {
+        return sendJSON(res, 500, { error: 'Fișierul conectorului lipsește de pe server.' });
+      }
+      // Inlocuim DOAR linia de definire, nu orice aparitie a sablonului.
+      const continut = sursa.replace(
+        /define\('EASYTICKET_KEY',\s*'[^']*'\);/,
+        `define('EASYTICKET_KEY', '${proaspat.opencartApiKey}');`
+      );
+      res.writeHead(200, {
+        'Content-Type': 'application/x-php; charset=utf-8',
+        'Content-Disposition': 'attachment; filename="easyticket.php"',
+        'Content-Length': Buffer.byteLength(continut),
+        'Cache-Control': 'no-store',
+      });
+      return res.end(continut);
+    }
+
+    /** „Testează conexiunea": intreaba conectorul cine e si cate comenzi are. */
+    if (pathname === '/api/company/settings/opencart-test' && req.method === 'POST') {
+      if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot accesa setările companiei' });
+      const body = await readBody(req);
+      const proaspat = db.getCompany(currentAgent.companyId);
+      const draft = {
+        ...proaspat,
+        // Adresa poate veni din formular, inainte de salvare -- ca sa poti
+        // verifica fara sa salvezi mai intai o adresa gresita.
+        opencartConnectorUrl: body.opencartConnectorUrl || proaspat.opencartConnectorUrl,
+        opencartActive: true,
+      };
+      if (!draft.opencartConnectorUrl) return sendJSON(res, 400, { error: 'Completează adresa conectorului.' });
+      if (!draft.opencartApiKey) return sendJSON(res, 400, { error: 'Generează mai întâi cheia și urcă fișierul în magazin.' });
+      try {
+        return sendJSON(res, 200, { ok: true, info: await opencart.ping(draft) });
+      } catch (e) {
+        return sendJSON(res, 502, { error: e.message });
+      }
+    }
+
     if (pathname === '/api/company/settings/cargus-locations' && req.method === 'POST') {
       if (!requireManager()) return sendJSON(res, 403, { error: 'Doar managerii pot accesa setările companiei' });
       const body = await readBody(req);
@@ -1612,7 +1679,9 @@ async function handleApi(req, res, pathname, query) {
         try {
           const host = new URL(url || '').hostname;
           const bareHost = host.replace(/^www\./, '').split('.')[0];
-          return bareHost ? bareHost.toUpperCase() : null;
+          // O adresa IP n-are nume de magazin: „192" nu spune nimic nimanui.
+          if (!bareHost || /^\d+$/.test(bareHost)) return null;
+          return bareHost.toUpperCase();
         } catch (e) { return null; }
       };
       // preferam sursa care e chiar configurata -- daca ambele sunt setate
@@ -1621,8 +1690,19 @@ async function handleApi(req, res, pathname, query) {
         platformLabel = urlToLabel(company.merchantProShopUrl) || platformLabel;
       } else if (gomag.isConfigured(company)) {
         platformLabel = urlToLabel(company.gomagShopUrl) || 'GOMAG';
+      } else if (opencart.isConfigured(company)) {
+        platformLabel = urlToLabel(company.opencartConnectorUrl) || 'OPENCART';
       }
-      return sendJSON(res, 200, { ...status, platformLabel });
+      // De cand pot fi trei platforme deodata, o singura eticheta nu mai spune
+      // adevarul: fiecare comanda isi poarta platforma ei, iar lista alege de
+      // aici denumirea potrivita. `platformLabel` ramane pentru comenzile
+      // salvate inainte de a exista coloana.
+      const etichetePlatforme = {
+        merchantpro: urlToLabel(company.merchantProShopUrl) || 'MERCHANTPRO',
+        gomag: urlToLabel(company.gomagShopUrl) || 'GOMAG',
+        opencart: urlToLabel(company.opencartConnectorUrl) || 'OPENCART',
+      };
+      return sendJSON(res, 200, { ...status, platformLabel, platformLabels: etichetePlatforme });
     }
 
     if (pathname === '/api/orders/sync' && req.method === 'POST') {
@@ -1631,6 +1711,7 @@ async function handleApi(req, res, pathname, query) {
       // iar interfata poate spune exact CARE platforma a esuat si de ce.
       let result = null;
       let gomagResult = null;
+      let opencartResult = null;
       const erori = [];
       if (mp.isConfigured(company)) {
         try { result = await orderSync.runSyncForCompany(company); }
@@ -1640,13 +1721,17 @@ async function handleApi(req, res, pathname, query) {
         try { gomagResult = await orderSync.runGomagSyncForCompany(company); }
         catch (e) { erori.push(`GoMag: ${e.message}`); }
       }
-      if (!mp.isConfigured(company) && !gomag.isConfigured(company)) {
+      if (opencart.isConfigured(company)) {
+        try { opencartResult = await orderSync.runOpenCartSyncForCompany(company); }
+        catch (e) { erori.push(`OpenCart: ${e.message}`); }
+      }
+      if (!mp.isConfigured(company) && !gomag.isConfigured(company) && !opencart.isConfigured(company)) {
         return sendJSON(res, 400, { error: 'Nicio platformă de magazin nu este configurată și activă. Verifică Setări → Integrări platforme.' });
       }
-      if (erori.length && !result && !gomagResult) {
+      if (erori.length && !result && !gomagResult && !opencartResult) {
         return sendJSON(res, 502, { error: erori.join(' · ') });
       }
-      return sendJSON(res, 200, { ...result, gomag: gomagResult, errors: erori.length ? erori : undefined });
+      return sendJSON(res, 200, { ...result, gomag: gomagResult, opencart: opencartResult, errors: erori.length ? erori : undefined });
     }
 
     if (pathname === '/api/orders/import-full-history' && req.method === 'POST') {
