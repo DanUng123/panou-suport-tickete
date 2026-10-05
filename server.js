@@ -625,7 +625,7 @@ async function handleApi(req, res, pathname, query) {
       const magazin = db.findCompanyByPublicSlug(body.slug);
       if (!magazin) return sendJSON(res, 404, { error: 'Formular inexistent.' });
 
-      const comanda = db.findOrderForPublicRequest(magazin.id, body.orderNumber, body.phone);
+      const comanda = db.findOrderForPublicRequest(magazin.id, body.orderNumber, body.phone, magazin.shopId);
       // acelasi raspuns si cand comanda nu exista, si cand telefonul nu se
       // potriveste -- altfel formularul ar confirma ce numere de comanda exista
       if (!comanda) {
@@ -697,7 +697,7 @@ async function handleApi(req, res, pathname, query) {
 
       // comanda se re-verifica aici, nu ne bazam pe pasul anterior: altfel
       // cineva ar putea sari peste el si trimite direct ce vrea
-      const comanda = db.findOrderForPublicRequest(magazin.id, body.orderNumber, body.phone);
+      const comanda = db.findOrderForPublicRequest(magazin.id, body.orderNumber, body.phone, magazin.shopId);
       if (!comanda) return sendJSON(res, 404, { error: 'Nu am găsit o comandă cu acest număr și acest telefon.' });
 
       // Fiecare regula de mai jos e verificata AICI, nu doar in formular.
@@ -868,9 +868,9 @@ async function handleApi(req, res, pathname, query) {
       if (autoAwbPornit && ['retur', 'service'].includes(body.type)) {
         const cheieCurier = reguli.autoAwbCourier;
         const curier = COURIER_MODULES[cheieCurier];
-        // `magazin` vine din căutarea după slug-ul public, deci are secretele
-        // așa cum stau în baza de date: criptate. Clientul de curierat are
-        // nevoie de ele descifrate, așa că reîncărcăm compania întreagă.
+        // Curierii sunt ai COMPANIEI, nu ai magazinului: un proprietar cu trei
+        // magazine are un singur contract de curier. Reîncărcăm compania ca să
+        // avem credențialele în forma pe care o așteaptă clientul de curierat.
         const magazinCuCredentiale = db.getCompany(magazin.id);
         const numeCurier = COURIER_LABELS[cheieCurier] || cheieCurier || '(nealeș)';
         // agentul din istoricul tichetului: emiterea n-a făcut-o un om
@@ -1129,6 +1129,21 @@ async function handleApi(req, res, pathname, query) {
       const ok = db.setContactMessageStatus(statusMesajMatch[1], String(body.status || ''));
       if (!ok) return sendJSON(res, 400, { error: 'Mesaj negăsit sau status invalid.' });
       return sendJSON(res, 200, { ok: true, noi: db.countNewContactMessages() });
+    }
+
+    // Planul companiei. Hotaraste cate magazine poate avea, deci il schimba
+    // doar creatorul platformei, nu clientul.
+    const planCompanieMatch = pathname.match(/^\/api\/platform-admin\/companies\/([^/]+)\/plan$/);
+    if (planCompanieMatch && req.method === 'POST') {
+      if (!isPlatformAdminRequest(req)) return sendJSON(res, 401, { error: 'Neautentificat' });
+      const body = await readBody(req);
+      try {
+        const ok = db.setCompanyPlan(planCompanieMatch[1], body.plan);
+        if (!ok) return sendJSON(res, 404, { error: 'Companie negăsită' });
+        return sendJSON(res, 200, { ok: true });
+      } catch (e) {
+        return sendJSON(res, 400, { error: e.message });
+      }
     }
 
     const toggleCompanyMatch = pathname.match(/^\/api\/platform-admin\/companies\/([^/]+)\/active$/);
@@ -1709,24 +1724,36 @@ async function handleApi(req, res, pathname, query) {
       // Fiecare platforma se sincronizeaza separat si isi raporteaza separat
       // eroarea: daca GoMag da eroare, rezultatul MerchantPro nu se mai pierde,
       // iar interfata poate spune exact CARE platforma a esuat si de ce.
+      // Butonul „Sincronizează acum" trece prin TOATE magazinele companiei,
+      // nu doar prin primul. Fiecare isi raporteaza eroarea cu numele lui, ca
+      // omul sa stie care magazin n-a mers, nu doar ca „ceva" n-a mers.
+      const magazine = db.listShops(company.id, { doarActive: true });
       let result = null;
       let gomagResult = null;
       let opencartResult = null;
+      let vreunulConfigurat = false;
       const erori = [];
-      if (mp.isConfigured(company)) {
-        try { result = await orderSync.runSyncForCompany(company); }
-        catch (e) { erori.push(`MerchantPro: ${e.message}`); }
+
+      for (const shop of magazine) {
+        const tinta = db.magazinPentruClient(shop, company);
+        const eticheta = magazine.length > 1 ? `${shop.name}: ` : '';
+        if (shop.platform === 'merchantpro' && mp.isConfigured(tinta)) {
+          vreunulConfigurat = true;
+          try { result = await orderSync.runSyncForCompany(company, shop) || result; }
+          catch (e) { erori.push(`${eticheta}MerchantPro: ${e.message}`); }
+        } else if (shop.platform === 'gomag' && gomag.isConfigured(tinta)) {
+          vreunulConfigurat = true;
+          try { gomagResult = await orderSync.runGomagSyncForCompany(company, shop) || gomagResult; }
+          catch (e) { erori.push(`${eticheta}GoMag: ${e.message}`); }
+        } else if (shop.platform === 'opencart' && opencart.isConfigured(tinta)) {
+          vreunulConfigurat = true;
+          try { opencartResult = await orderSync.runOpenCartSyncForCompany(company, { magazin: shop }) || opencartResult; }
+          catch (e) { erori.push(`${eticheta}OpenCart: ${e.message}`); }
+        }
       }
-      if (gomag.isConfigured(company)) {
-        try { gomagResult = await orderSync.runGomagSyncForCompany(company); }
-        catch (e) { erori.push(`GoMag: ${e.message}`); }
-      }
-      if (opencart.isConfigured(company)) {
-        try { opencartResult = await orderSync.runOpenCartSyncForCompany(company); }
-        catch (e) { erori.push(`OpenCart: ${e.message}`); }
-      }
-      if (!mp.isConfigured(company) && !gomag.isConfigured(company) && !opencart.isConfigured(company)) {
-        return sendJSON(res, 400, { error: 'Nicio platformă de magazin nu este configurată și activă. Verifică Setări → Integrări platforme.' });
+
+      if (!vreunulConfigurat) {
+        return sendJSON(res, 400, { error: 'Niciun magazin nu este configurat și activ. Verifică Setări → Integrări platforme.' });
       }
       if (erori.length && !result && !gomagResult && !opencartResult) {
         return sendJSON(res, 502, { error: erori.join(' · ') });
@@ -1822,7 +1849,7 @@ async function handleApi(req, res, pathname, query) {
         await mp.issueInvoice(company, order.mpId);
         // factura nu vine in raspunsul de mai sus -- resincronizam comanda ca sa o preluam
         const fresh = await mp.getOrder(company, order.mpId);
-        db.upsertOrderFromMerchantPro(currentAgent.companyId, fresh);
+        db.upsertOrderFromMerchantPro(db.getPrimulMagazin(currentAgent.companyId) || currentAgent.companyId, fresh);
         return sendJSON(res, 200, db.getOrder(currentAgent.companyId, order.id));
       } catch (e) {
         return sendJSON(res, 502, { error: e.message });
