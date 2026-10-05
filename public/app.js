@@ -761,15 +761,15 @@ function renderMarketingPricing() {
   const plans = [
     {
       name: 'Start', price: '100', popular: false,
-      features: ['Până la 2 agenți', 'Un curier conectat', 'Tichete nelimitate', 'Sincronizare automată a comenzilor', 'Suport prin email'],
+      features: ['Până la 3 magazine', 'Până la 2 agenți', 'Un curier conectat', 'Tichete nelimitate', 'Sincronizare automată a comenzilor', 'Suport prin email'],
     },
     {
       name: 'Business', price: '200', popular: true,
-      features: ['Până la 5 agenți', 'Toți curierii conectați', 'Tichete și comenzi nelimitate', 'Gestionare rambursări (IBAN)', 'Import/export clienți din Excel', 'Suport prioritar'],
+      features: ['Până la 5 magazine', 'Până la 5 agenți', 'Toți curierii conectați', 'Tichete și comenzi nelimitate', 'Gestionare rambursări (IBAN)', 'Import/export clienți din Excel', 'Suport prioritar'],
     },
     {
       name: 'Enterprise', price: '300', popular: false,
-      features: ['Agenți nelimitați', 'Ambii curieri, plus prioritate la sincronizare', 'Import clienți la volum mare (sute de mii)', 'Export în bloc, date bancare', 'Suport dedicat, cu timp de răspuns garantat'],
+      features: ['Până la 7 magazine', 'Agenți nelimitați', 'Toți curierii, plus prioritate la sincronizare', 'Import clienți la volum mare (sute de mii)', 'Export în bloc, date bancare', 'Suport dedicat, cu timp de răspuns garantat'],
     },
   ];
   renderMarketingShell('#/preturi', `
