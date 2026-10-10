@@ -39,6 +39,17 @@
   --accent-text: #ffffff;
   --accent-glow: rgba(243,111,33,0.10);
 
+  /* COALA DE SUB CONȚINUT.
+     Doar fundalul gol al coloanei din dreapta — nu și cardurile, pastilele,
+     filtrele sau meniul, care rămân mov-închis. Mov la 20% peste alb, adică
+     80% transparent.
+     Textul care stă DIRECT pe coală (titlul paginii, subtitlul, liniile de
+     sincronizare, etichetele de filtre) nu poate rămâne alb, așa că are
+     jetoanele lui. Restul textului, cel din carduri, nu se atinge. */
+  --coala: color-mix(in srgb, #7c3aed 20%, #ffffff);
+  --coala-text: #241036;
+  --coala-text-2: #4b3a63;
+
   /* Meniul lateral. Pe tema întunecată e la fel cu restul aplicației; pe cea
      luminoasă rămâne mov, ca în identitatea de bază — de-aia are jetoane ale
      lui, în loc să citească direct --surface. */
@@ -124,6 +135,11 @@
   --meniu-activ-fundal: rgba(243,111,33,0.18);
   --meniu-activ-chenar: rgba(243,111,33,0.55);
   --meniu-pictograma: rgba(255,255,255,0.08);
+
+  /* Coala e aceeași pe ambele teme — ea e „hârtia" paginii. */
+  --coala: color-mix(in srgb, #7c3aed 20%, #ffffff);
+  --coala-text: #241036;
+  --coala-text-2: #4b3a63;
 
   /* Culorile de stare rămân aceleași nuanțe, dar cele deschise nu se mai văd
      pe alb: le închidem exact atât cât să rămână lizibile. */
@@ -420,7 +436,18 @@ a { color: inherit; text-decoration: none; }
   padding: 28px 36px 60px;
   /* Meniul e scos din flux (fixat), deci conținutul își face loc singur. */
   margin-left: var(--sidebar-w);
+  /* Coala: fundalul gol de sub conținut. `min-height` ca ea să ajungă până
+     jos și pe paginile scurte, altfel sub ea s-ar vedea fundalul temei. */
+  background: var(--coala);
+  min-height: 100vh;
 }
+
+/* Textul care stă direct pe coală. Tot restul — ce e în carduri, pastile,
+   tabele, ferestre — își păstrează culorile temei. */
+.main .page-header h1 { color: var(--coala-text); }
+.main .page-header .sub,
+.main .status-pills-label,
+.main .linie-sincronizare { color: var(--coala-text-2); }
 
 .page-header {
   display: flex;
@@ -724,7 +751,9 @@ a { color: inherit; text-decoration: none; }
   gap: 7px;
   padding: 7px 13px;
   border-radius: 999px;
-  background: transparent;
+  /* Opac, nu transparent: altfel pastila ar lua culoarea colii de dedesubt
+     (lavanda), iar textul ei deschis ar deveni ilizibil. */
+  background: var(--surface-card);
   border: 1px solid var(--border);
   color: var(--text-secondary);
   font-size: 14.5px;
@@ -739,7 +768,7 @@ a { color: inherit; text-decoration: none; }
   border-color: var(--border-light);
 }
 .status-pill.active {
-  background: rgba(243,111,33,0.05);
+  background: color-mix(in srgb, var(--accent) 9%, var(--surface-card));
   border-color: var(--accent);
   color: var(--text);
 }
