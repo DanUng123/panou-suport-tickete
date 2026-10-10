@@ -9,9 +9,8 @@
      gri-ardezie  #3C4858   text secundar pe fond deschis
      alb / #FAFBFE          suprafețele temei luminoase
 
-   Tema întunecată așază aceleași culori pe un fond mov-cenușiu (#231C2D), ca
-   aplicația să arate ca același produs indiferent de temă. Fondul e dinadins
-   mai deschis decât negrul — explicația e la începutul blocului :root.
+   Tema întunecată așază aceleași culori pe un fond mov-închis, ca aplicația
+   să arate ca același produs indiferent de temă.
    Mono (IBM Plex Mono) pentru ID-uri/date, Inter pentru UI.
    =========================================================== */
 
@@ -22,35 +21,21 @@
    ecran, exact ca bara de taburi din Setări. */
 [hidden] { display: none !important; }
 
-/* De ce fundalul NU e cât se poate de închis.
-   Prima variantă avea #170b23 (L* ≈ 5) sub un text aproape alb: un raport de
-   contrast de 16:1. Sună bine pe hârtie, dar pe un ecran privit ore în șir e
-   exact ce obosește ochiul — literele albe „sângerează" peste fondul aproape
-   negru (halation), iar irisul se tot reglează între panou și restul camerei.
-   Ghidul recomandat pentru interfețe întunecate e un fond ridicat la L* ≈ 11-13
-   și un text alb-cald, nu alb pur: ajungem la ~13:1, mult peste pragul AAA de
-   7:1, dar fără duritatea de dinainte.
-   În plus am scos din fundal o parte din saturația mov: culorile foarte
-   saturate pe suprafețe mari obosesc în plus, pentru că ochiul nu poate focaliza
-   simultan componenta albastră și cea roșie. Movul rămâne — dar ca nuanță a
-   griului, nu ca pigment. */
 :root {
-  --bg: #231c2d;
-  --surface: #2b2335;
-  --surface-card: #292132;
-  --surface-header: #31283b;
-  --surface-raised: #362c41;
-  --surface-hover: #40344c;
-  --border: #3b3146;
-  --border-light: #514562;
-  --text: #e7e2ed;
-  --text-secondary: #b6adc3;
-  --text-dim: #8d849d;
+  --bg: #170b23;
+  --surface: #1e0f2f;
+  --surface-card: #1c0e2c;
+  --surface-header: #241337;
+  --surface-raised: #2a143d;
+  --surface-hover: #37204d;
+  --border: #33204a;
+  --border-light: #4a3263;
+  --text: #f1eaf7;
+  --text-secondary: #b5a6c6;
+  --text-dim: #8878a0;
   --accent: #f36f21;
-  /* Ridicate odată cu suprafețele: pe fondul vechi, #3d1f10 era vizibil ca
-     „pată caldă"; pe cel nou ar fi arătat ca o gaură. */
-  --accent-dim: #4a2a16;
-  --accent-border: #8a4a1d;
+  --accent-dim: #3d1f10;
+  --accent-border: #7a3b12;
   --accent-text: #ffffff;
   --accent-glow: rgba(243,111,33,0.10);
 
@@ -71,7 +56,7 @@
   --status-in_progress: #38bdf8;
   --status-waiting: #c4a6ff;
   --status-resolved: #36b37e;
-  --status-closed: #8d849d;
+  --status-closed: #8878a0;
   --status-pink: #ec4899;
 
   /* Urgentul stă deliberat departe de portocaliul accentului: dacă ar fi tot
@@ -79,7 +64,7 @@
   --priority-urgent: #fb7185;
   --priority-high: #fbbf24;
   --priority-medium: #38bdf8;
-  --priority-low: #8d849d;
+  --priority-low: #8878a0;
 
   --font-ui: 'Inter', system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
@@ -90,13 +75,11 @@
   /* Două efecte care depind de cât de întunecat e fundalul: dunga fină de
      lumină din capul unui element apăsat și umbra ferestrelor plutitoare.
      Pe fond deschis, amândouă trebuie altfel — de-aia sunt jetoane. */
-  --luciu-sus: rgba(255,255,255,0.05);
-  /* Umbrele s-au întărit puțin: pe un fundal mai deschis, o umbră slabă nu mai
-     desprinde fereastra de pagină. */
-  --umbra-mare: 0 10px 28px rgba(0,0,0,0.46);
-  --umbra-mica: 0 4px 16px rgba(0,0,0,0.36);
+  --luciu-sus: rgba(255,255,255,0.04);
+  --umbra-mare: 0 8px 24px rgba(0,0,0,0.40);
+  --umbra-mica: 0 4px 16px rgba(0,0,0,0.32);
   /* Fundalul insignelor discrete (etapă, termen) — o spoială peste suprafață. */
-  --insigna-fundal: rgba(255,255,255,0.07);
+  --insigna-fundal: rgba(255,255,255,0.06);
 }
 
 /* ---------------------------------------------------------------------------
@@ -2688,10 +2671,8 @@ html.mod-integrat #app { min-height: 0; display: block; }
 /* ---- chemare finală ---- */
 .pg-final {
   text-align: center; padding: 64px 36px; margin: 20px 0 80px;
-  /* Movul benzii a fost ridicat odată cu fundalul paginii: la #2a143d ajunsese
-     la aceeași luminozitate cu fondul nou și banda dispărea. */
-  border: 1px solid #4d2c6d; border-radius: 18px;
-  background: #3a1c55; color: #ffffff;
+  border: 1px solid #3c2254; border-radius: 18px;
+  background: #2a143d; color: #ffffff;
 }
 .pg-final h2 { font-size: 27px; margin-bottom: 12px; color: #ffffff; }
 .pg-final .pg-intro { color: rgba(255,255,255,0.78); }
@@ -2729,7 +2710,7 @@ html.mod-integrat #app { min-height: 0; display: block; }
    ========================================================================= */
 
 .ct-banda {
-  background: #3a1c55;
+  background: #2a143d;
   color: #ffffff;
   padding: 54px 24px 58px;
   text-align: center;
