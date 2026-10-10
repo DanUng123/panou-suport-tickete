@@ -3873,9 +3873,9 @@ async function renderOrdersList() {
       }
       if (s.lastSyncResult) {
         const r = s.lastSyncResult;
-        return `<div class="linie-sincronizare" style="font-size:12px;margin-bottom:14px;">${escapeHtml(s.nume)} — ultima sincronizare: ${fmtDate(r.at)} · ${r.created} noi, ${r.updated} actualizate${r.totalChecked !== undefined ? ` (din ${r.totalChecked} verificate)` : ''}</div>`;
+        return `<div style="color:var(--text-secondary);font-size:12px;margin-bottom:14px;">${escapeHtml(s.nume)} — ultima sincronizare: ${fmtDate(r.at)} · ${r.created} noi, ${r.updated} actualizate${r.totalChecked !== undefined ? ` (din ${r.totalChecked} verificate)` : ''}</div>`;
       }
-      return `<div class="linie-sincronizare" style="font-size:12px;margin-bottom:14px;">${escapeHtml(s.nume)} — nicio sincronizare încă. Apasă „Sincronizează acum".</div>`;
+      return `<div style="color:var(--text-secondary);font-size:12px;margin-bottom:14px;">${escapeHtml(s.nume)} — nicio sincronizare încă. Apasă „Sincronizează acum".</div>`;
     }).join('');
   } // altfel: n-o afisam ca eroare blocanta
 
