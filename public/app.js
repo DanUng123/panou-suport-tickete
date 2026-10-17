@@ -3732,6 +3732,148 @@ function paymentMethodLabel(order) {
 
 // ---- randarea randurilor din tabelul de comenzi ----
 
+/* =========================================================================
+   COMENZI CARE CER ATENTIE
+   =========================================================================
+   Doua lucruri strica livrarea cel mai des: un telefon pe care curierul nu-l
+   poate suna si o adresa la care nu poate ajunge. Amandoua se vad din datele
+   pe care le avem deja, inainte sa se emita AWB-ul -- deci merita prinse aici,
+   nu la curier.
+
+   Verificarea e DOAR un semnal, nu o blocare: o comanda semnalata se livreaza
+   mai departe exact ca inainte. De aceea regulile sunt deliberat conservatoare
+   -- prefer sa scape una gresita decat sa semnalez zece corecte si sa ajungi
+   sa ignori bannerul.
+
+   Se verifica DOAR comenzile in asteptare. Dupa ce o comanda a fost
+   confirmata sau expediata, avertismentul vine prea tarziu -- AWB-ul e deja
+   emis, iar bannerul ar ramane plin de comenzi la care nu mai ai ce face.
+   ========================================================================= */
+
+/** Cifrele unui numar, aduse la forma nationala (07xxxxxxxx). */
+function telefonNormalizat(telefon) {
+  let d = String(telefon || '').replace(/\D/g, '');
+  // Prefixul de tara apare in trei forme: 0040, 40 si +40 (plusul a cazut deja).
+  if (d.startsWith('0040')) d = '0' + d.slice(4);
+  else if (d.startsWith('40') && d.length === 11) d = '0' + d.slice(2);
+  else if (d.startsWith('40') && d.length === 12) d = '0' + d.slice(2);
+  return d;
+}
+
+/** Ce e in neregula cu telefonul, sau null daca e bun. */
+function problemaTelefon(telefon) {
+  const brut = String(telefon || '').trim();
+  if (!brut) return 'telefon lipsă';
+  const d = telefonNormalizat(brut);
+  if (d.length !== 10) {
+    return `telefon cu ${d.length} ${d.length === 1 ? 'cifră' : 'cifre'} (trebuie 10)`;
+  }
+  if (!d.startsWith('0')) return 'telefon fără 0 la început';
+  // 07 mobil, 02/03 fix. Orice altceva nu e un numar romanesc valid.
+  if (!/^0[723]/.test(d)) return `prefix neobișnuit (${d.slice(0, 3)})`;
+  // Toate cifrele la fel, sau o secventa evidenta -- completat doar ca sa treaca formularul.
+  if (/^0(\d)\1{8}$/.test(d)) return 'telefon cu toate cifrele la fel';
+  if (d === '0712345678' || d === '0700000000') return 'telefon evident fals';
+  return null;
+}
+
+// Cuvinte scrise in campul de adresa doar ca sa treaca validarea magazinului.
+const ADRESA_GUNOI = /^(test|asd|asdf|qwerty|aaa+|xxx+|nnn+|abc|123|\.|-|n\/a|na)$/i;
+
+/**
+ * Ce lipseste dintr-o adresa. Forma corecta, dupa exemplul tau:
+ *   Brasovului, 139, 117630, Rucăr, Argeş
+ *   strada [+ numar + bloc/scara/ap], cod postal, localitate, judet
+ */
+function problemeAdresa(strada, codPostal, oras, judet) {
+  const probleme = [];
+  const s = String(strada || '').trim();
+  const cod = String(codPostal || '').replace(/\s/g, '');
+  const o = String(oras || '').trim();
+  const j = String(judet || '').trim();
+
+  if (!s) {
+    probleme.push('adresă lipsă');
+  } else if (ADRESA_GUNOI.test(s) || s.length < 6) {
+    probleme.push('adresă prea scurtă sau fără sens');
+  } else if (!/\d/.test(s)) {
+    // Fara nicio cifra in adresa nu exista numar de casa -- curierul nu stie unde sa opreasca.
+    probleme.push('adresa nu conține numărul');
+  }
+
+  // Codul postal romanesc are exact 6 cifre.
+  if (!cod) probleme.push('cod poștal lipsă');
+  else if (!/^\d{6}$/.test(cod)) probleme.push(`cod poștal greșit (${cod})`);
+
+  if (!o) probleme.push('localitate lipsă');
+  if (!j) probleme.push('județ lipsă');
+
+  return probleme;
+}
+
+/** Toate problemele unei comenzi, gata de afisat. Lista goala = comanda e in regula. */
+function problemeComanda(o) {
+  if (o.shippingStatus !== 'awaiting') return [];
+  const probleme = [];
+
+  const pTel = problemaTelefon(o.shippingPhone);
+  if (pTel) probleme.push({ camp: 'telefon', text: pTel });
+
+  problemeAdresa(o.shippingAddress, o.shippingPostalCode, o.shippingCity, o.shippingState)
+    .forEach((text) => probleme.push({ camp: 'adresa', text }));
+
+  return probleme;
+}
+
+/**
+ * Bannerul de sus. Nu il desenam deloc daca nu e nimic de semnalat -- un
+ * banner verde „totul e in regula" la fiecare incarcare devine zgomot si
+ * ajungi sa nu-l mai citesti.
+ */
+function bannerAtentionareHtml(orders) {
+  const cuProbleme = orders
+    .map((o) => ({ o, probleme: problemeComanda(o) }))
+    .filter((x) => x.probleme.length);
+
+  if (!cuProbleme.length) return '';
+
+  const randuri = cuProbleme.map(({ o, probleme }) => `
+    <li>
+      <button type="button" class="js-sari-la" data-id="${o.id}">#${escapeHtml(String(o.mpId))}</button>
+      <span class="aten-client">${escapeHtml(o.shippingName || o.billingName || '—')}</span>
+      <span class="aten-motiv">${escapeHtml(probleme.map((p) => p.text).join(' · '))}</span>
+    </li>`).join('');
+
+  const n = cuProbleme.length;
+  return `
+    <div class="atentionare">
+      <div class="aten-cap">
+        <span class="aten-semn">!</span>
+        <div>
+          <b>${n === 1 ? 'O comandă are nevoie de verificare' : `${n} comenzi au nevoie de verificare`}</b>
+          <p>Comenzi în așteptare cu telefon sau adresă incomplete — curierul s-ar putea să nu poată livra. Verifică înainte să confirmi.</p>
+        </div>
+      </div>
+      <ul class="aten-lista">${randuri}</ul>
+    </div>`;
+}
+
+/** Click pe un numar din banner: deruleaza la comanda si o evidentiaza scurt. */
+function wireBannerAtentionare(container) {
+  container.querySelectorAll('.js-sari-la').forEach((b) => {
+    b.addEventListener('click', () => {
+      const card = document.querySelector(`.cmd[data-id="${b.dataset.id}"]`);
+      if (!card) return;
+      card.classList.add('desfacut');
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      card.classList.remove('cmd-evidentiat');
+      // Repornirea animatiei cere o reflow intre stergere si repunere.
+      void card.offsetWidth;
+      card.classList.add('cmd-evidentiat');
+    });
+  });
+}
+
 /**
  * LISTA DE COMENZI -- carduri desfasurate, nu randuri de tabel.
  *
@@ -3755,13 +3897,13 @@ function adresaCompleta(strada, codPostal, oras, judet) {
 }
 
 /** O linie dintr-un bloc de informatii; nu o desenam daca nu avem valoarea. */
-function linieInfo(eticheta, valoare, { tel = false } = {}) {
+function linieInfo(eticheta, valoare, { tel = false, rau = false } = {}) {
   const v = (valoare || '').toString().trim();
   if (!v) return '';
   const continut = tel
     ? `<a href="tel:${escapeHtml(v.replace(/\s+/g, ''))}">${escapeHtml(v)}</a>`
     : escapeHtml(v);
-  return `<dt>${escapeHtml(eticheta)}</dt><dd>${continut}</dd>`;
+  return `<dt>${escapeHtml(eticheta)}</dt><dd${rau ? ' class="dd-rau"' : ''}>${continut}</dd>`;
 }
 
 function tabelProduseHtml(o) {
@@ -3818,6 +3960,11 @@ function tabelProduseHtml(o) {
 }
 
 function blocuriInfoHtml(o) {
+  // Aceleasi verificari ca in banner, ca sa stie unde sa se uite cand ajunge
+  // la comanda: campul vinovat se coloreaza, nu doar se numara sus.
+  const probleme = problemeComanda(o);
+  const telRau = probleme.some((p) => p.camp === 'telefon');
+  const adrRau = probleme.some((p) => p.camp === 'adresa');
   const adresaFacturare = adresaCompleta(o.billingAddress, o.billingPostalCode, o.billingCity, o.billingState);
   const adresaLivrare = adresaCompleta(o.shippingAddress, o.shippingPostalCode, o.shippingCity, o.shippingState);
   const awb = o.awbNumber || o.shippingAwb || '';
@@ -3830,15 +3977,15 @@ function blocuriInfoHtml(o) {
     linieInfo('Status plată', PAYMENT_STATUS_LABELS_MP[o.paymentStatus] || o.paymentStatus),
     linieInfo('Nume', o.billingName || o.shippingName),
     linieInfo('Adresă', adresaFacturare),
-    linieInfo('Telefon', o.shippingPhone, { tel: true }),
+    linieInfo('Telefon', o.shippingPhone, { tel: !telRau, rau: telRau }),
     linieInfo('Email', o.customerEmail),
   ].join('');
 
   const livrare = [
     linieInfo('Metodă', o.shippingMethodName),
     linieInfo('Persoană', o.shippingName),
-    linieInfo('Adresă', adresaLivrare),
-    linieInfo('Telefon', o.shippingPhone, { tel: true }),
+    linieInfo('Adresă', adresaLivrare || '—', { rau: adrRau }),
+    linieInfo('Telefon', o.shippingPhone || '—', { tel: !telRau, rau: telRau }),
     linieInfo('AWB', awb),
     linieInfo('Status', SHIPPING_STATUS_LABELS_MP[o.shippingStatus] || o.shippingStatusText || o.shippingStatus),
     linieInfo('Factură', facturaText),
@@ -3867,8 +4014,10 @@ function orderRowsHtml(orders) {
       cancelled: 'badge-status-closed',
     }[o.shippingStatus] || 'badge-status-closed';
 
+    const probleme = problemeComanda(o);
+
     return `
-    <article class="cmd desfacut" data-id="${o.id}">
+    <article class="cmd desfacut${probleme.length ? ' cmd-atentie' : ''}" data-id="${o.id}">
       <header class="cmd-cap">
         <button class="cmd-sageata" type="button" aria-label="Strânge comanda" title="Strânge comanda">▾</button>
         <div class="cmd-nr">#${escapeHtml(String(o.mpId))}<small>${fmtDate(o.dateCreated)}</small></div>
@@ -3883,6 +4032,7 @@ function orderRowsHtml(orders) {
           <span>${etichetaProduse} · ${escapeHtml(paymentMethodLabel(o))}</span>
         </div>
         <div class="cmd-actiuni">
+          ${probleme.length ? `<span class="cmd-semn-atentie" title="${escapeHtml(probleme.map((p) => p.text).join(' · '))}">!</span>` : ''}
           <button class="cmd-ico js-deschide" type="button" title="Deschide comanda" aria-label="Deschide comanda">⌕</button>
         </div>
       </header>
@@ -3957,6 +4107,7 @@ async function renderOrdersList() {
         <button class="btn btn-primary" id="syncNowBtn">↻ Sincronizează acum</button>
       </div>
       <div id="sync-banner"></div>
+      <div id="alerta-comenzi"></div>
       <div class="stat-grid" id="order-stats" style="margin-bottom:18px;"></div>
       <div class="filters-search-row">
         <input type="text" id="q" placeholder="Caută client, oraș, ID comandă, telefon, AWB…" value="${escapeHtml(filters.q || '')}" />
@@ -4144,6 +4295,15 @@ async function renderOrdersList() {
 
   listBody.innerHTML = ordersTableHtml(orders);
   wireOrderRows(listBody);
+
+  // Avertismentul se calculeaza din comenzile DEJA incarcate, deci se refera
+  // la ce e pe ecran acum: daca filtrezi pe „Azi", verifica doar comenzile de
+  // azi. Nu cerem nimic in plus de la server.
+  const zonaAlerta = content.querySelector('#alerta-comenzi');
+  if (zonaAlerta) {
+    zonaAlerta.innerHTML = bannerAtentionareHtml(orders);
+    wireBannerAtentionare(zonaAlerta);
+  }
 }
 
 /** Navigare directă (link, refresh, buton Înapoi browser). */
