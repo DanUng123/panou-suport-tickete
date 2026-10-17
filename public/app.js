@@ -3732,61 +3732,198 @@ function paymentMethodLabel(order) {
 
 // ---- randarea randurilor din tabelul de comenzi ----
 
+/**
+ * LISTA DE COMENZI -- carduri desfasurate, nu randuri de tabel.
+ *
+ * Inainte fiecare comanda era un rand ingust, iar ca sa vezi produsele si
+ * adresele trebuia sa deschizi sertarul din dreapta. Acum fiecare comanda isi
+ * arata tot continutul direct in lista: produsele cu pret, totalurile, datele
+ * de facturare si cele de livrare.
+ *
+ * Toate cardurile sunt DESFACUTE din start. Sageata din stanga stran-
+ * ge unul, daca vrei sa treci repede peste el; starea nu se tine minte intre
+ * incarcari, ca lista sa arate la fel de fiecare data cand intri pe pagina.
+ *
+ * Nu e nevoie de nicio cerere in plus catre server: /api/orders intoarce deja
+ * si `lineItems`, si adresele, si costul de livrare -- rowToOrder le trimite
+ * pe toate.
+ */
+
+/** „Str. Florilor nr. 19, 315100, Chișineu-Criș, Arad" -- fara virgule goale. */
+function adresaCompleta(strada, codPostal, oras, judet) {
+  return [strada, codPostal, oras, judet].map((x) => (x || '').trim()).filter(Boolean).join(', ');
+}
+
+/** O linie dintr-un bloc de informatii; nu o desenam daca nu avem valoarea. */
+function linieInfo(eticheta, valoare, { tel = false } = {}) {
+  const v = (valoare || '').toString().trim();
+  if (!v) return '';
+  const continut = tel
+    ? `<a href="tel:${escapeHtml(v.replace(/\s+/g, ''))}">${escapeHtml(v)}</a>`
+    : escapeHtml(v);
+  return `<dt>${escapeHtml(eticheta)}</dt><dd>${continut}</dd>`;
+}
+
+function tabelProduseHtml(o) {
+  const produse = o.lineItems || [];
+  if (!produse.length) {
+    return '<div class="cmd-fara-produse">Comanda nu are produsele salvate — probabil a fost importată înainte ca sincronizarea să le aducă.</div>';
+  }
+  const randuri = produse.map((it) => {
+    const nume = it.product_name || 'Produs fără denumire';
+    const img = it.product_image_url
+      ? `<img class="cmd-img" src="${escapeHtml(it.product_image_url)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'cmd-img cmd-img-gol'}))" />`
+      : '<div class="cmd-img cmd-img-gol"></div>';
+    const subtotal = it.line_subtotal_gross != null
+      ? it.line_subtotal_gross
+      : (it.unit_price_gross != null && it.quantity != null ? it.unit_price_gross * it.quantity : null);
+    return `
+      <tr>
+        <td>
+          <div class="cmd-produs">
+            ${img}
+            <div class="cmd-produs-text">
+              <div class="cmd-produs-nume">${escapeHtml(nume)}</div>
+              ${it.product_sku ? `<div class="cmd-produs-meta">SKU ${escapeHtml(it.product_sku)}</div>` : ''}
+            </div>
+          </div>
+        </td>
+        <td class="r cifre">${it.quantity != null ? escapeHtml(String(it.quantity)) : '—'}</td>
+        <td class="r cifre">${it.unit_price_gross != null ? fmtMoney(it.unit_price_gross, o.currency) : '—'}</td>
+        <td class="r cifre">${subtotal != null ? fmtMoney(subtotal, o.currency) : '—'}</td>
+      </tr>`;
+  }).join('');
+
+  // Subtotalul se calculeaza din produse; daca lipseste vreun pret, nu inventam
+  // o suma gresita -- aratam doar totalul comenzii, care vine din platforma.
+  let subtotal = 0;
+  let subtotalSigur = produse.length > 0;
+  produse.forEach((it) => {
+    const s = it.line_subtotal_gross != null
+      ? it.line_subtotal_gross
+      : (it.unit_price_gross != null && it.quantity != null ? it.unit_price_gross * it.quantity : null);
+    if (s == null) subtotalSigur = false; else subtotal += Number(s);
+  });
+
+  return `
+    <table class="cmd-tabel">
+      <thead><tr><th>Produs</th><th class="r">Cant.</th><th class="r">Preț</th><th class="r">Subtotal</th></tr></thead>
+      <tbody>${randuri}</tbody>
+    </table>
+    <div class="cmd-totaluri">
+      ${subtotalSigur ? `<div><span>Subtotal</span><span class="cifre">${fmtMoney(subtotal, o.currency)}</span></div>` : ''}
+      ${o.shippingCost != null && o.shippingCost !== '' ? `<div><span>Cost livrare</span><span class="cifre">${fmtMoney(o.shippingCost, o.currency)}</span></div>` : ''}
+      <div class="total"><span>Total</span><span class="cifre">${fmtMoney(o.totalAmount, o.currency)}</span></div>
+    </div>`;
+}
+
+function blocuriInfoHtml(o) {
+  const adresaFacturare = adresaCompleta(o.billingAddress, o.billingPostalCode, o.billingCity, o.billingState);
+  const adresaLivrare = adresaCompleta(o.shippingAddress, o.shippingPostalCode, o.shippingCity, o.shippingState);
+  const awb = o.awbNumber || o.shippingAwb || '';
+  const facturaText = o.invoice && !o.invoice.cancelled
+    ? `${o.invoice.prefix || ''}${o.invoice.prefix ? '.' : ''}${o.invoice.number || ''}`
+    : '';
+
+  const facturare = [
+    linieInfo('Metodă plată', paymentMethodLabel(o)),
+    linieInfo('Status plată', PAYMENT_STATUS_LABELS_MP[o.paymentStatus] || o.paymentStatus),
+    linieInfo('Nume', o.billingName || o.shippingName),
+    linieInfo('Adresă', adresaFacturare),
+    linieInfo('Telefon', o.shippingPhone, { tel: true }),
+    linieInfo('Email', o.customerEmail),
+  ].join('');
+
+  const livrare = [
+    linieInfo('Metodă', o.shippingMethodName),
+    linieInfo('Persoană', o.shippingName),
+    linieInfo('Adresă', adresaLivrare),
+    linieInfo('Telefon', o.shippingPhone, { tel: true }),
+    linieInfo('AWB', awb),
+    linieInfo('Status', SHIPPING_STATUS_LABELS_MP[o.shippingStatus] || o.shippingStatusText || o.shippingStatus),
+    linieInfo('Factură', facturaText),
+  ].join('');
+
+  return `
+    <div class="cmd-bloc">
+      <h4>Informații facturare</h4>
+      ${facturare ? `<dl>${facturare}</dl>` : '<div class="cmd-gol">Fără date de facturare.</div>'}
+    </div>
+    <div class="cmd-bloc">
+      <h4>Informații livrare</h4>
+      ${livrare ? `<dl>${livrare}</dl>` : '<div class="cmd-gol">Fără date de livrare.</div>'}
+    </div>`;
+}
+
 function orderRowsHtml(orders) {
   return orders.map((o) => {
-    const thumbs = (o.lineItems || []).slice(0, 3).map((it) => {
-      const qtyBadge = it.quantity > 1 ? `<span class="thumb-qty-badge">×${it.quantity}</span>` : '';
-      const productName = it.product_name || '';
-      const img = it.product_image_url
-        ? `<img class="order-thumb" src="${escapeHtml(it.product_image_url)}" alt="" title="${escapeHtml(productName)}" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'order-thumb order-thumb-placeholder',textContent:'—'}))" />`
-        : `<div class="order-thumb order-thumb-placeholder" title="${escapeHtml(productName)}">—</div>`;
-      return `<span class="order-thumb-wrap">${img}${qtyBadge}</span>`;
-    }).join('');
-    const extraCount = (o.lineItems || []).length - 3;
+    const nrProduse = (o.lineItems || []).reduce((s, it) => s + (Number(it.quantity) || 0), 0);
+    const etichetaProduse = nrProduse === 1 ? '1 produs' : `${nrProduse} produse`;
+    const stare = SHIPPING_STATUS_LABELS_MP[o.shippingStatus] || o.shippingStatusText || o.shippingStatus || '—';
+    const clasaStare = {
+      awaiting: 'badge-status-open', confirmed: 'badge-status-in_progress',
+      in_process: 'badge-status-in_progress', shipped: 'badge-status-in_progress',
+      delivered: 'badge-status-resolved', returned: 'badge-status-waiting',
+      cancelled: 'badge-status-closed',
+    }[o.shippingStatus] || 'badge-status-closed';
 
     return `
-    <div class="order-row" data-id="${o.id}">
-      <div class="order-platform"><span class="platform-dot"></span>${escapeHtml(etichetaPlatforma(o))}</div>
-      <div class="order-id">#${o.mpId}</div>
-      <div class="order-client">
-        <div class="t-title">${escapeHtml(o.shippingName || o.billingName || '—')}</div>
-        <div class="t-requester">${escapeHtml(o.shippingCity || '')}</div>
+    <article class="cmd desfacut" data-id="${o.id}">
+      <header class="cmd-cap">
+        <button class="cmd-sageata" type="button" aria-label="Strânge comanda" title="Strânge comanda">▾</button>
+        <div class="cmd-nr">#${escapeHtml(String(o.mpId))}<small>${fmtDate(o.dateCreated)}</small></div>
+        <div class="cmd-platforma"><span class="platform-dot"></span>${escapeHtml(etichetaPlatforma(o))}</div>
+        <div><span class="badge ${clasaStare}">${escapeHtml(stare)}</span></div>
+        <div class="cmd-client">
+          <b>${escapeHtml(o.shippingName || o.billingName || '—')}</b>
+          <span>${escapeHtml([o.shippingCity, o.shippingState].filter(Boolean).join(', ') || o.customerEmail || '')}</span>
+        </div>
+        <div class="cmd-bani">
+          <b>${fmtMoney(o.totalAmount, o.currency)}</b>
+          <span>${etichetaProduse} · ${escapeHtml(paymentMethodLabel(o))}</span>
+        </div>
+        <div class="cmd-actiuni">
+          <button class="cmd-ico js-deschide" type="button" title="Deschide comanda" aria-label="Deschide comanda">⌕</button>
+        </div>
+      </header>
+      <div class="cmd-corp">
+        <div class="cmd-stanga">${tabelProduseHtml(o)}</div>
+        <div class="cmd-dreapta">${blocuriInfoHtml(o)}</div>
       </div>
-      <div class="order-thumbs">${thumbs}${extraCount > 0 ? `<div class="order-thumb order-thumb-more">+${extraCount}</div>` : ''}</div>
-      <div class="order-total">${fmtMoney(o.totalAmount, o.currency)}</div>
-      <div style="min-width:0;overflow:hidden;display:flex;align-items:center;gap:6px;">
-        ${o.paymentStatus === 'paid' ? '<span class="glow-dot" title="Plată finalizată"></span>' : ''}
-        <span class="badge badge-status-closed" style="max-width:100%;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(paymentMethodLabel(o))}</span>
-      </div>
-      <div class="order-awb-status">
-        <div class="awb-status-line"><span class="awb-status-dot ${o.awbNumber || o.shippingAwb ? 'has-awb' : ''}"></span>${o.awbNumber || o.shippingAwb ? 'AWB emis' : 'Fără AWB'}</div>
-        <div class="awb-status-sub">${escapeHtml(SHIPPING_STATUS_LABELS_MP[o.shippingStatus] || o.shippingStatusText || o.shippingStatus || '—')}</div>
-      </div>
-      <div class="order-invoice">${o.invoice && !o.invoice.cancelled ? `<span class="invoice-badge">${escapeHtml(o.invoice.prefix || '')}.${escapeHtml(o.invoice.number || '')}</span>` : '<span style="color:var(--text-dim);">—</span>'}</div>
-      <div class="ticket-date">${fmtDate(o.dateCreated)}</div>
-    </div>
-  `;
+    </article>`;
   }).join('');
 }
 
 function ordersTableHtml(orders) {
-  return `
-    <div class="ticket-table">
-      <div class="order-row header">
-        <div>Platformă</div><div>Comandă</div><div>Client</div><div>Produse</div><div>Total</div><div>Metodă</div><div>Livrare</div><div>Factură</div><div>Data</div>
-      </div>
-      ${orderRowsHtml(orders)}
-    </div>
-  `;
+  return `<div class="cmd-lista">${orderRowsHtml(orders)}</div>`;
 }
 
-/** Face fiecare rand din tabel sa deschida sertarul comenzii. */
+/**
+ * Sageata strange/desface cardul, lupa deschide sertarul.
+ *
+ * Click-ul pe restul capului nu mai deschide sertarul: cand tot continutul e
+ * deja pe ecran, un click care muta pagina in alta parte e mai mult deranj
+ * decat ajutor. Cine vrea sertarul are butonul cu lupa.
+ */
 function wireOrderRows(container) {
-  container.querySelectorAll('.order-row[data-id]').forEach((row) => {
-    row.addEventListener('click', () => {
-      history.pushState(null, '', `#/orders/${row.dataset.id}`);
-      openOrderDrawer(row.dataset.id);
-    });
+  container.querySelectorAll('.cmd[data-id]').forEach((card) => {
+    const sageata = card.querySelector('.cmd-sageata');
+    if (sageata) {
+      sageata.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const desfacut = card.classList.toggle('desfacut');
+        sageata.setAttribute('aria-label', desfacut ? 'Strânge comanda' : 'Desfă comanda');
+        sageata.setAttribute('title', desfacut ? 'Strânge comanda' : 'Desfă comanda');
+      });
+    }
+    const lupa = card.querySelector('.js-deschide');
+    if (lupa) {
+      lupa.addEventListener('click', (e) => {
+        e.stopPropagation();
+        history.pushState(null, '', `#/orders/${card.dataset.id}`);
+        openOrderDrawer(card.dataset.id);
+      });
+    }
   });
 }
 

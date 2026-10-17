@@ -3172,3 +3172,147 @@ html.mod-integrat #app { min-height: 0; display: block; }
 .cod-magazin-nume {
   font-size: 13px; font-weight: 600; margin-bottom: 7px; color: var(--text);
 }
+
+
+/* =========================================================================
+   LISTA DE COMENZI -- carduri desfasurate
+   =========================================================================
+   Fiecare comanda isi arata continutul direct in lista: produsele cu preturi
+   in stanga, datele de facturare si livrare in dreapta. Cardurile sunt
+   desfacute din start; clasa `desfacut` e pusa de la randare, iar sageata o
+   scoate daca vrei sa treci repede peste o comanda.
+
+   De ce `article` si nu rand de tabel: continutul are doua coloane cu
+   inaltimi diferite, iar un `tr` nu poate fi impartit asa fara sa se rupa
+   alinierea pe ecrane inguste.
+   ========================================================================= */
+
+.cmd-lista { display: flex; flex-direction: column; gap: 10px; }
+
+.cmd {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-card);
+  overflow: hidden;
+}
+
+.cmd-cap {
+  display: grid;
+  grid-template-columns: 26px 118px 1fr 150px 1.4fr 190px auto;
+  gap: 14px;
+  align-items: center;
+  padding: 11px 14px;
+}
+.cmd-sageata {
+  width: 26px; height: 26px; border-radius: 7px;
+  border: 1px solid transparent; background: transparent;
+  color: var(--text-dim); font-size: 11px; cursor: pointer;
+  display: grid; place-items: center;
+  /* Sageata porneste in jos; cand cardul e desfacut o intoarcem in sus. */
+  transition: transform 0.15s ease, color 0.12s ease, border-color 0.12s ease;
+}
+.cmd-sageata:hover { color: var(--text); border-color: var(--border); }
+.cmd.desfacut .cmd-sageata { transform: rotate(180deg); }
+
+.cmd-nr { font-family: var(--font-mono); font-size: 13px; font-weight: 600; }
+.cmd-nr small {
+  display: block; margin-top: 2px;
+  font-family: var(--font-ui); font-size: 11px; font-weight: 400; color: var(--text-dim);
+}
+.cmd-platforma { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-secondary); }
+
+.cmd-client { min-width: 0; }
+.cmd-client b { display: block; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmd-client span { display: block; font-size: 11.5px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.cmd-bani { text-align: right; min-width: 0; }
+.cmd-bani b { display: block; font-size: 14px; font-weight: 700; }
+.cmd-bani span { font-size: 11px; color: var(--text-dim); }
+
+.cmd-actiuni { display: flex; gap: 6px; align-items: center; }
+.cmd-ico {
+  width: 30px; height: 30px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--surface-raised);
+  color: var(--text-secondary); font-size: 13px; cursor: pointer;
+  display: grid; place-items: center;
+}
+.cmd-ico:hover { border-color: var(--border-light); color: var(--text); }
+
+/* Corpul: ascuns cand cardul e strans. */
+.cmd-corp { display: none; }
+.cmd.desfacut .cmd-corp {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+.cmd-stanga { padding: 14px 16px; min-width: 0; }
+.cmd-dreapta { padding: 14px 16px; border-left: 1px solid var(--border); min-width: 0; }
+
+.cmd-tabel { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.cmd-tabel th {
+  text-align: left; padding: 0 8px 8px 0; border-bottom: 1px solid var(--border);
+  font-size: 9.5px; letter-spacing: 0.07em; text-transform: uppercase;
+  color: var(--text-dim); font-weight: 600;
+}
+.cmd-tabel td { padding: 10px 8px 10px 0; vertical-align: top; border-bottom: 1px solid var(--border); }
+.cmd-tabel tr:last-child td { border-bottom: 0; }
+.cmd-tabel th.r, .cmd-tabel td.r { text-align: right; padding-right: 0; white-space: nowrap; }
+/* Latimi fixe pe coloanele cu cifre: fara ele, o denumire lunga de produs
+   impinge preturile una in alta si se citesc lipite. */
+.cmd-tabel th:nth-child(2), .cmd-tabel td:nth-child(2) { width: 64px; }
+.cmd-tabel th:nth-child(3), .cmd-tabel td:nth-child(3) { width: 104px; }
+.cmd-tabel th:nth-child(4), .cmd-tabel td:nth-child(4) { width: 116px; }
+/* Cifrele aliniate pe coloana: fara asta, preturile danseaza de la rand la rand. */
+.cifre { font-variant-numeric: tabular-nums; }
+
+.cmd-produs { display: flex; gap: 10px; min-width: 0; }
+.cmd-img {
+  width: 46px; height: 46px; flex: none; border-radius: 7px; object-fit: cover;
+  background: var(--surface-raised); border: 1px solid var(--border);
+}
+.cmd-img-gol { background: var(--surface-raised); }
+.cmd-produs-text { min-width: 0; }
+.cmd-produs-nume { font-size: 12.5px; line-height: 1.35; margin-bottom: 3px; }
+.cmd-produs-meta { font-size: 11px; color: var(--text-dim); font-family: var(--font-mono); }
+
+.cmd-totaluri { margin: 12px 0 0 auto; width: 260px; font-size: 12.5px; }
+.cmd-totaluri div { display: flex; justify-content: space-between; padding: 5px 0; color: var(--text-secondary); }
+.cmd-totaluri div.total {
+  margin-top: 4px; padding-top: 9px; border-top: 1px solid var(--border);
+  color: var(--text); font-weight: 700; font-size: 14px;
+}
+
+.cmd-bloc { margin-bottom: 16px; }
+.cmd-bloc:last-child { margin-bottom: 0; }
+.cmd-bloc h4 {
+  font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-dim); font-weight: 600; margin-bottom: 8px;
+}
+.cmd-bloc dl { display: grid; grid-template-columns: auto 1fr; gap: 5px 10px; font-size: 12px; line-height: 1.5; margin: 0; }
+.cmd-bloc dt { color: var(--text-dim); white-space: nowrap; }
+.cmd-bloc dd { margin: 0; color: var(--text); overflow-wrap: anywhere; }
+.cmd-bloc a { color: var(--accent); text-decoration: none; }
+.cmd-bloc a:hover { text-decoration: underline; }
+.cmd-gol, .cmd-fara-produse { font-size: 12px; color: var(--text-dim); }
+
+/* Ecrane mici: capul se aseaza pe doua randuri, iar corpul pe o coloana. */
+@media (max-width: 1100px) {
+  .cmd.desfacut .cmd-corp { grid-template-columns: 1fr; }
+  .cmd-dreapta { border-left: 0; border-top: 1px solid var(--border); }
+}
+@media (max-width: 760px) {
+  .cmd-cap {
+    grid-template-columns: 26px 1fr auto;
+    grid-template-areas: "sageata nr actiuni" ". client client" ". stare bani";
+    row-gap: 8px;
+  }
+  .cmd-sageata { grid-area: sageata; }
+  .cmd-nr { grid-area: nr; }
+  .cmd-actiuni { grid-area: actiuni; }
+  .cmd-platforma { display: none; }
+  .cmd-client { grid-area: client; }
+  .cmd-bani { grid-area: bani; }
+  .cmd-cap > div:nth-child(4) { grid-area: stare; }
+  .cmd-totaluri { width: 100%; }
+}
