@@ -2298,7 +2298,7 @@ async function renderServiceReturnList(route, section) {
   // stare locala (nu mai citim din URL la fiecare click -- doar la incarcarea initiala)
   const LOCATION_KEYS_BY_SECTION = {
     service: ['cereri', 'picked', 'inservice', 'returned'],
-    retur: ['cereri', 'awbEmis', 'ridicate', 'receptionate', 'readyRefund', 'finalizate'],
+    retur: ['cereri', 'awbEmis', 'ridicate', 'receptionate', 'readyRefund', 'asteptareBani', 'finalizate'],
   };
   // Cererile venite din formularul public intra in secțiune ÎNAINTE de a exista
   // un AWB — coletul nu a fost încă ridicat, deci nu se potrivesc în niciunul
@@ -2306,6 +2306,31 @@ async function renderServiceReturnList(route, section) {
   // aceea secțiunea are un coș de intrare: aici aterizează ce trimit clienții,
   // până când cineva emite AWB-ul de ridicare.
   const eCerereNoua = (t) => !t.pickupAwbNumber && !t.stage;
+
+  /**
+   * „In asteptarea banilor" -- retururi trimise la banca, la care banii inca
+   * n-au plecat efectiv din cont.
+   *
+   * Nu e o etapa noua in baza de date, ci o FEREASTRA peste „Retur finalizat":
+   * aplicatia scrie `refundPaidAt` in clipa in care descarci fisierul pentru
+   * banca, nu cand banca executa plata. Intre cele doua momente trec de obicei
+   * una-trei zile lucratoare, iar in intervalul asta e util sa ai lista
+   * separat, ca s-o poti confrunta cu extrasul de cont.
+   *
+   * Dupa ZILE_ASTEPTARE_BANI zile returul iese singur din tab: daca pana
+   * atunci n-ai observat ca lipseste o plata, tabul nu te mai ajuta cu nimic
+   * si ar deveni doar o a doua lista de retururi finalizate.
+   *
+   * Tichetele de aici apar si in „Retur finalizat" -- asta e intentionat,
+   * tabul e doar o lentila, nu scoate nimic din fluxul existent.
+   */
+  const ZILE_ASTEPTARE_BANI = 14;
+  const eInAsteptareaBanilor = (t) => {
+    if (t.stage !== 'refund_done' || !t.refundPaidAt) return false;
+    const marcatLa = new Date(t.refundPaidAt).getTime();
+    if (Number.isNaN(marcatLa)) return false;
+    return (Date.now() - marcatLa) <= ZILE_ASTEPTARE_BANI * 24 * 60 * 60 * 1000;
+  };
   let activeLocation = LOCATION_KEYS_BY_SECTION[section]?.includes(initialFilters.loc) ? initialFilters.loc : 'cereri';
   // La Retur nu mai există filtrul de stare, deci nu mai filtrăm nimic pe el:
   // secțiunea aleasă (etapa) e singurul criteriu.
@@ -2369,6 +2394,7 @@ async function renderServiceReturnList(route, section) {
         ridicate: allTickets.filter((t) => t.stage === 'in_transit_to_service'),
         receptionate: allTickets.filter((t) => t.stage === 'at_service' && !t.refundIban),
         readyRefund: allTickets.filter((t) => t.stage === 'at_service' && t.refundIban),
+        asteptareBani: allTickets.filter(eInAsteptareaBanilor),
         finalizate: allTickets.filter((t) => t.stage === 'refund_done'),
       };
       const locationTabs = [
@@ -2377,6 +2403,7 @@ async function renderServiceReturnList(route, section) {
         { key: 'ridicate', label: 'Colete ridicate' },
         { key: 'receptionate', label: 'Colete recepționate' },
         { key: 'readyRefund', label: 'Gata de retur' },
+        { key: 'asteptareBani', label: 'În așteptarea banilor' },
         { key: 'finalizate', label: 'Retur finalizat' },
       ];
       content.querySelector('#locationRow').innerHTML = locationTabs.map((t) =>
